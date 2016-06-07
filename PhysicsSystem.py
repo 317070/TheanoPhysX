@@ -5,6 +5,30 @@ X = 0
 Y = 1
 Z = 2
 
+def quat_to_rot_matrix(quat):
+    w,x,y,z = quat
+    wx = w * x * 2.0
+    wy = w * y * 2.0
+    wz = w * z * 2.0
+    xx = x * x * 2.0
+    xy = x * y * 2.0
+    xz = x * z * 2.0
+    yy = y * y * 2.0
+    yz = y * z * 2.0
+    zz = z * z * 2.0
+
+    return np.array([[ 1 - (yy + zz),        xy - wz,         xz + wy  ],
+                    [      xy + wz,    1 - (xx + zz),        yz - wx  ],
+                    [      xz - wy,         yz + wx,    1 - (xx + yy) ]])
+
+
+def convert_world_to_model_coordinate(coor, model_position):
+    return np.dot(quat_to_rot_matrix(coor[3:]), coor - model_position[:3])
+
+def convert_model_to_world_coordinate(coor, model_position):
+    return np.dot(quat_to_rot_matrix(coor[3:]).T, coor) + model_position[:3]
+
+
 class Rigid3DBodyEngine(object):
     def __init__(self):
         self.positionVectors = np.zeros(shape=(0,7))
@@ -31,10 +55,12 @@ class Rigid3DBodyEngine(object):
         idx1 = self.objects[object1]
         idx2 = self.objects[object2]
 
-        parameters['joint_in_model1_coordinates'] = world_coordinates - self.positionVectors[idx1,:3]
-        parameters['joint_in_model2_coordinates'] = world_coordinates - self.positionVectors[idx2,:3]
+        parameters['joint_in_model1_coordinates'] = convert_world_to_model_coordinate(world_coordinates, self.positionVectors[idx1,:])
+        parameters['joint_in_model2_coordinates'] = convert_world_to_model_coordinate(world_coordinates, self.positionVectors[idx2,:])
 
         self.addConstraint("ball-and-socket", [object1, object2], parameters)
+
+
 
 
     def do_time_step(self, dt=1e-3):
@@ -109,10 +135,10 @@ class Rigid3DBodyEngine(object):
                     idx1 = references[0]
                     idx2 = references[1]
 
-                    v = np.array([newv[idx1,:], newv[idx2,:]])
+                    v = np.concatenate([newv[idx1,:], newv[idx2,:]])
                     print v.shape
-
-                    J = np.array([[0,0,1,0,0,0]])
+                    r1x = convert_model_to_world_coordinate(world_coordinates, self.positionVectors[idx2,:])
+                    J = np.concatenate([-np.eye(3),x,np.eye(3),x])
 
                     m_c = 1./np.dot(J,np.dot(M[idx,:,:], J.T))
 
