@@ -1,5 +1,6 @@
 __author__ = 'jonas'
 import numpy as np
+import scipy.linalg
 
 X = 0
 Y = 1
@@ -23,10 +24,19 @@ def quat_to_rot_matrix(quat):
 
 
 def convert_world_to_model_coordinate(coor, model_position):
-    return np.dot(quat_to_rot_matrix(coor[3:]), coor - model_position[:3])
+    return np.dot(quat_to_rot_matrix(model_position[3:]), coor - model_position[:3])
 
 def convert_model_to_world_coordinate(coor, model_position):
-    return np.dot(quat_to_rot_matrix(coor[3:]).T, coor) + model_position[:3]
+    return np.dot(quat_to_rot_matrix(model_position[3:]).T, coor) + model_position[:3]
+
+def convert_model_to_world_coordinate_no_bias(coor, model_position):
+    return np.dot(quat_to_rot_matrix(model_position[3:]).T, coor)
+
+def skew_symmetric(x):
+    a,b,c = x
+    return np.array([[ 0,-c, b],
+                    [  c, 0,-a ],
+                    [ -b, a, 0 ]])
 
 
 class Rigid3DBodyEngine(object):
@@ -135,19 +145,25 @@ class Rigid3DBodyEngine(object):
                     idx1 = references[0]
                     idx2 = references[1]
 
-                    v = np.concatenate([newv[idx1,:], newv[idx2,:]])
-                    print v.shape
-                    r1x = convert_model_to_world_coordinate(world_coordinates, self.positionVectors[idx2,:])
-                    J = np.concatenate([-np.eye(3),x,np.eye(3),x])
+                    v = np.concatenate([self.velocityVectors[idx1,:], self.velocityVectors[idx2,:]])
+                    #print v.shape
+                    r1x = convert_model_to_world_coordinate_no_bias(parameters["joint_in_model1_coordinates"], self.positionVectors[idx1,:])
+                    r2x = convert_model_to_world_coordinate_no_bias(parameters["joint_in_model2_coordinates"], self.positionVectors[idx2,:])
 
-                    m_c = 1./np.dot(J,np.dot(M[idx,:,:], J.T))
+                    J = np.concatenate([-np.eye(3),skew_symmetric(r1x),np.eye(3),-skew_symmetric(r2x)]).T
+                    mass_matrix = scipy.linalg.block_diag(M[idx1,:,:], M[idx2,:,:])
+                    m_c = np.linalg.inv(np.dot(J,np.dot(mass_matrix, J.T)))
 
-                    b = 0
-                    lamb = (- m_c * (np.dot(J, newv[idx,:]) + b))[0,0]
+                    b_res = parameters["beta"] * (self.positionVectors[idx2,:3]+r2x-self.positionVectors[idx1,:3]-r1x)
+                    print b_res
+                    b = b_res
+                    lamb = - np.dot(m_c, (np.dot(J, v) + b))
+                    #print v.shape, np.dot(mass_matrix, J.T).shape, lamb.shape,
+                    result = v + np.dot(np.dot(mass_matrix, J.T), lamb)
+                    #print result.shape
 
-                    Fn = applicable * lamb
-
-                    self.velocityVectors[idx] = newv[idx,:] + applicable * np.dot(J, M[idx,:,:]) * lamb
+                    self.velocityVectors[idx1,:] = result[:6]
+                    self.velocityVectors[idx2,:] = result[6:]
 
 
 
@@ -164,7 +180,7 @@ class Rigid3DBodyEngine(object):
         v_norm = np.sqrt(np.sum(self.velocityVectors[:,3:]**2))
         a = self.velocityVectors[:,3:] / (v_norm + 1e-13)
         theta = v_norm*dt
-        self.positionVectors[:,3:] = q_mult(self.positionVectors[:,3:].T, [np.cos(theta/2), a[:,0]*np.sin(theta/2), a[:,1]*np.sin(theta/2), a[:,2]*np.sin(theta/2)])
+        self.positionVectors[:,3:] = normalize(q_mult(self.positionVectors[:,3:].T, [np.cos(theta/2), a[:,0]*np.sin(theta/2), a[:,1]*np.sin(theta/2), a[:,2]*np.sin(theta/2)]))
 
 
     def getPosition(self, reference):
@@ -180,4 +196,10 @@ def q_mult(q1, q2):
     y = w1 * y2 + y1 * w2 + z1 * x2 - x1 * z2
     z = w1 * z2 + z1 * w2 + x1 * y2 - y1 * x2
     res = np.array([w, x, y, z]).T
-    return res / np.linalg.norm(res, axis=-1, keepdims=True)
+    return res
+
+def normalize(q):
+    q = np.copy(q)
+    v_norm = np.sqrt(np.sum(q[...,1:]**2))
+    q[...,1:] = q[...,1:]/v_norm[...,None]
+    return q

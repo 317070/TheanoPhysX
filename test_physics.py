@@ -1,7 +1,7 @@
 from direct.showbase.ShowBase import ShowBase
 from math import pi, sin, cos
 from direct.task import Task
-from panda3d.core import Point2, Texture, CardMaker, AmbientLight, Vec4, DirectionalLight, Spotlight
+from panda3d.core import Point2, Texture, CardMaker, AmbientLight, Vec4, DirectionalLight, Spotlight, Quat
 from PhysicsSystem import Rigid3DBodyEngine
 import time
 
@@ -58,26 +58,26 @@ class MyApp(ShowBase):
             smiley.reparentTo(self.render)
             # Apply scale and position transforms on the model.
             smiley.setPos(*position[:3])
-            smiley.setQuat(Vec4(*position[3:]))
+            smiley.setQuat(Quat(*position[3:]))
 
             self.objects.append(smiley)
             self.physics.addSphere(smiley, position, velocity)
-            self.physics.addConstraint("ground",[smiley],{"mu":0.2, "alpha":0.6, "gamma":0.0, "delta":0.001, "torsional_friction": True})
+            self.physics.addConstraint("ground",[smiley],{"mu":0.0, "alpha":0.6, "gamma":0.0, "delta":0.001, "torsional_friction": False})
 
 
-        addSphere([0,0,0,0,1,0,0], [0,6,6,12,-6,0])
+        addSphere([0,0,0,0,1,0,0], [0,0,16,0,0,0])
         addSphere([0,0,2,0,1,0,0], [0,0,0,0,0,0])
 
-        self.physics.addBallAndSocketConstraint(self.objects[0], self.objects[1],[0,0,1],{})
+        self.physics.addBallAndSocketConstraint(self.objects[0], self.objects[1],[0,0,1],{"beta": 0.8})
 
 
 
     # Define a procedure to move the camera.
     def spinCameraTask(self, task):
-        self.physics.do_time_step(dt=1e-3)
+        self.physics.do_time_step(dt=5e-3)
         for obj in self.objects:
             obj.setPos(*self.physics.getPosition(obj)[:3])
-            obj.setQuat(Vec4(*self.physics.getPosition(obj)[3:]))
+            obj.setQuat(Quat(*self.physics.getPosition(obj)[3:]))
 
         # change camera movement
         angleDegrees = task.time * 3.0
