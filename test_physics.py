@@ -68,7 +68,7 @@ class MyApp(ShowBase):
         addSphere([0,0,0,0,1,0,0], [0,6,6,12,-6,0])
         addSphere([0,0,2,0,1,0,0], [0,0,0,0,0,0])
 
-        #self.physics.addBallAndSocketConstraint(self.objects[0], self.objects[1],[0,0,1])
+        self.physics.addBallAndSocketConstraint(self.objects[0], self.objects[1],[0,0,1],{})
 
 
 

@@ -59,7 +59,8 @@ class Rigid3DBodyEngine(object):
 
         for iteration in xrange(self.num_iterations):
             for constraint,references,parameters in self.constraints:
-                if constraint is "ground":
+
+                if constraint == "ground":
                     idx = references[0]
                     applicable = (self.positionVectors[idx,Z] <= 0 and self.velocityVectors[idx,Z] <= 0)  # we cannot do advanced intersection algorithms on GPU for now
 
@@ -90,9 +91,8 @@ class Rigid3DBodyEngine(object):
                     m_c = 1./np.dot(J,np.dot(M[idx,:,:], J.T))
                     b = 0
                     lamb_friction_2 = (- m_c * (np.dot(J, newv[idx,:]) + b))[0,0]
-                    print lamb_friction_2, -parameters["mu"]*Fn, parameters["mu"]*Fn
                     lamb_friction_2 = np.clip(lamb_friction_2, -parameters["mu"]*Fn, parameters["mu"]*Fn)
-                    print lamb_friction_2
+
 
                     self.velocityVectors[idx,:] = self.velocityVectors[idx,:] + applicable * np.dot(J, M[idx,:,:]) * lamb_friction_2
 
@@ -104,11 +104,10 @@ class Rigid3DBodyEngine(object):
                         lamb_friction_3 = np.clip(lamb_friction_3, -parameters["mu"]*Fn, parameters["mu"]*Fn)
                         self.velocityVectors[idx,:] = self.velocityVectors[idx,:] + applicable * np.dot(J, M[idx,:,:]) * lamb_friction_3
 
-                    print lamb, lamb_friction_1, lamb_friction_2
-                if constraint is "ball-and-socket":
+
+                elif constraint == "ball-and-socket":
                     idx1 = references[0]
                     idx2 = references[1]
-
 
                     v = np.array([newv[idx1,:], newv[idx2,:]])
                     print v.shape
