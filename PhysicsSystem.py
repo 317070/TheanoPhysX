@@ -1,6 +1,7 @@
 __author__ = 'jonas'
 import numpy as np
 import scipy.linalg
+import random
 
 X = 0
 Y = 1
@@ -91,9 +92,14 @@ class Rigid3DBodyEngine(object):
             forbidden_axis_1 = np.array([0,-axis[2],axis[1]])
             forbidden_axis_2 = np.cross(axis, forbidden_axis_1)
 
+        print forbidden_axis_1, forbidden_axis_2
+
         parameters['axis1_in_model1_coordinates'] = convert_world_to_model_coordinate_no_bias(forbidden_axis_1, self.positionVectors[idx1,:])
         parameters['axis2_in_model1_coordinates'] = convert_world_to_model_coordinate_no_bias(forbidden_axis_2, self.positionVectors[idx1,:])
         parameters['axis_in_model2_coordinates'] = convert_world_to_model_coordinate_no_bias(axis, self.positionVectors[idx2,:])
+
+        if "limit" in parameters:
+            parameters['q_init'] = q_diff(self.positionVectors[idx2,3:], self.positionVectors[idx1,3:])
 
         self.addConstraint("hinge", [object1, object2], parameters)
 
@@ -122,7 +128,7 @@ class Rigid3DBodyEngine(object):
 
         for iteration in xrange(self.num_iterations):
             total_lambda = np.zeros_like(self.velocityVectors)
-            for constraint,references,parameters in self.constraints[::-1]:
+            for constraint,references,parameters in random.sample(self.constraints, len(self.constraints)):
 
                 if constraint == "ground":
                     idx = references[0]
@@ -214,7 +220,7 @@ class Rigid3DBodyEngine(object):
                     m_c = np.linalg.inv(np.dot(J,np.dot(mass_matrix, J.T)))
 
                     b_res = parameters["beta"] * np.array([np.sum(a2x*b1x),np.sum(a2x*c1x)])
-                    print np.array([np.sum(a2x*b1x),np.sum(a2x*c1x)])
+                    #print np.array([np.sum(a2x*b1x),np.sum(a2x*c1x)])
                     b = b_res
                     lamb = - np.dot(m_c, (np.dot(J, v) + b))
                     #print v.shape, np.dot(mass_matrix, J.T).shape, lamb.shape,
@@ -224,11 +230,23 @@ class Rigid3DBodyEngine(object):
                     total_lambda[idx1,:] = total_lambda[idx1,:] + result[:6]
                     total_lambda[idx2,:] = total_lambda[idx2,:] + result[6:]
 
+                    if "limit" in parameters:
+                        q_current = q_diff(self.positionVectors[idx2,3:], self.positionVectors[idx1,3:])
+                        q_diff = q_diff(q_current, parameters['q_init'])
+                        sin_theta2 = np.sqrt(np.sum(q_diff[1:]*q_diff[1:]))
+
+                        theta = np.arctan2(sin_theta2, q_diff[0])
+
+                        applicable = (theta>parameters["limit"])
+                        J = np.concatenate([np.zeros((3,)),-a2x,np.zeros((3,)),a2x])[:,None]
 
 
+
+
+            print total_lambda
             self.velocityVectors += total_lambda
 
-
+        print
         ##################
         # --- Step 3 --- #
         ##################
@@ -256,11 +274,16 @@ def q_mult(q1, q2):
     y = w1 * y2 + y1 * w2 + z1 * x2 - x1 * z2
     z = w1 * z2 + z1 * w2 + x1 * y2 - y1 * x2
     res = np.array([w, x, y, z]).T
-    return res / np.linalg.norm(res, axis=-1, keepdims=True)
     return res
+
+def q_diff(q1, q2):
+    w, x, y, z = q2
+    return q_mult(q1, [w,-x,-y,-z])
 
 def normalize(q):
     q = np.copy(q)
     v_norm = np.linalg.norm(res, axis=-1, keepdims=True)
     q[...,1:] = q[...,1:]/v_norm[...,None]
     return q
+
+def angle_between(q1, q2):

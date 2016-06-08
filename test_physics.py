@@ -8,7 +8,7 @@ import time
 
 def fixQuat(quat):
 
-    quat = (quat[0],quat[1],quat[2],quat[3])
+    quat = (-quat[0],quat[1],quat[2],quat[3])
     return Quat(*quat)
 
 class MyApp(ShowBase):
