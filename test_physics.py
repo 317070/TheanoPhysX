@@ -5,6 +5,12 @@ from panda3d.core import Point2, Texture, CardMaker, AmbientLight, Vec4, Directi
 from PhysicsSystem import Rigid3DBodyEngine
 import time
 
+
+def fixQuat(quat):
+
+    quat = (quat[0],quat[1],quat[2],quat[3])
+    return Quat(*quat)
+
 class MyApp(ShowBase):
 
     def __init__(self):
@@ -51,24 +57,28 @@ class MyApp(ShowBase):
         # Load the environment model.
         self.objects = list()
         def addSphere(position, velocity):
+            #smiley = self.loader.loadModel("zup-axis")
             smiley = self.loader.loadModel("smiley")
+            #smiley.setScale(0.2,0.2,0.2)
             smiley.setTexture(self.loader.loadTexture('maps/noise.rgb'), 1)
 
             # Reparent the model to render.
             smiley.reparentTo(self.render)
             # Apply scale and position transforms on the model.
             smiley.setPos(*position[:3])
-            smiley.setQuat(Quat(*position[3:]))
+            smiley.setQuat(self.render, fixQuat(position[3:]))
 
             self.objects.append(smiley)
             self.physics.addSphere(smiley, position, velocity)
-            self.physics.addConstraint("ground",[smiley],{"mu":0.0, "alpha":0.6, "gamma":0.0, "delta":0.001, "torsional_friction": False})
+            self.physics.addConstraint("ground",[smiley],{"mu":1.0, "alpha":0.6, "gamma":0.0, "delta":0.001, "torsional_friction": False})
 
 
-        addSphere([0,0,0,0,1,0,0], [0,0,16,0,0,0])
-        addSphere([0,0,2,0,1,0,0], [0,0,0,0,0,0])
+        addSphere([0,0,0,0,1,0,0], [6,0,6,0,6,0])
+        addSphere([0,0,2,0,1,0,0], [0,0,0,0,0,6])
 
-        self.physics.addBallAndSocketConstraint(self.objects[0], self.objects[1],[0,0,1],{"beta": 0.8})
+        #self.physics.addBallAndSocketConstraint(self.objects[0], self.objects[1],[0,0,1],{"beta": 0.8})
+
+        self.physics.addHingeConstraint(self.objects[0], self.objects[1],[0,0,1],[0,1,0], {"beta": 0.})
 
 
 
@@ -77,7 +87,7 @@ class MyApp(ShowBase):
         self.physics.do_time_step(dt=5e-3)
         for obj in self.objects:
             obj.setPos(*self.physics.getPosition(obj)[:3])
-            obj.setQuat(Quat(*self.physics.getPosition(obj)[3:]))
+            obj.setQuat(self.render, fixQuat(self.physics.getPosition(obj)[3:]))
 
         # change camera movement
         angleDegrees = task.time * 3.0
