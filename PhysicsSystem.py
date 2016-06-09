@@ -94,13 +94,14 @@ class Rigid3DBodyEngine(object):
             forbidden_axis_1 = np.array([0,-axis[2],axis[1]])
             forbidden_axis_2 = np.cross(axis, forbidden_axis_1)
 
+        parameters['axis'] = axis
         parameters['axis1_in_model1_coordinates'] = convert_world_to_model_coordinate_no_bias(forbidden_axis_1, self.positionVectors[idx1,:])
         parameters['axis2_in_model1_coordinates'] = convert_world_to_model_coordinate_no_bias(forbidden_axis_2, self.positionVectors[idx1,:])
         parameters['axis_in_model2_coordinates'] = convert_world_to_model_coordinate_no_bias(axis, self.positionVectors[idx2,:])
 
         if "limit" in parameters:
             parameters['q_init'] = q_div(self.positionVectors[idx2,3:], self.positionVectors[idx1,3:])
-            parameters['axis'] = axis
+
 
         self.addConstraint("hinge", [object1, object2], parameters)
 
@@ -126,6 +127,10 @@ class Rigid3DBodyEngine(object):
         ##################
         # now enforce the constraints.
         M = np.linalg.inv(self.massMatrices)
+
+        # TODO: (J * invM * JT + softness) * dP = -(J * v2damaged + softness * P + bias)
+        # http://bulletphysics.org/Bullet/phpBB3/viewtopic.php?f=4&t=1354
+        # CRF & ERF
 
         for iteration in xrange(self.num_iterations):
             total_lambda = np.zeros_like(self.velocityVectors)
@@ -232,12 +237,15 @@ class Rigid3DBodyEngine(object):
                     total_lambda[idx2,:] = total_lambda[idx2,:] + result[6:]
 
                     if "limit" in parameters:
-                        q_current = q_div(self.positionVectors[idx2,3:], self.positionVectors[idx1,3:])
+                        q_current = q_div(self.positionVectors[idx1,3:], self.positionVectors[idx2,3:])
                         q_diff = q_div(q_current, parameters['q_init'])
-                        sin_theta2 = np.sqrt(np.sum(q_diff[1:]*q_diff[1:]))
 
                         a=parameters['axis']
+                        dot = np.sum(q_diff[1:] * a)
+                        sin_theta2 = ((dot>0) * 2 - 1) * np.sqrt(np.sum(q_diff[1:]*q_diff[1:]))
                         theta = 2*np.arctan2(sin_theta2,q_diff[0])
+
+
                         J = np.concatenate([np.zeros((3,)),-a,np.zeros((3,)),a])[:,None].T
                         b_res = parameters["beta"]/dt * (parameters["limit"] - theta)
 
@@ -246,7 +254,7 @@ class Rigid3DBodyEngine(object):
                         lamb1 = - np.dot(m_c, (np.dot(J, v) + b))
                         result = np.dot(np.dot(mass_matrix, J.T), lamb1)
 
-                        applicable1 = (theta<2*pi-parameters["limit"]) and (lamb1>0)
+                        applicable1 = (theta<-parameters["limit"]) and (lamb1>0)
                         total_lambda[idx1,:] = total_lambda[idx1,:] + applicable1 * result[:6]
                         total_lambda[idx2,:] = total_lambda[idx2,:] + applicable1 * result[6:]
 
@@ -262,6 +270,25 @@ class Rigid3DBodyEngine(object):
                         print applicable1, applicable2, theta
                         total_lambda[idx1,:] = total_lambda[idx1,:] + applicable2 * result[:6]
                         total_lambda[idx2,:] = total_lambda[idx2,:] + applicable2 * result[6:]
+
+
+
+                    if "motor_velocity" in parameters:
+                        a=parameters['axis']
+                        J = np.concatenate([np.zeros((3,)),-a,np.zeros((3,)),a])[:,None].T
+                        b_res = parameters["motor_velocity"]
+
+                        b = b_res
+                        m_c = np.linalg.inv(np.dot(J,np.dot(mass_matrix, J.T)))
+                        lamb = - np.dot(m_c, (np.dot(J, v) + b))
+                        lamb = np.clip(lamb, -parameters["motor_torque"], parameters["motor_torque"])
+                        result = np.dot(np.dot(mass_matrix, J.T), lamb)
+
+                        total_lambda[idx1,:] = total_lambda[idx1,:] + result[:6]
+                        total_lambda[idx2,:] = total_lambda[idx2,:] + result[6:]
+
+
+
 
 
 
