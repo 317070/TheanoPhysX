@@ -52,7 +52,7 @@ class Rigid3DBodyEngine(object):
         self.massMatrices = np.zeros(shape=(0,6,6))
         self.objects = dict()
         self.constraints = []
-        self.num_iterations = 50
+        self.num_iterations = 5
 
     def addSphere(self, reference, position, velocity):
         self.objects[reference] = self.positionVectors.shape[0]
@@ -63,7 +63,8 @@ class Rigid3DBodyEngine(object):
 
     def addConstraint(self, constraint, references, parameters):
         references = [self.objects[reference] for reference in references]
-
+        parameters["CFM"] = 1.0
+        parameters["ERP"] = 1.0
         self.constraints.append([constraint, references, parameters])
 
 
@@ -99,8 +100,7 @@ class Rigid3DBodyEngine(object):
         parameters['axis2_in_model1_coordinates'] = convert_world_to_model_coordinate_no_bias(forbidden_axis_2, self.positionVectors[idx1,:])
         parameters['axis_in_model2_coordinates'] = convert_world_to_model_coordinate_no_bias(axis, self.positionVectors[idx2,:])
 
-        if "limit" in parameters:
-            parameters['q_init'] = q_div(self.positionVectors[idx2,3:], self.positionVectors[idx1,3:])
+        parameters['q_init'] = q_div(self.positionVectors[idx2,3:], self.positionVectors[idx1,3:])
 
 
         self.addConstraint("hinge", [object1, object2], parameters)
@@ -120,65 +120,82 @@ class Rigid3DBodyEngine(object):
 
         totalforce = np.array([0,0,-9.81,0,0,0])  # total force acting on body outside of constraints
         newv = self.velocityVectors + dt * np.dot(self.massMatrices, totalforce)
-        self.velocityVectors = newv
+        originalv = newv.copy()
+
 
         ##################
         # --- Step 2 --- #
         ##################
-        # now enforce the constraints.
+        # now enforce the constraints by having corrective impulses
         M = np.linalg.inv(self.massMatrices)
+        P = [[0,0,0,0,0] for _ in xrange(len(self.constraints))]
 
-        # TODO: (J * invM * JT + softness) * dP = -(J * v2damaged + softness * P + bias)
+        # TODO: (J * invM * JT + CFM) * dP = -(J * v2damaged + CFM * P + bias)
         # http://bulletphysics.org/Bullet/phpBB3/viewtopic.php?f=4&t=1354
-        # CRF & ERF
+        # ERP and CFM
+
+        # TODO: drop quaternions, use rotation matrices!
+
+        # TODO: fix contact joints for arbitrary radiuses
+        # TODO: check J-matrix in friction, I guess there is something wrong
 
         for iteration in xrange(self.num_iterations):
-            total_lambda = np.zeros_like(self.velocityVectors)
-            for constraint,references,parameters in random.sample(self.constraints, len(self.constraints)):
 
+            total_lambda = np.zeros_like(self.velocityVectors)
+
+            for c_idx, (constraint,references,parameters) in enumerate(self.constraints):
                 if constraint == "ground":
                     idx = references[0]
                     applicable = (self.positionVectors[idx,Z] <= 0 and self.velocityVectors[idx,Z] <= 0)  # we cannot do advanced intersection algorithms on GPU for now
 
                     J = np.array([[0,0,1,0,0,0]])
 
-                    m_c = 1./np.dot(J,np.dot(M[idx,:,:], J.T))
+                    m_c = 1./(np.dot(J,np.dot(M[idx,:,:], J.T)) + parameters["CFM"])
 
-                    b_error = parameters["gamma"] * np.max(self.positionVectors[idx,Z] - parameters["delta"],0)
+                    b_error = parameters["ERP"] * np.max(self.positionVectors[idx,Z] - parameters["delta"],0)
                     b_res = parameters["alpha"] * newv[idx,Z]
 
                     b = b_error + b_res
-                    lamb = (- m_c * (np.dot(J, newv[idx,:]) + b))[0,0]
+                    lamb = (- m_c * (np.dot(J, newv[idx,:]) + parameters["CFM"] * P[c_idx][0] + b))[0,0]
+                    P[c_idx][0] += lamb
 
-                    Fn = applicable * lamb
+                    applicable = (P[c_idx][0]>0) * (self.positionVectors[idx,Z] <= 0)
+                    Fn = applicable * P[c_idx][0]
+                    total_lambda[idx,:] = total_lambda[idx,:] + applicable * np.dot(J, M[idx,:,:]) * P[c_idx][0]
 
-                    total_lambda[idx,:] = total_lambda[idx,:] +  applicable * np.dot(J, M[idx,:,:]) * lamb
+                if constraint == "ground" and parameters["mu"]!=0:
 
                     J = np.array([[1,0,0,0,1,0]])
-                    m_c = 1./np.dot(J,np.dot(M[idx,:,:], J.T))
+                    m_c = 1./(np.dot(J,np.dot(M[idx,:,:], J.T)) + parameters["CFM"])
                     b = 0
-                    lamb_friction_1 = (- m_c * (np.dot(J, newv[idx,:]) + b))[0,0]
+                    lamb_friction_1 = (- m_c * (np.dot(J, newv[idx,:]) + parameters["CFM"] * P[c_idx][1] + b))[0,0]
+                    P[c_idx][1] += lamb_friction_1
 
-                    lamb_friction_1 = np.clip(lamb_friction_1, -parameters["mu"]*Fn, parameters["mu"]*Fn)
+                    lamb = np.clip(P[c_idx][1], -parameters["mu"]*Fn, parameters["mu"]*Fn)
 
-                    total_lambda[idx,:] = total_lambda[idx,:] + applicable * np.dot(J, M[idx,:,:]) * lamb_friction_1
+                    total_lambda[idx,:] = total_lambda[idx,:] + applicable * np.dot(J, M[idx,:,:]) * lamb
 
+                if constraint == "ground":
                     J = np.array([[0,1,0,1,0,0]])
-                    m_c = 1./np.dot(J,np.dot(M[idx,:,:], J.T))
+                    m_c = 1./(np.dot(J,np.dot(M[idx,:,:], J.T)) + parameters["CFM"])
                     b = 0
-                    lamb_friction_2 = (- m_c * (np.dot(J, newv[idx,:]) + b))[0,0]
+                    lamb_friction_2 = (- m_c * (np.dot(J, newv[idx,:]) + parameters["CFM"] * P[c_idx][2] + b))[0,0]
                     lamb_friction_2 = np.clip(lamb_friction_2, -parameters["mu"]*Fn, parameters["mu"]*Fn)
 
+                    P[c_idx][2] += lamb_friction_2
+                    lamb = np.clip(P[c_idx][2], -parameters["mu"]*Fn, parameters["mu"]*Fn)
+                    total_lambda[idx,:] = total_lambda[idx,:] + applicable * np.dot(J, M[idx,:,:]) * lamb
 
-                    total_lambda[idx,:] = total_lambda[idx,:] + applicable * np.dot(J, M[idx,:,:]) * lamb_friction_2
-
+                if constraint == "ground":
                     if parameters["torsional_friction"]:
                         J = np.array([[0,0,0,0,0,1]])
-                        m_c = 1./np.dot(J,np.dot(M[idx,:,:], J.T))
+                        m_c = 1./(np.dot(J,np.dot(M[idx,:,:], J.T)) + parameters["CFM"])
                         b = 0
-                        lamb_friction_3 = (- m_c * (np.dot(J, newv[idx,:]) + b))[0,0]
-                        lamb_friction_3 = np.clip(lamb_friction_3, -parameters["mu"]*Fn, parameters["mu"]*Fn)
-                        total_lambda[idx,:] = total_lambda[idx,:] + applicable * np.dot(J, M[idx,:,:]) * lamb_friction_3
+                        lamb_friction_3 = (- m_c * (np.dot(J, newv[idx,:]) + parameters["CFM"] * P[c_idx][3] + b))[0,0]
+                        P[c_idx][3] += lamb_friction_3
+                        lamb = np.clip(P[c_idx][2], -parameters["mu"]*Fn, parameters["mu"]*Fn)
+
+                        total_lambda[idx,:] = total_lambda[idx,:] + applicable * np.dot(J, M[idx,:,:]) * lamb
 
 
                 if constraint == "ball-and-socket" or constraint == "hinge":
@@ -187,19 +204,23 @@ class Rigid3DBodyEngine(object):
 
                     v = np.concatenate([newv[idx1,:], newv[idx2,:]])
                     #print v.shape
+
+
                     r1x = convert_model_to_world_coordinate_no_bias(parameters["joint_in_model1_coordinates"], self.positionVectors[idx1,:])
                     r2x = convert_model_to_world_coordinate_no_bias(parameters["joint_in_model2_coordinates"], self.positionVectors[idx2,:])
 
                     J = np.concatenate([-np.eye(3),skew_symmetric(r1x),np.eye(3),-skew_symmetric(r2x)]).T
                     mass_matrix = scipy.linalg.block_diag(M[idx1,:,:], M[idx2,:,:])
-                    m_c = np.linalg.inv(np.dot(J,np.dot(mass_matrix, J.T)))
+                    m_c = np.linalg.inv((np.dot(J,np.dot(mass_matrix, J.T))) + parameters["CFM"] * np.eye(3))
 
-                    b_res = parameters["beta"]/dt * (self.positionVectors[idx2,:3]+r2x-self.positionVectors[idx1,:3]-r1x)
+                    b_res = parameters["ERP"]/dt * (self.positionVectors[idx2,:3]+r2x-self.positionVectors[idx1,:3]-r1x)
                     #print b_res
                     b = b_res
-                    lamb = - np.dot(m_c, (np.dot(J, v) + b))
+                    lamb = - np.dot(m_c, (np.dot(J, v) + parameters["CFM"] * P[c_idx][0] + b))
+                    P[c_idx][0] = P[c_idx][0] + lamb
+
                     #print v.shape, np.dot(mass_matrix, J.T).shape, lamb.shape,
-                    result = np.dot(np.dot(mass_matrix, J.T), lamb)
+                    result = np.dot(np.dot(mass_matrix, J.T), P[c_idx][0])
                     #print result.shape
 
                     total_lambda[idx1,:] = total_lambda[idx1,:] + result[:6]
@@ -223,23 +244,28 @@ class Rigid3DBodyEngine(object):
                     #print J.shape
 
                     mass_matrix = scipy.linalg.block_diag(M[idx1,:,:], M[idx2,:,:])
-                    m_c = np.linalg.inv(np.dot(J,np.dot(mass_matrix, J.T)))
+                    m_c = np.linalg.inv((np.dot(J,np.dot(mass_matrix, J.T))) + parameters["CFM"] * np.eye(2))
 
-                    b_res = parameters["beta"]/dt * np.array([np.sum(a2x*b1x),np.sum(a2x*c1x)])
+                    b_res = parameters["ERP"]/dt * np.array([np.sum(a2x*b1x),np.sum(a2x*c1x)])
                     #print np.array([np.sum(a2x*b1x),np.sum(a2x*c1x)])
                     b = b_res
-                    lamb = - np.dot(m_c, (np.dot(J, v) + b))
+                    lamb = - np.dot(m_c, (np.dot(J, v) + parameters["CFM"] * P[c_idx][1] + b))
+                    P[c_idx][1] += lamb
+
                     #print v.shape, np.dot(mass_matrix, J.T).shape, lamb.shape,
-                    result = np.dot(np.dot(mass_matrix, J.T), lamb)
+                    result = np.dot(np.dot(mass_matrix, J.T), P[c_idx][1])
                     #print result.shape
 
                     total_lambda[idx1,:] = total_lambda[idx1,:] + result[:6]
                     total_lambda[idx2,:] = total_lambda[idx2,:] + result[6:]
 
-                    if "limit" in parameters:
-                        q_current = q_div(self.positionVectors[idx1,3:], self.positionVectors[idx2,3:])
-                        q_diff = q_div(q_current, parameters['q_init'])
 
+                    q_current = q_div(self.positionVectors[idx1,3:], self.positionVectors[idx2,3:])
+                    q_diff = q_div(q_current, parameters['q_init'])
+
+
+
+                    if "limit" in parameters:
                         a=parameters['axis']
                         dot = np.sum(q_diff[1:] * a)
                         sin_theta2 = ((dot>0) * 2 - 1) * np.sqrt(np.sum(q_diff[1:]*q_diff[1:]))
@@ -247,32 +273,36 @@ class Rigid3DBodyEngine(object):
 
 
                         J = np.concatenate([np.zeros((3,)),-a,np.zeros((3,)),a])[:,None].T
-                        b_res = parameters["beta"]/dt * (parameters["limit"] - theta)
+                        b_res = parameters["ERP"]/dt * (parameters["limit"] - theta)
 
                         b = b_res
-                        m_c = np.linalg.inv(np.dot(J,np.dot(mass_matrix, J.T)))
-                        lamb1 = - np.dot(m_c, (np.dot(J, v) + b))
-                        result = np.dot(np.dot(mass_matrix, J.T), lamb1)
+                        m_c = np.linalg.inv(np.dot(J,np.dot(mass_matrix, J.T)) + parameters["CFM"] * np.eye(2))
+                        lamb1 = - np.dot(m_c, (np.dot(J, v) + parameters["CFM"] * P[c_idx][2] + b))
+                        P[c_idx][2] += lamb1
 
-                        applicable1 = (theta<-parameters["limit"]) and (lamb1>0)
+                        result = np.dot(np.dot(mass_matrix, J.T), P[c_idx][2])
+
+                        applicable1 = (theta<-parameters["limit"]) and (P[c_idx][2]>0)
                         total_lambda[idx1,:] = total_lambda[idx1,:] + applicable1 * result[:6]
                         total_lambda[idx2,:] = total_lambda[idx2,:] + applicable1 * result[6:]
 
                         J = np.concatenate([np.zeros((3,)),a,np.zeros((3,)),-a])[:,None].T
-                        b_res = parameters["beta"]/dt * (theta - parameters["limit"])
+                        b_res = parameters["ERP"]/dt * (theta - parameters["limit"])
 
                         b = b_res
                         m_c = np.linalg.inv(np.dot(J,np.dot(mass_matrix, J.T)))
                         lamb2 = - np.dot(m_c, (np.dot(J, v) + b))
-                        result = np.dot(np.dot(mass_matrix, J.T), lamb2)
 
-                        applicable2 = (theta>parameters["limit"]) and (lamb2>0)
-                        print applicable1, applicable2, theta
+                        P[c_idx][3] = P[c_idx][3] + lamb2
+
+                        result = np.dot(np.dot(mass_matrix, J.T), P[c_idx][3])
+
+                        applicable2 = (theta>parameters["limit"]) and (P[c_idx][3]>0)
+
                         total_lambda[idx1,:] = total_lambda[idx1,:] + applicable2 * result[:6]
                         total_lambda[idx2,:] = total_lambda[idx2,:] + applicable2 * result[6:]
 
-
-
+                    """
                     if "motor_velocity" in parameters:
                         a=parameters['axis']
                         J = np.concatenate([np.zeros((3,)),-a,np.zeros((3,)),a])[:,None].T
@@ -280,21 +310,40 @@ class Rigid3DBodyEngine(object):
 
                         b = b_res
                         m_c = np.linalg.inv(np.dot(J,np.dot(mass_matrix, J.T)))
+
                         lamb = - np.dot(m_c, (np.dot(J, v) + b))
                         lamb = np.clip(lamb, -parameters["motor_torque"], parameters["motor_torque"])
-                        result = np.dot(np.dot(mass_matrix, J.T), lamb)
+                        P[c_idx][4] = P[c_idx][4] + lamb
+
+                        result = np.dot(np.dot(mass_matrix, J.T), P[c_idx][4])
+
+                        total_lambda[idx1,:] = total_lambda[idx1,:] + result[:6]
+                        total_lambda[idx2,:] = total_lambda[idx2,:] + result[6:]
+                    """
+                    if "motor_position" in parameters:
+
+                        a=parameters['axis']
+                        dot = np.sum(q_diff[1:] * a)
+                        sin_theta2 = ((dot>0) * 2 - 1) * np.sqrt(np.sum(q_diff[1:]*q_diff[1:]))
+                        theta = 2*np.arctan2(sin_theta2,q_diff[0])
+                        print theta
+                        a=parameters['axis']
+                        J = np.concatenate([np.zeros((3,)),-a,np.zeros((3,)),a])[:,None].T
+                        b_res = (abs(theta-parameters["motor_position"]) > parameters["delta"]) * (2*(theta>parameters["motor_position"])-1) * parameters["motor_velocity"]
+
+                        b = b_res
+                        m_c = np.linalg.inv(np.dot(J,np.dot(mass_matrix, J.T)))
+
+                        lamb = - np.dot(m_c, (np.dot(J, v) + b))
+                        lamb = np.clip(lamb, -parameters["motor_torque"], parameters["motor_torque"])
+                        P[c_idx][4] = P[c_idx][4] + lamb
+
+                        result = np.dot(np.dot(mass_matrix, J.T), P[c_idx][4])
 
                         total_lambda[idx1,:] = total_lambda[idx1,:] + result[:6]
                         total_lambda[idx2,:] = total_lambda[idx2,:] + result[6:]
 
-
-
-
-
-
-
-
-            self.velocityVectors += total_lambda
+            newv = originalv + total_lambda
 
         print
         ##################
@@ -302,6 +351,7 @@ class Rigid3DBodyEngine(object):
         ##################
         # In the third step, we integrate the new position x2 of the bodies using the new velocities
         # v2 computed in the second step with : x2 = x1 + dt * v2.
+        self.velocityVectors = newv
 
         self.positionVectors[:,:3] = self.positionVectors[:,:3] + self.velocityVectors[:,:3] * dt
 

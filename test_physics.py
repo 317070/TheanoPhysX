@@ -2,7 +2,7 @@ from direct.showbase.ShowBase import ShowBase
 from math import pi, sin, cos
 from direct.task import Task
 from panda3d.core import Point2, Texture, CardMaker, AmbientLight, Vec4, DirectionalLight, Spotlight, Quat
-from PhysicsSystem import Rigid3DBodyEngine
+from PhysicsSystem2 import Rigid3DBodyEngine
 import time
 
 
@@ -78,7 +78,7 @@ class MyApp(ShowBase):
 
         #self.physics.addBallAndSocketConstraint(self.objects[0], self.objects[1],[0,0,1],{"beta": 0.8})
 
-        self.physics.addHingeConstraint(self.objects[0], self.objects[1],[0,0,1],[0,1,0], {"beta": 0.001, "motor_velocity": 1, "motor_torque": 1})
+        self.physics.addHingeConstraint(self.objects[0], self.objects[1],[0,0,1],[0,1,0], {"beta": 0.001, "motor_position": 1, "motor_velocity": 1, "motor_torque": 0.5, "delta":0.01})
 
 
 
