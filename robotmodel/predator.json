@@ -1,0 +1,78 @@
+{
+  "name": "Predator",
+  "mass density": 1.0,
+  "model":{
+    "spine":[
+      {
+        "shape": "cube",
+        "position": [0,0,0],
+        "dimensions": [2,3,4],
+        "rotation": [1,0,0,0]
+      },
+      {
+        "shape": "cube",
+        "position": [1,0,0],
+        "dimensions": [2,3,4],
+        "rotation": [1,0,0,0]
+      }
+    ],
+    "femur1":[
+      {
+        "shape": "cube",
+        "position": [-1,-1,0],
+        "dimensions": [1,1,1],
+        "rotation": [1,0,0,0]
+      }
+    ],
+    "tibia1":[
+      {
+        "shape": "cube",
+        "position": [-1,-1,0],
+        "dimensions": [1,1,1],
+        "rotation": [1,0,0,0]
+      }
+    ],
+    "foot1":[
+      {
+        "shape": "sphere",
+        "position": [-1,-1,0],
+        "dimensions": [1,1,1],
+        "rotation": [1,0,0,0]
+      }
+    ]
+  },
+  "joints": {
+    "left-shoulder": {
+      "type": "hinge",
+      "from": "spine",
+      "to": "femur1",
+      "axis": [0,0,1],
+      "point": [0,0,0],
+      "position_motor": {
+        "angle_limit": 90,
+        "maximum_velocity": 60,
+        "maximum_torque": 1,
+        "motor_id": 0
+      }
+    },
+    "left-knee": {
+      "type": "hinge",
+      "from": "femur1",
+      "to": "tibia1",
+      "axis": [0,0,1],
+      "point": [0,0,0],
+      "position_motor": {
+        "angle_limit": 90,
+        "maximum_velocity": 60,
+        "maximum_torque": 1,
+        "motor_id": 1
+      }
+    },
+    "left-heel": {
+      "type": "fixed",
+      "from": "tibia1",
+      "to": "foot",
+      "point": [0,0,0]
+    }
+  }
+}
