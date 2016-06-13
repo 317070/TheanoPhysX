@@ -107,14 +107,11 @@ class Rigid3DBodyEngine(object):
 
 
 
-    def addSliderConstraint(self, object1, object2, world_coordinates, parameters):
+    def addSliderConstraint(self, object1, object2, parameters):
         idx1 = self.objects[object1]
         idx2 = self.objects[object2]
 
-        parameters['joint_in_model1_coordinates'] = convert_world_to_model_coordinate(world_coordinates, self.positionVectors[idx1,:])
-        parameters['joint_in_model2_coordinates'] = convert_world_to_model_coordinate(world_coordinates, self.positionVectors[idx2,:])
-
-        parameters['q_init'] = q_div(self.positionVectors[idx1,3:], self.positionVectors[idx2,3:])
+        parameters['q_init'] = q_div(self.positionVectors[idx2,3:], self.positionVectors[idx1,3:])
 
         self.addConstraint("slider", [object1, object2], parameters)
 
@@ -125,7 +122,7 @@ class Rigid3DBodyEngine(object):
         parameters['joint_in_model1_coordinates'] = convert_world_to_model_coordinate(world_coordinates, self.positionVectors[idx1,:])
         parameters['joint_in_model2_coordinates'] = convert_world_to_model_coordinate(world_coordinates, self.positionVectors[idx2,:])
 
-        parameters['q_init'] = q_div(self.positionVectors[idx1,3:], self.positionVectors[idx2,3:])
+        parameters['q_init'] = q_div(self.positionVectors[idx2,3:], self.positionVectors[idx1,3:])
 
         self.addConstraint("fixed", [object1, object2], parameters)
 
@@ -257,7 +254,7 @@ class Rigid3DBodyEngine(object):
                     mass_matrix = scipy.linalg.block_diag(M[idx1,:,:], M[idx2,:,:])
                     m_c = np.linalg.inv((np.dot(J,np.dot(mass_matrix, J.T))) + parameters["CFM"] * np.eye(3))
 
-                    q_current = normalize(q_div(self.positionVectors[idx1,3:], self.positionVectors[idx2,3:]))
+                    q_current = normalize(q_div(self.positionVectors[idx2,3:], self.positionVectors[idx1,3:]))
                     q_diff = q_div(q_current, parameters['q_init'])
                     print q_diff[1:]
                     C = 2*q_diff[1:]
@@ -311,9 +308,8 @@ class Rigid3DBodyEngine(object):
                     total_lambda[idx2,:] = total_lambda[idx2,:] + result[6:]
 
 
-                    q_current = q_div(self.positionVectors[idx1,3:], self.positionVectors[idx2,3:])
+                    q_current = normalize(q_div(self.positionVectors[idx2,3:], self.positionVectors[idx1,3:]))
                     q_diff = q_div(q_current, parameters['q_init'])
-
 
 
                     if "limit" in parameters:
@@ -375,8 +371,10 @@ class Rigid3DBodyEngine(object):
 
                         a=parameters['axis']
                         dot = np.sum(q_diff[1:] * a)
-                        sin_theta2 = ((dot>0) * 2 - 1) * np.sqrt(np.sum(q_diff[1:]*q_diff[1:]))
-                        theta = 2*np.arctan2(sin_theta2,q_diff[0])
+                        sin_theta2 = np.sqrt(np.sum(q_diff[1:]*q_diff[1:]))
+                        theta = 2*((dot>0) * 2 - 1)*np.arctan2(sin_theta2,q_diff[0])
+                        #
+                        print theta, ((dot>0) * 2 - 1)
 
                         a=parameters['axis']
                         J = np.concatenate([np.zeros((3,)),-a,np.zeros((3,)),a])[:,None].T
@@ -429,7 +427,7 @@ def q_mult(q1, q2):
 
 def q_div(q1, q2):
     w, x, y, z = q2
-    return q_mult(q1, [w,-x,-y,-z])
+    return q_mult([w,-x,-y,-z], q1)
 
 def normalize(q):
     return q/np.linalg.norm(q, axis=-1, keepdims=True)
