@@ -45,6 +45,16 @@ def skew_symmetric(x):
                     [ -b, a, 0 ]])
 
 
+def vec_vec_dot(a,b):
+    return np.tensordot(a,b, axes=([-1],[-1]))
+
+def vec_mat_dot(a,b):
+    return np.tensordot(a,b, axes=([-1],[-2]))
+
+def mat_vec_dot(a,b):
+    return np.tensordot(a,b, axes=([-1],[-1]))
+
+
 class Rigid3DBodyEngine(object):
     def __init__(self):
         self.positionVectors = np.zeros(shape=(0,7))
@@ -163,77 +173,36 @@ class Rigid3DBodyEngine(object):
 
             total_lambda = np.zeros_like(self.velocityVectors)
 
+            J = np.zeros((0,2,6))  # 0 constraints x 2 objects x 6 states
+            v = np.zeros((0,2,6))  # 0 constraints x 2 objects x 6 states
+            mass_matrix = np.zeros((0,2,6,6))  # 0 constraints x 2 objects x 6 states x 6 states
+            b_res = np.zeros((0,))  # 0 constraints
+            CFM = np.zeros((0,))  # 0 constraints
+            ERP = np.zeros((0,))  # 0 constraints
+            only_when_positive = np.zeros((0,))  # 0 constraints
+            map_constraint_to_object = dict()
+
             for c_idx, (constraint,references,parameters) in enumerate(self.constraints):
-                if constraint == "ground":
-                    idx = references[0]
-                    J = np.array([[0,0,1,0,0,0]])
-
-                    m_c = 1./(np.dot(J,np.dot(M[idx,:,:], J.T)) + parameters["CFM"])
-
-                    b_error = parameters["ERP"] * np.max(self.positionVectors[idx,Z] - parameters["delta"],0)
-                    b_res = parameters["alpha"] * newv[idx,Z]
-
-                    b = b_error + b_res
-                    lamb = (- m_c * (np.dot(J, newv[idx,:]) + parameters["CFM"] * P[c_idx][0] + b))[0,0]
-                    P[c_idx][0] += lamb
-
-                    applicable = (P[c_idx][0]>0) * (self.positionVectors[idx,Z] < 0.0)
-                    Fn = applicable * P[c_idx][0]
-                    total_lambda[idx,:] = total_lambda[idx,:] + applicable * np.dot(J, M[idx,:,:]) * P[c_idx][0]
-
-                if constraint == "ground" and parameters["mu"]!=0:
-
-                    J = np.array([[1,0,0,0,1,0]])
-                    m_c = 1./(np.dot(J,np.dot(M[idx,:,:], J.T)) + parameters["CFM"])
-                    b = 0
-                    lamb_friction_1 = (- m_c * (np.dot(J, newv[idx,:]) + parameters["CFM"] * P[c_idx][1] + b))[0,0]
-                    P[c_idx][1] += lamb_friction_1
-
-                    lamb = np.clip(P[c_idx][1], -parameters["mu"]*Fn, parameters["mu"]*Fn)
-
-                    total_lambda[idx,:] = total_lambda[idx,:] + applicable * np.dot(J, M[idx,:,:]) * lamb
-
-                if constraint == "ground":
-                    J = np.array([[0,1,0,1,0,0]])
-                    m_c = 1./(np.dot(J,np.dot(M[idx,:,:], J.T)) + parameters["CFM"])
-                    b = 0
-                    lamb_friction_2 = (- m_c * (np.dot(J, newv[idx,:]) + parameters["CFM"] * P[c_idx][2] + b))[0,0]
-                    lamb_friction_2 = np.clip(lamb_friction_2, -parameters["mu"]*Fn, parameters["mu"]*Fn)
-
-                    P[c_idx][2] += lamb_friction_2
-                    lamb = np.clip(P[c_idx][2], -parameters["mu"]*Fn, parameters["mu"]*Fn)
-                    total_lambda[idx,:] = total_lambda[idx,:] + applicable * np.dot(J, M[idx,:,:]) * lamb
-
-                if constraint == "ground":
-                    if parameters["torsional_friction"]:
-                        J = np.array([[0,0,0,0,0,1]])
-                        m_c = 1./(np.dot(J,np.dot(M[idx,:,:], J.T)) + parameters["CFM"])
-                        b = 0
-                        lamb_friction_3 = (- m_c * (np.dot(J, newv[idx,:]) + parameters["CFM"] * P[c_idx][3] + b))[0,0]
-                        P[c_idx][3] += lamb_friction_3
-                        lamb = np.clip(P[c_idx][2], -parameters["mu"]*Fn, parameters["mu"]*Fn)
-
-                        total_lambda[idx,:] = total_lambda[idx,:] + applicable * np.dot(J, M[idx,:,:]) * lamb
-
-
-                if constraint == "ball-and-socket" or constraint == "hinge" or constraint == "fixed":
+                if constraint != "ground":
                     idx1 = references[0]
                     idx2 = references[1]
+                    v[c_idx,:] = np.concatenate([newv[idx1,:], newv[idx2,:]])
 
-                    v = np.concatenate([newv[idx1,:], newv[idx2,:]])
-                    #print v.shape
+                    if constraint == "ball-and-socket" or constraint == "hinge" or constraint == "fixed":
 
+                        r1x = convert_model_to_world_coordinate_no_bias(parameters["joint_in_model1_coordinates"], self.positionVectors[idx1,:])
+                        r2x = convert_model_to_world_coordinate_no_bias(parameters["joint_in_model2_coordinates"], self.positionVectors[idx2,:])
 
-                    r1x = convert_model_to_world_coordinate_no_bias(parameters["joint_in_model1_coordinates"], self.positionVectors[idx1,:])
-                    r2x = convert_model_to_world_coordinate_no_bias(parameters["joint_in_model2_coordinates"], self.positionVectors[idx2,:])
+                        J = np.concatenate([-np.eye(3),skew_symmetric(r1x),np.eye(3),-skew_symmetric(r2x)])
+                        print J.shape
+                        mass_matrix = scipy.linalg.block_diag(M[idx1,:,:], M[idx2,:,:])
+                        b_res = (self.positionVectors[idx2,:3]+r2x-self.positionVectors[idx1,:3]-r1x)
 
-                    J = np.concatenate([-np.eye(3),skew_symmetric(r1x),np.eye(3),-skew_symmetric(r2x)]).T
-                    mass_matrix = scipy.linalg.block_diag(M[idx1,:,:], M[idx2,:,:])
                     m_c = np.linalg.inv((np.dot(J,np.dot(mass_matrix, J.T))) + parameters["CFM"] * np.eye(3))
 
-                    b_res = parameters["ERP"]/dt * (self.positionVectors[idx2,:3]+r2x-self.positionVectors[idx1,:3]-r1x)
                     #print b_res
-                    b = b_res
+                    b = parameters["ERP"]/dt * b_res
+
                     lamb = - np.dot(m_c, (np.dot(J, v) + parameters["CFM"] * P[c_idx][0] + b))
                     P[c_idx][0] = P[c_idx][0] + lamb
 
@@ -243,6 +212,10 @@ class Rigid3DBodyEngine(object):
 
                     total_lambda[idx1,:] = total_lambda[idx1,:] + result[:6]
                     total_lambda[idx2,:] = total_lambda[idx2,:] + result[6:]
+
+
+
+            for c_idx, (constraint,references,parameters) in enumerate(self.constraints):
 
                 if constraint == "slider" or constraint == "fixed":
                     idx1 = references[0]
@@ -391,6 +364,66 @@ class Rigid3DBodyEngine(object):
 
                         total_lambda[idx1,:] = total_lambda[idx1,:] + result[:6]
                         total_lambda[idx2,:] = total_lambda[idx2,:] + result[6:]
+
+
+
+                ######################
+                # GROUND CONSTRAINTS #
+                ######################
+                if constraint == "ground":
+                    idx = references[0]
+                    J = np.array([[0,0,1,0,0,0]])
+
+                    m_c = 1./(np.dot(J,np.dot(M[idx,:,:], J.T)) + parameters["CFM"])
+
+                    b_error = parameters["ERP"] * np.max(self.positionVectors[idx,Z] - parameters["delta"],0)
+                    b_res = parameters["alpha"] * newv[idx,Z]
+
+                    b = b_error + b_res
+                    lamb = (- m_c * (np.dot(J, newv[idx,:]) + parameters["CFM"] * P[c_idx][0] + b))[0,0]
+                    P[c_idx][0] += lamb
+
+                    applicable = (P[c_idx][0]>0) * (self.positionVectors[idx,Z] < 0.0)
+                    Fn = applicable * P[c_idx][0]
+                    total_lambda[idx,:] = total_lambda[idx,:] + applicable * np.dot(J, M[idx,:,:]) * P[c_idx][0]
+
+                if constraint == "ground" and parameters["mu"]!=0:
+
+                    J = np.array([[1,0,0,0,1,0]])
+                    m_c = 1./(np.dot(J,np.dot(M[idx,:,:], J.T)) + parameters["CFM"])
+                    b = 0
+                    lamb_friction_1 = (- m_c * (np.dot(J, newv[idx,:]) + parameters["CFM"] * P[c_idx][1] + b))[0,0]
+                    P[c_idx][1] += lamb_friction_1
+
+                    lamb = np.clip(P[c_idx][1], -parameters["mu"]*Fn, parameters["mu"]*Fn)
+
+                    total_lambda[idx,:] = total_lambda[idx,:] + applicable * np.dot(J, M[idx,:,:]) * lamb
+
+                if constraint == "ground":
+                    J = np.array([[0,1,0,1,0,0]])
+                    m_c = 1./(np.dot(J,np.dot(M[idx,:,:], J.T)) + parameters["CFM"])
+                    b = 0
+                    lamb_friction_2 = (- m_c * (np.dot(J, newv[idx,:]) + parameters["CFM"] * P[c_idx][2] + b))[0,0]
+                    lamb_friction_2 = np.clip(lamb_friction_2, -parameters["mu"]*Fn, parameters["mu"]*Fn)
+
+                    P[c_idx][2] += lamb_friction_2
+                    lamb = np.clip(P[c_idx][2], -parameters["mu"]*Fn, parameters["mu"]*Fn)
+                    total_lambda[idx,:] = total_lambda[idx,:] + applicable * np.dot(J, M[idx,:,:]) * lamb
+
+                if constraint == "ground":
+                    if parameters["torsional_friction"]:
+                        J = np.array([[0,0,0,0,0,1]])
+                        m_c = 1./(np.dot(J,np.dot(M[idx,:,:], J.T)) + parameters["CFM"])
+                        b = 0
+                        lamb_friction_3 = (- m_c * (np.dot(J, newv[idx,:]) + parameters["CFM"] * P[c_idx][3] + b))[0,0]
+                        P[c_idx][3] += lamb_friction_3
+                        lamb = np.clip(P[c_idx][2], -parameters["mu"]*Fn, parameters["mu"]*Fn)
+
+                        total_lambda[idx,:] = total_lambda[idx,:] + applicable * np.dot(J, M[idx,:,:]) * lamb
+
+
+
+
 
             newv = originalv + total_lambda
 
