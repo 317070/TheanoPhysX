@@ -72,14 +72,14 @@ class MyApp(ShowBase):
             self.physics.addConstraint("ground",[smiley],{"mu":0.5, "alpha":0.6, "gamma":0.0, "delta":0.001, "torsional_friction": False})
 
 
-        addSphere([0,0,0,1,0,0,0], [6,0,6,1,-0,-6])
-        addSphere([0,0,2,1,0,0,0], [0,0,0,0,0,-6])
+        addSphere([0,0,0,1,0,0,0], [16,0,6,1,-0,-6])
+        addSphere([0,0,2,1,0,0,0], [0,0,0,0,0,6])
 
-        self.physics.addBallAndSocketConstraint(self.objects[0], self.objects[1],[0,0,1],{"beta": 0.8})
+        #self.physics.addBallAndSocketConstraint(self.objects[0], self.objects[1],[0,0,1],{"beta": 0.8})
         #self.physics.addSliderConstraint(self.objects[0], self.objects[1],{"beta": 0.8})
         #self.physics.addFixedConstraint(self.objects[0], self.objects[1],[0,0,1],{"beta": 0.8})
 
-        #self.physics.addHingeConstraint(self.objects[0], self.objects[1],[0,0,1],[0,1,0], {"beta": 0.001, "motor_position": -1, "motor_velocity": 1, "motor_torque": 0.5, "delta":0.01})
+        self.physics.addHingeConstraint(self.objects[0], self.objects[1],[0,0,1],[0,1,0], {"beta": 0.001, "motor_position": -1, "motor_velocity": 1, "motor_torque": 0.5, "delta":0.01})
 
 
 
