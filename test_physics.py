@@ -44,7 +44,6 @@ class MyApp(ShowBase):
         directionalLightNP.setHpr(0, -50, 0)
         directionalLightNP.node().setScene(self.render)
         directionalLightNP.node().setShadowCaster(True)
-        directionalLightNP.node().showFrustum()
         directionalLightNP.node().getLens().setFov(40)
         directionalLightNP.node().getLens().setNearFar(10, 100)
         self.render.setLight(directionalLightNP)

@@ -62,7 +62,7 @@ class Rigid3DBodyEngine(object):
         self.massMatrices = np.zeros(shape=(0,6,6))
         self.objects = dict()
         self.constraints = []
-        self.num_iterations = 5
+        self.num_iterations = 1
 
     def addSphere(self, reference, position, velocity):
         self.objects[reference] = self.positionVectors.shape[0]
@@ -158,7 +158,14 @@ class Rigid3DBodyEngine(object):
         ##################
         # now enforce the constraints by having corrective impulses
         M = np.linalg.inv(self.massMatrices)
-        P = [[0,0,0,0,0] for _ in xrange(len(self.constraints))]
+
+        num_constraints = 0
+        for (constraint,references,parameters) in self.constraints:
+            if constraint == "ball-and-socket" or constraint == "hinge" or constraint == "fixed":
+                num_constraints += 3
+
+        print num_constraints
+
 
         # TODO: (J * invM * JT + CFM) * dP = -(J * v2damaged + CFM * P + bias)
         # http://bulletphysics.org/Bullet/phpBB3/viewtopic.php?f=4&t=1354
@@ -169,51 +176,75 @@ class Rigid3DBodyEngine(object):
         # TODO: fix contact joints for arbitrary radiuses
         # TODO: check J-matrix in friction, I guess there is something wrong
 
+        P = np.zeros((num_constraints,))
+
         for iteration in xrange(self.num_iterations):
 
             total_lambda = np.zeros_like(self.velocityVectors)
 
-            J = np.zeros((0,2,6))  # 0 constraints x 2 objects x 6 states
-            v = np.zeros((0,2,6))  # 0 constraints x 2 objects x 6 states
-            mass_matrix = np.zeros((0,2,6,6))  # 0 constraints x 2 objects x 6 states x 6 states
-            b_res = np.zeros((0,))  # 0 constraints
-            CFM = np.zeros((0,))  # 0 constraints
-            ERP = np.zeros((0,))  # 0 constraints
-            only_when_positive = np.zeros((0,))  # 0 constraints
-            map_constraint_to_object = dict()
+            # changes every timestep
+            J = np.zeros((num_constraints,2,6))  # 0 constraints x 2 objects x 6 states
+            v = np.zeros((num_constraints,2,6))  # 0 constraints x 2 objects x 6 states
+            b_res = np.zeros((num_constraints,))  # 0 constraints
 
-            for c_idx, (constraint,references,parameters) in enumerate(self.constraints):
+            # constant
+            mass_matrix = np.zeros((num_constraints,2,6,6))  # 0 constraints x 2 objects x 6 states x 6 states
+            CFM = np.zeros((num_constraints,))  # 0 constraints
+            ERP = np.zeros((num_constraints,))  # 0 constraints
+            only_when_positive = np.zeros((num_constraints,))  # 0 constraints
+            map_object_to_constraint = [[] for _ in xrange(newv.shape[0])]
+
+            c_idx = 0
+            for constraint,references,parameters in self.constraints:
                 if constraint != "ground":
                     idx1 = references[0]
                     idx2 = references[1]
-                    v[c_idx,:] = np.concatenate([newv[idx1,:], newv[idx2,:]])
+                    for i in xrange(3):
+                        v[c_idx+i,0,:] = newv[idx1,:]
+                        v[c_idx+i,1,:] = newv[idx2,:]
 
                     if constraint == "ball-and-socket" or constraint == "hinge" or constraint == "fixed":
 
                         r1x = convert_model_to_world_coordinate_no_bias(parameters["joint_in_model1_coordinates"], self.positionVectors[idx1,:])
                         r2x = convert_model_to_world_coordinate_no_bias(parameters["joint_in_model2_coordinates"], self.positionVectors[idx2,:])
 
-                        J = np.concatenate([-np.eye(3),skew_symmetric(r1x),np.eye(3),-skew_symmetric(r2x)])
-                        print J.shape
-                        mass_matrix = scipy.linalg.block_diag(M[idx1,:,:], M[idx2,:,:])
-                        b_res = (self.positionVectors[idx2,:3]+r2x-self.positionVectors[idx1,:3]-r1x)
+                        for i in xrange(3):
+                            J[c_idx+i,0,:] = np.concatenate([-np.eye(3), skew_symmetric(r1x)])[:,i]
+                            J[c_idx+i,1,:] = np.concatenate([ np.eye(3),-skew_symmetric(r2x)])[:,i]
+                            mass_matrix[c_idx+i,0,:,:] = M[idx1,:,:]
+                            mass_matrix[c_idx+i,1,:,:] = M[idx2,:,:]
+                            map_object_to_constraint[idx1].append(2*(c_idx+i) + 0)
+                            map_object_to_constraint[idx2].append(2*(c_idx+i) + 1)
 
-                    m_c = np.linalg.inv((np.dot(J,np.dot(mass_matrix, J.T))) + parameters["CFM"] * np.eye(3))
+                        b_res[c_idx:c_idx+3] = (self.positionVectors[idx2,:3]+r2x-self.positionVectors[idx1,:3]-r1x)
+                        print "b", b_res
+                        CFM[c_idx:c_idx+3] = parameters["CFM"]
+                        ERP[c_idx:c_idx+3] = parameters["ERP"]
+                        c_idx += 3
 
-                    #print b_res
-                    b = parameters["ERP"]/dt * b_res
+            m_eff = 1./np.sum(np.sum(J[:,:,None,:]*M, axis=-1)*J, axis=(-1,-2))
+            m_c = 1/(1/m_eff + CFM)
 
-                    lamb = - np.dot(m_c, (np.dot(J, v) + parameters["CFM"] * P[c_idx][0] + b))
-                    P[c_idx][0] = P[c_idx][0] + lamb
+            #print b_res
+            b = ERP/dt * b_res
 
-                    #print v.shape, np.dot(mass_matrix, J.T).shape, lamb.shape,
-                    result = np.dot(np.dot(mass_matrix, J.T), P[c_idx][0])
-                    #print result.shape
+            lamb = - m_c * (np.sum(J*v, axis=(-1,-2)) + CFM * P + b)
+            print lamb
+            P += lamb
 
-                    total_lambda[idx1,:] = total_lambda[idx1,:] + result[:6]
-                    total_lambda[idx2,:] = total_lambda[idx2,:] + result[6:]
+            #print v.shape, np.dot(mass_matrix, J.T).shape, lamb.shape,
 
+            #result = np.dot(np.dot(mass_matrix, J.T), P[c_idx][1])
+            result = np.sum(M*J[:,:,None,:], axis=(-1)) * P[:,None,None]
 
+            result = result.reshape(result.shape[:-3] + (2*num_constraints,6))
+
+            for i in xrange(newv.shape[0]):
+                pass
+                newv[i,:] = originalv[i,:] + np.sum(result[map_object_to_constraint[i],:], axis=0)
+
+            '''
+            P = [[0,0,0,0,0] for _ in xrange(len(self.constraints))]
 
             for c_idx, (constraint,references,parameters) in enumerate(self.constraints):
 
@@ -426,6 +457,7 @@ class Rigid3DBodyEngine(object):
 
 
             newv = originalv + total_lambda
+            '''
 
         print
         ##################
