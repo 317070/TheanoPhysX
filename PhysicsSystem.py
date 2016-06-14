@@ -240,7 +240,6 @@ class Rigid3DBodyEngine(object):
             result = result.reshape(result.shape[:-3] + (2*num_constraints,6))
 
             for i in xrange(newv.shape[0]):
-                pass
                 newv[i,:] = originalv[i,:] + np.sum(result[map_object_to_constraint[i],:], axis=0)
 
             '''
