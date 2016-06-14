@@ -196,6 +196,7 @@ class Rigid3DBodyEngine(object):
             CFM = np.zeros((num_constraints,))  # 0 constraints
             ERP = np.zeros((num_constraints,))  # 0 constraints
             only_when_positive = np.zeros((num_constraints,))  # 0 constraints
+            C = np.zeros((num_constraints,))  # 0 constraints
             map_object_to_constraint = [[] for _ in xrange(newv.shape[0])]
 
             c_idx = 0
@@ -277,55 +278,55 @@ class Rigid3DBodyEngine(object):
                             v[c_idx+i,1,:] = newv[idx2,:]
                             if i==0:
                                 J[c_idx+i,0,:] = np.concatenate([np.zeros((3,)),-a])
-                                J[c_idx+i,1,:] = np.concatenate([np.zeros((3,)),a])
+                                J[c_idx+i,1,:] = np.concatenate([np.zeros((3,)), a])
                             else:
-                                J[c_idx+i,0,:] = np.concatenate([np.zeros((3,)),-np.dot(skew_symmetric(a2x),c1x)])
-                                J[c_idx+i,1,:] = np.concatenate([np.zeros((3,)), np.dot(skew_symmetric(a2x),c1x)])
+                                J[c_idx+i,0,:] = np.concatenate([np.zeros((3,)), a])
+                                J[c_idx+i,1,:] = np.concatenate([np.zeros((3,)),-a])
                             mass_matrix[c_idx+i,0,:,:] = M[idx1,:,:]
                             mass_matrix[c_idx+i,1,:,:] = M[idx2,:,:]
                             map_object_to_constraint[idx1].append(2*(c_idx+i) + 0)
                             map_object_to_constraint[idx2].append(2*(c_idx+i) + 1)
 
-                        b_res[c_idx:c_idx+2] =np.array([(parameters["limit"] - theta),np.sum(a2x*c1x)])
+                        b_res[c_idx:c_idx+2] = np.array([(parameters["limit"] - theta),(theta - parameters["limit"])])
+                        C[c_idx:c_idx+2] = np.array([(theta<-parameters["limit"]), (theta>parameters["limit"])])
+                        only_when_positive[c_idx:c_idx+2] = 1.0
+                        c_idx += 2
 
-                            applicable1 = (theta<-parameters["limit"]) and (P[c_idx][2]>0)
-                            total_lambda[idx1,:] = total_lambda[idx1,:] + applicable1 * result[:6]
-                            total_lambda[idx2,:] = total_lambda[idx2,:] + applicable1 * result[6:]
+                    if constraint == "hinge" and "velocity_motor" in parameters:
 
-                            J = np.concatenate([np.zeros((3,)),a,np.zeros((3,)),-a])[:,None].T
-                            b_res = parameters["ERP"]/dt * (theta - parameters["limit"])
+                        a=parameters['axis']
+                        v[c_idx,0,:] = newv[idx1,:]
+                        v[c_idx,1,:] = newv[idx2,:]
+                        J[c_idx,0,:] = np.concatenate([np.zeros((3,)),-a])
+                        J[c_idx,1,:] = np.concatenate([np.zeros((3,)), a])
 
-                            b = b_res
-                            m_c = np.linalg.inv(np.dot(J,np.dot(mass_matrix, J.T)))
-                            lamb2 = - np.dot(m_c, (np.dot(J, v) + b))
+                        mass_matrix[c_idx,0,:,:] = M[idx1,:,:]
+                        mass_matrix[c_idx,1,:,:] = M[idx2,:,:]
+                        map_object_to_constraint[idx1].append(2*c_idx + 0)
+                        map_object_to_constraint[idx2].append(2*c_idx + 1)
 
-                            P[c_idx][3] = P[c_idx][3] + lamb2
-
-                            result = np.dot(np.dot(mass_matrix, J.T), P[c_idx][3])
-
-                            applicable2 = (theta>parameters["limit"]) and (P[c_idx][3]>0)
-
-                            total_lambda[idx1,:] = total_lambda[idx1,:] + applicable2 * result[:6]
-                            total_lambda[idx2,:] = total_lambda[idx2,:] + applicable2 * result[6:]
+                        b_res[c_idx] = parameters["motor_velocity"]
+                        c_idx += 1
+                        # TODO: add clipping!
 
                         """
-                        if "motor_velocity" in parameters:
-                            a=parameters['axis']
-                            J = np.concatenate([np.zeros((3,)),-a,np.zeros((3,)),a])[:,None].T
-                            b_res = parameters["motor_velocity"]
+                        b_res = parameters["motor_velocity"]
 
-                            b = b_res
-                            m_c = np.linalg.inv(np.dot(J,np.dot(mass_matrix, J.T)))
+                        b = b_res
+                        m_c = np.linalg.inv(np.dot(J,np.dot(mass_matrix, J.T)))
 
-                            lamb = - np.dot(m_c, (np.dot(J, v) + b))
-                            lamb = np.clip(lamb, -parameters["motor_torque"], parameters["motor_torque"])
-                            P[c_idx][4] = P[c_idx][4] + lamb
+                        lamb = - np.dot(m_c, (np.dot(J, v) + b))
+                        lamb = np.clip(lamb, -parameters["motor_torque"], parameters["motor_torque"])
+                        P[c_idx][4] = P[c_idx][4] + lamb
 
-                            result = np.dot(np.dot(mass_matrix, J.T), P[c_idx][4])
+                        result = np.dot(np.dot(mass_matrix, J.T), P[c_idx][4])
 
-                            total_lambda[idx1,:] = total_lambda[idx1,:] + result[:6]
-                            total_lambda[idx2,:] = total_lambda[idx2,:] + result[6:]
+                        total_lambda[idx1,:] = total_lambda[idx1,:] + result[:6]
+                        total_lambda[idx2,:] = total_lambda[idx2,:] + result[6:]
                         """
+
+
+
                         if "motor_position" in parameters:
 
                             a=parameters['axis']
@@ -365,7 +366,10 @@ class Rigid3DBodyEngine(object):
             #print v.shape, np.dot(mass_matrix, J.T).shape, lamb.shape,
 
             #result = np.dot(np.dot(mass_matrix, J.T), P[c_idx][1])
-            result = np.sum(M*J[:,:,None,:], axis=(-1)) * P[:,None,None]
+            # applicable should be zero when P is negative, or C is zero, but only when only_when_positive is 1
+            applicable = 1-(only_when_positive*( 1-( (P<0) * C) ))
+
+            result = np.sum(M*J[:,:,None,:], axis=(-1)) * P[:,None,None] * applicable[:,None,None]
 
             result = result.reshape(result.shape[:-3] + (2*num_constraints,6))
 
