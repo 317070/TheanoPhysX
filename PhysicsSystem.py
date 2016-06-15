@@ -62,7 +62,7 @@ class Rigid3DBodyEngine(object):
         self.massMatrices = np.zeros(shape=(0,6,6))
         self.objects = dict()
         self.constraints = []
-        self.num_iterations = 1
+        self.num_iterations = 6
 
     def addSphere(self, reference, position, velocity):
         self.objects[reference] = self.positionVectors.shape[0]
@@ -159,7 +159,11 @@ class Rigid3DBodyEngine(object):
         # --- Step 2 --- #
         ##################
         # now enforce the constraints by having corrective impulses
+
+        # TODO: convert inertia matrices into world space!
         M = np.linalg.inv(self.massMatrices)
+
+
 
         num_constraints = 0
         for (constraint,references,parameters) in self.constraints:
@@ -181,8 +185,6 @@ class Rigid3DBodyEngine(object):
                 num_constraints += 2
             if constraint == "ground" and parameters["torsional_friction"]:
                 num_constraints += 1
-
-        print num_constraints
 
 
         # TODO: (J * invM * JT + CFM) * dP = -(J * v2damaged + CFM * P + bias)
@@ -355,6 +357,8 @@ class Rigid3DBodyEngine(object):
                     b_error[c_idx] = (abs(theta-parameters["motor_position"]) > parameters["delta"]) * (2*(theta>parameters["motor_position"])-1) * parameters["motor_velocity"]
                     clipping_a[c_idx] = 0
                     clipping_b[c_idx] = parameters["motor_torque"]
+                    CFM[c_idx] = parameters["CFM"]
+                    ERP[c_idx] = parameters["ERP"]
 
                     c_idx += 1
 
@@ -363,9 +367,15 @@ class Rigid3DBodyEngine(object):
                     v[c_idx,1,:] = np.array([0,0,0,0,0,0])
                     J[c_idx,0,:] = np.array([0,0,1,0,0,0])
                     J[c_idx,1,:] = np.array([0,0,0,0,0,0])
+                    mass_matrix[c_idx,0,:,:] = M[idx1,:,:]
+
                     b_error[c_idx] = np.max(self.positionVectors[idx1,Z] - parameters["delta"],0)
                     b_res[c_idx] = parameters["alpha"] * newv[idx1,Z]
                     C[c_idx] = (self.positionVectors[idx1,Z] < 0.0)
+                    map_object_to_constraint[idx1].append(2*c_idx + 0)
+                    CFM[c_idx] = parameters["CFM"]
+                    ERP[c_idx] = parameters["ERP"]
+
                     only_when_positive[c_idx] = 1.0
                     ground_contact_idx = c_idx
                     c_idx += 1
@@ -375,14 +385,18 @@ class Rigid3DBodyEngine(object):
                         v[c_idx+i,0,:] = newv[idx1,:]
                         v[c_idx+i,1,:] = np.array([0,0,0,0,0,0])
                         if i==0:
-                            J[c_idx+i,0,:] = np.array([0,1,0,1,0,0])
+                            J[c_idx+i,0,:] = np.array([0,1,0,-1,0,0])
                         else:
                             J[c_idx+i,0,:] = np.array([1,0,0,0,1,0])
                         J[c_idx+i,1,:] = np.array([0,0,0,0,0,0])
+                        mass_matrix[c_idx+i,0,:,:] = M[idx1,:,:]
                         clipping_a[c_idx+i] = parameters["mu"]
                         clipping_idx[c_idx+i] = ground_contact_idx
                         clipping_b[c_idx+i] = 0
                         C[c_idx+i] = (self.positionVectors[idx1,Z] < 0.0)
+                        map_object_to_constraint[idx1].append(2*(c_idx+i) + 0)
+                        CFM[c_idx+i] = parameters["CFM"]
+                        ERP[c_idx+i] = parameters["ERP"]
                         b_res[c_idx+i] = 0
                     c_idx += 2
 
@@ -391,38 +405,29 @@ class Rigid3DBodyEngine(object):
                     r = 1 #parameters["radius"]
                     v[c_idx,0,:] = newv[idx1,:]
                     v[c_idx,1,:] = np.array([0,0,0,0,0,0])
-                    J[c_idx+i,0,:] = np.array([0,0,0,0,0,1])
-                    J[c_idx+i,1,:] = np.array([0,0,0,0,0,0])
-                    clipping_a[c_idx+i] = 3.*np.pi/16. * np.sqrt(r*d) * parameters["mu"]
-                    clipping_idx[c_idx+i] = ground_contact_idx
-                    clipping_b[c_idx+i] = 0
-                    C[c_idx+i] = (self.positionVectors[idx1,Z] < 0.0)
-                    b_res[c_idx+i] = 0
+                    J[c_idx,0,:] = np.array([0,0,0,0,0,1])
+                    J[c_idx,1,:] = np.array([0,0,0,0,0,0])
+                    mass_matrix[c_idx,0,:,:] = M[idx1,:,:]
+                    clipping_a[c_idx] = 3.*np.pi/16. * np.sqrt(r*d) * parameters["mu"]
+                    clipping_idx[c_idx] = ground_contact_idx
+                    clipping_b[c_idx] = 0
+                    C[c_idx] = (self.positionVectors[idx1,Z] < 0.0)
+                    map_object_to_constraint[idx1].append(2*c_idx + 0)
+                    b_res[c_idx] = 0
+                    CFM[c_idx] = parameters["CFM"]
+                    ERP[c_idx] = parameters["ERP"]
                     c_idx += 1
 
             m_eff = 1./np.sum(np.sum(J[:,:,None,:]*M, axis=-1)*J, axis=(-1,-2))
             m_c = 1/(1/m_eff + CFM)
-
-            #print b_res
             b = ERP/dt * b_error + b_res
-
             lamb = - m_c * (np.sum(J*v, axis=(-1,-2)) + CFM * P + b)
-            print lamb
             P += lamb
-
-            #print v.shape, np.dot(mass_matrix, J.T).shape, lamb.shape,
             clipping_limit = np.abs(clipping_a * P[clipping_idx] + clipping_b)
-
             P = np.clip(P,-clipping_limit, clipping_limit)
-
-            #result = np.dot(np.dot(mass_matrix, J.T), P[c_idx][1])
-            # applicable should be zero when (P is negative, but only when only_when_positive is 1), or when C is zero
-            applicable = (1-(only_when_positive*( 1-( P<0)) )) * C
-
+            applicable = (1-(only_when_positive*( 1-( P>=0)) )) * C
             result = np.sum(M*J[:,:,None,:], axis=(-1)) * P[:,None,None] * applicable[:,None,None]
-
             result = result.reshape(result.shape[:-3] + (2*num_constraints,6))
-
             for i in xrange(newv.shape[0]):
                 newv[i,:] = originalv[i,:] + np.sum(result[map_object_to_constraint[i],:], axis=0)
 
