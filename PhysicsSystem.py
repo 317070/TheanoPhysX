@@ -77,6 +77,8 @@ class Rigid3DBodyEngine(object):
         parameters["ERP"] = 0.8
         self.constraints.append([constraint, references, parameters])
 
+    def addGroundConstraint(self, object, parameters):
+        self.addConstraint("ground", [object, object], parameters)
 
     def addBallAndSocketConstraint(self, object1, object2, world_coordinates, parameters):
         idx1 = self.objects[object1]
@@ -167,6 +169,18 @@ class Rigid3DBodyEngine(object):
                 num_constraints += 3
             if constraint == "hinge":
                 num_constraints += 2
+            if constraint == "hinge" and "limit" in parameters:
+                num_constraints += 2
+            if constraint == "hinge" and "velocity_motor" in parameters:
+                num_constraints += 1
+            if constraint == "hinge" and "position_motor" in parameters:
+                num_constraints += 1
+            if constraint == "ground":
+                num_constraints += 1
+            if constraint == "ground" and parameters["mu"]!=0:
+                num_constraints += 2
+            if constraint == "ground" and parameters["torsional_friction"]:
+                num_constraints += 1
 
         print num_constraints
 
@@ -190,184 +204,220 @@ class Rigid3DBodyEngine(object):
             J = np.zeros((num_constraints,2,6))  # 0 constraints x 2 objects x 6 states
             v = np.zeros((num_constraints,2,6))  # 0 constraints x 2 objects x 6 states
             b_res = np.zeros((num_constraints,))  # 0 constraints
+            b_error = np.zeros((num_constraints,))  # 0 constraints
 
             # constant
             mass_matrix = np.zeros((num_constraints,2,6,6))  # 0 constraints x 2 objects x 6 states x 6 states
             CFM = np.zeros((num_constraints,))  # 0 constraints
             ERP = np.zeros((num_constraints,))  # 0 constraints
             only_when_positive = np.zeros((num_constraints,))  # 0 constraints
-            C = np.zeros((num_constraints,))  # 0 constraints
+            C = np.ones((num_constraints,))  # 0 constraints
             map_object_to_constraint = [[] for _ in xrange(newv.shape[0])]
+            clipping_a   = np.ones((num_constraints,))
+            clipping_idx = range(num_constraints)
+            clipping_b   = np.zeros((num_constraints,))
 
             c_idx = 0
             for constraint,references,parameters in self.constraints:
-                if constraint != "ground":
-                    idx1 = references[0]
-                    idx2 = references[1]
+                idx1 = references[0]
+                idx2 = references[1]
 
-                    if constraint == "ball-and-socket" or constraint == "hinge" or constraint == "fixed":
+                if constraint == "ball-and-socket" or constraint == "hinge" or constraint == "fixed":
 
-                        r1x = convert_model_to_world_coordinate_no_bias(parameters["joint_in_model1_coordinates"], self.positionVectors[idx1,:])
-                        r2x = convert_model_to_world_coordinate_no_bias(parameters["joint_in_model2_coordinates"], self.positionVectors[idx2,:])
-                        for i in xrange(3):
-                            v[c_idx+i,0,:] = newv[idx1,:]
-                            v[c_idx+i,1,:] = newv[idx2,:]
-                            J[c_idx+i,0,:] = np.concatenate([-np.eye(3), skew_symmetric(r1x)])[:,i]
-                            J[c_idx+i,1,:] = np.concatenate([ np.eye(3),-skew_symmetric(r2x)])[:,i]
-                            mass_matrix[c_idx+i,0,:,:] = M[idx1,:,:]
-                            mass_matrix[c_idx+i,1,:,:] = M[idx2,:,:]
-                            map_object_to_constraint[idx1].append(2*(c_idx+i) + 0)
-                            map_object_to_constraint[idx2].append(2*(c_idx+i) + 1)
+                    r1x = convert_model_to_world_coordinate_no_bias(parameters["joint_in_model1_coordinates"], self.positionVectors[idx1,:])
+                    r2x = convert_model_to_world_coordinate_no_bias(parameters["joint_in_model2_coordinates"], self.positionVectors[idx2,:])
+                    for i in xrange(3):
+                        v[c_idx+i,0,:] = newv[idx1,:]
+                        v[c_idx+i,1,:] = newv[idx2,:]
+                        J[c_idx+i,0,:] = np.concatenate([-np.eye(3), skew_symmetric(r1x)])[:,i]
+                        J[c_idx+i,1,:] = np.concatenate([ np.eye(3),-skew_symmetric(r2x)])[:,i]
+                        mass_matrix[c_idx+i,0,:,:] = M[idx1,:,:]
+                        mass_matrix[c_idx+i,1,:,:] = M[idx2,:,:]
+                        map_object_to_constraint[idx1].append(2*(c_idx+i) + 0)
+                        map_object_to_constraint[idx2].append(2*(c_idx+i) + 1)
 
-                        b_res[c_idx:c_idx+3] = (self.positionVectors[idx2,:3]+r2x-self.positionVectors[idx1,:3]-r1x)
-                        CFM[c_idx:c_idx+3] = parameters["CFM"]
-                        ERP[c_idx:c_idx+3] = parameters["ERP"]
-                        c_idx += 3
+                    b_error[c_idx:c_idx+3] = (self.positionVectors[idx2,:3]+r2x-self.positionVectors[idx1,:3]-r1x)
+                    CFM[c_idx:c_idx+3] = parameters["CFM"]
+                    ERP[c_idx:c_idx+3] = parameters["ERP"]
+                    c_idx += 3
 
-                    if constraint == "slider" or constraint == "fixed":
+                if constraint == "slider" or constraint == "fixed":
 
-                        for i in xrange(3):
-                            v[c_idx+i,0,:] = newv[idx1,:]
-                            v[c_idx+i,1,:] = newv[idx2,:]
-                            J[c_idx+i,0,:] = np.concatenate([np.zeros((3,3)),-np.eye(3)])[:,i]
-                            J[c_idx+i,1,:] = np.concatenate([np.zeros((3,3)), np.eye(3)])[:,i]
-                            mass_matrix[c_idx+i,0,:,:] = M[idx1,:,:]
-                            mass_matrix[c_idx+i,1,:,:] = M[idx2,:,:]
-                            map_object_to_constraint[idx1].append(2*(c_idx+i) + 0)
-                            map_object_to_constraint[idx2].append(2*(c_idx+i) + 1)
+                    for i in xrange(3):
+                        v[c_idx+i,0,:] = newv[idx1,:]
+                        v[c_idx+i,1,:] = newv[idx2,:]
+                        J[c_idx+i,0,:] = np.concatenate([np.zeros((3,3)),-np.eye(3)])[:,i]
+                        J[c_idx+i,1,:] = np.concatenate([np.zeros((3,3)), np.eye(3)])[:,i]
+                        mass_matrix[c_idx+i,0,:,:] = M[idx1,:,:]
+                        mass_matrix[c_idx+i,1,:,:] = M[idx2,:,:]
+                        map_object_to_constraint[idx1].append(2*(c_idx+i) + 0)
+                        map_object_to_constraint[idx2].append(2*(c_idx+i) + 1)
 
-                        q_current = normalize(q_div(self.positionVectors[idx2,3:], self.positionVectors[idx1,3:]))
-                        q_diff = q_div(q_current, parameters['q_init'])
-                        b_res[c_idx:c_idx+3] = 2*q_diff[1:]
-                        CFM[c_idx:c_idx+3] = parameters["CFM"]
-                        ERP[c_idx:c_idx+3] = parameters["ERP"]
-                        c_idx += 3
-
-
-                    if constraint == "hinge":
-                        a2x = convert_model_to_world_coordinate_no_bias(parameters['axis_in_model2_coordinates'], self.positionVectors[idx2,:])
-                        b1x = convert_model_to_world_coordinate_no_bias(parameters['axis1_in_model1_coordinates'], self.positionVectors[idx1,:])
-                        c1x = convert_model_to_world_coordinate_no_bias(parameters['axis2_in_model1_coordinates'], self.positionVectors[idx1,:])
-                        for i in xrange(2):
-                            v[c_idx+i,0,:] = newv[idx1,:]
-                            v[c_idx+i,1,:] = newv[idx2,:]
-                            if i==0:
-                                J[c_idx+i,0,:] = np.concatenate([np.zeros((3,)),-np.dot(skew_symmetric(a2x),b1x)])
-                                J[c_idx+i,1,:] = np.concatenate([np.zeros((3,)), np.dot(skew_symmetric(a2x),b1x)])
-                            else:
-                                J[c_idx+i,0,:] = np.concatenate([np.zeros((3,)),-np.dot(skew_symmetric(a2x),c1x)])
-                                J[c_idx+i,1,:] = np.concatenate([np.zeros((3,)), np.dot(skew_symmetric(a2x),c1x)])
-                            mass_matrix[c_idx+i,0,:,:] = M[idx1,:,:]
-                            mass_matrix[c_idx+i,1,:,:] = M[idx2,:,:]
-                            map_object_to_constraint[idx1].append(2*(c_idx+i) + 0)
-                            map_object_to_constraint[idx2].append(2*(c_idx+i) + 1)
-
-                        b_res[c_idx:c_idx+2] =np.array([np.sum(a2x*b1x),np.sum(a2x*c1x)])
-                        c_idx += 2
-
-                    if constraint == "hinge" and "limit" in parameters:
-                        q_current = normalize(q_div(self.positionVectors[idx2,3:], self.positionVectors[idx1,3:]))
-                        q_diff = q_div(q_current, parameters['q_init'])
-                        a=parameters['axis']
-                        dot = np.sum(q_diff[1:] * a)
-                        sin_theta2 = ((dot>0) * 2 - 1) * np.sqrt(np.sum(q_diff[1:]*q_diff[1:]))
-                        theta = 2*np.arctan2(sin_theta2,q_diff[0])
-
-                        for i in xrange(2):
-                            v[c_idx+i,0,:] = newv[idx1,:]
-                            v[c_idx+i,1,:] = newv[idx2,:]
-                            if i==0:
-                                J[c_idx+i,0,:] = np.concatenate([np.zeros((3,)),-a])
-                                J[c_idx+i,1,:] = np.concatenate([np.zeros((3,)), a])
-                            else:
-                                J[c_idx+i,0,:] = np.concatenate([np.zeros((3,)), a])
-                                J[c_idx+i,1,:] = np.concatenate([np.zeros((3,)),-a])
-                            mass_matrix[c_idx+i,0,:,:] = M[idx1,:,:]
-                            mass_matrix[c_idx+i,1,:,:] = M[idx2,:,:]
-                            map_object_to_constraint[idx1].append(2*(c_idx+i) + 0)
-                            map_object_to_constraint[idx2].append(2*(c_idx+i) + 1)
-
-                        b_res[c_idx:c_idx+2] = np.array([(parameters["limit"] - theta),(theta - parameters["limit"])])
-                        C[c_idx:c_idx+2] = np.array([(theta<-parameters["limit"]), (theta>parameters["limit"])])
-                        only_when_positive[c_idx:c_idx+2] = 1.0
-                        c_idx += 2
-
-                    if constraint == "hinge" and "velocity_motor" in parameters:
-
-                        a=parameters['axis']
-                        v[c_idx,0,:] = newv[idx1,:]
-                        v[c_idx,1,:] = newv[idx2,:]
-                        J[c_idx,0,:] = np.concatenate([np.zeros((3,)),-a])
-                        J[c_idx,1,:] = np.concatenate([np.zeros((3,)), a])
-
-                        mass_matrix[c_idx,0,:,:] = M[idx1,:,:]
-                        mass_matrix[c_idx,1,:,:] = M[idx2,:,:]
-                        map_object_to_constraint[idx1].append(2*c_idx + 0)
-                        map_object_to_constraint[idx2].append(2*c_idx + 1)
-
-                        b_res[c_idx] = parameters["motor_velocity"]
-                        c_idx += 1
-                        # TODO: add clipping!
-
-                        """
-                        b_res = parameters["motor_velocity"]
-
-                        b = b_res
-                        m_c = np.linalg.inv(np.dot(J,np.dot(mass_matrix, J.T)))
-
-                        lamb = - np.dot(m_c, (np.dot(J, v) + b))
-                        lamb = np.clip(lamb, -parameters["motor_torque"], parameters["motor_torque"])
-                        P[c_idx][4] = P[c_idx][4] + lamb
-
-                        result = np.dot(np.dot(mass_matrix, J.T), P[c_idx][4])
-
-                        total_lambda[idx1,:] = total_lambda[idx1,:] + result[:6]
-                        total_lambda[idx2,:] = total_lambda[idx2,:] + result[6:]
-                        """
+                    q_current = normalize(q_div(self.positionVectors[idx2,3:], self.positionVectors[idx1,3:]))
+                    q_diff = q_div(q_current, parameters['q_init'])
+                    b_error[c_idx:c_idx+3] = 2*q_diff[1:]
+                    CFM[c_idx:c_idx+3] = parameters["CFM"]
+                    ERP[c_idx:c_idx+3] = parameters["ERP"]
+                    c_idx += 3
 
 
+                if constraint == "hinge":
+                    a2x = convert_model_to_world_coordinate_no_bias(parameters['axis_in_model2_coordinates'], self.positionVectors[idx2,:])
+                    b1x = convert_model_to_world_coordinate_no_bias(parameters['axis1_in_model1_coordinates'], self.positionVectors[idx1,:])
+                    c1x = convert_model_to_world_coordinate_no_bias(parameters['axis2_in_model1_coordinates'], self.positionVectors[idx1,:])
+                    for i in xrange(2):
+                        v[c_idx+i,0,:] = newv[idx1,:]
+                        v[c_idx+i,1,:] = newv[idx2,:]
+                        if i==0:
+                            J[c_idx+i,0,:] = np.concatenate([np.zeros((3,)),-np.dot(skew_symmetric(a2x),b1x)])
+                            J[c_idx+i,1,:] = np.concatenate([np.zeros((3,)), np.dot(skew_symmetric(a2x),b1x)])
+                        else:
+                            J[c_idx+i,0,:] = np.concatenate([np.zeros((3,)),-np.dot(skew_symmetric(a2x),c1x)])
+                            J[c_idx+i,1,:] = np.concatenate([np.zeros((3,)), np.dot(skew_symmetric(a2x),c1x)])
+                        mass_matrix[c_idx+i,0,:,:] = M[idx1,:,:]
+                        mass_matrix[c_idx+i,1,:,:] = M[idx2,:,:]
+                        map_object_to_constraint[idx1].append(2*(c_idx+i) + 0)
+                        map_object_to_constraint[idx2].append(2*(c_idx+i) + 1)
 
-                        if "motor_position" in parameters:
+                    b_error[c_idx:c_idx+2] =np.array([np.sum(a2x*b1x),np.sum(a2x*c1x)])
+                    CFM[c_idx:c_idx+3] = parameters["CFM"]
+                    ERP[c_idx:c_idx+3] = parameters["ERP"]
 
-                            a=parameters['axis']
-                            dot = np.sum(q_diff[1:] * a)
-                            sin_theta2 = np.sqrt(np.sum(q_diff[1:]*q_diff[1:]))
-                            theta = 2*((dot>0) * 2 - 1)*np.arctan2(sin_theta2,q_diff[0])
-                            #
-                            print theta, ((dot>0) * 2 - 1)
+                    c_idx += 2
 
-                            a=parameters['axis']
-                            J = np.concatenate([np.zeros((3,)),-a,np.zeros((3,)),a])[:,None].T
-                            b_res = (abs(theta-parameters["motor_position"]) > parameters["delta"]) * (2*(theta>parameters["motor_position"])-1) * parameters["motor_velocity"]
+                if constraint == "hinge" and "limit" in parameters:
+                    q_current = normalize(q_div(self.positionVectors[idx2,3:], self.positionVectors[idx1,3:]))
+                    q_diff = q_div(q_current, parameters['q_init'])
+                    a=parameters['axis']
+                    dot = np.sum(q_diff[1:] * a)
+                    sin_theta2 = ((dot>0) * 2 - 1) * np.sqrt(np.sum(q_diff[1:]*q_diff[1:]))
+                    theta = 2*np.arctan2(sin_theta2,q_diff[0])
 
-                            b = b_res
-                            m_c = np.linalg.inv(np.dot(J,np.dot(mass_matrix, J.T)))
+                    for i in xrange(2):
+                        v[c_idx+i,0,:] = newv[idx1,:]
+                        v[c_idx+i,1,:] = newv[idx2,:]
+                        if i==0:
+                            J[c_idx+i,0,:] = np.concatenate([np.zeros((3,)),-a])
+                            J[c_idx+i,1,:] = np.concatenate([np.zeros((3,)), a])
+                        else:
+                            J[c_idx+i,0,:] = np.concatenate([np.zeros((3,)), a])
+                            J[c_idx+i,1,:] = np.concatenate([np.zeros((3,)),-a])
+                        mass_matrix[c_idx+i,0,:,:] = M[idx1,:,:]
+                        mass_matrix[c_idx+i,1,:,:] = M[idx2,:,:]
+                        map_object_to_constraint[idx1].append(2*(c_idx+i) + 0)
+                        map_object_to_constraint[idx2].append(2*(c_idx+i) + 1)
 
-                            lamb = - np.dot(m_c, (np.dot(J, v) + b))
-                            lamb = np.clip(lamb, -parameters["motor_torque"], parameters["motor_torque"])
-                            P[c_idx][4] = P[c_idx][4] + lamb
+                    b_error[c_idx:c_idx+2] = np.array([(parameters["limit"] - theta),(theta - parameters["limit"])])
+                    C[c_idx:c_idx+2] = np.array([(theta<-parameters["limit"]), (theta>parameters["limit"])])
+                    only_when_positive[c_idx:c_idx+2] = 1.0
+                    CFM[c_idx:c_idx+2] = parameters["CFM"]
+                    ERP[c_idx:c_idx+2] = parameters["ERP"]
 
-                            result = np.dot(np.dot(mass_matrix, J.T), P[c_idx][4])
+                    c_idx += 2
 
-                            total_lambda[idx1,:] = total_lambda[idx1,:] + result[:6]
-                            total_lambda[idx2,:] = total_lambda[idx2,:] + result[6:]
+                if constraint == "hinge" and "velocity_motor" in parameters:
 
+                    a=parameters['axis']
+                    v[c_idx,0,:] = newv[idx1,:]
+                    v[c_idx,1,:] = newv[idx2,:]
+                    J[c_idx,0,:] = np.concatenate([np.zeros((3,)),-a])
+                    J[c_idx,1,:] = np.concatenate([np.zeros((3,)), a])
+
+                    mass_matrix[c_idx,0,:,:] = M[idx1,:,:]
+                    mass_matrix[c_idx,1,:,:] = M[idx2,:,:]
+                    map_object_to_constraint[idx1].append(2*c_idx + 0)
+                    map_object_to_constraint[idx2].append(2*c_idx + 1)
+
+                    b_error[c_idx] = parameters["motor_velocity"]
+                    clipping_a[c_idx] = 0
+                    clipping_b[c_idx] = parameters["motor_torque"]
+                    CFM[c_idx] = parameters["CFM"]
+                    ERP[c_idx] = parameters["ERP"]
+
+                    c_idx += 1
+
+                if constraint == "hinge" and "position_motor" in parameters:
+                    a=parameters['axis']
+                    dot = np.sum(q_diff[1:] * a)
+                    sin_theta2 = np.sqrt(np.sum(q_diff[1:]*q_diff[1:]))
+                    theta = 2*((dot>0) * 2 - 1)*np.arctan2(sin_theta2,q_diff[0])
+
+                    v[c_idx,0,:] = newv[idx1,:]
+                    v[c_idx,1,:] = newv[idx2,:]
+                    J[c_idx,0,:] = np.concatenate([np.zeros((3,)),-a])
+                    J[c_idx,1,:] = np.concatenate([np.zeros((3,)), a])
+
+                    mass_matrix[c_idx,0,:,:] = M[idx1,:,:]
+                    mass_matrix[c_idx,1,:,:] = M[idx2,:,:]
+                    map_object_to_constraint[idx1].append(2*c_idx + 0)
+                    map_object_to_constraint[idx2].append(2*c_idx + 1)
+
+                    b_error[c_idx] = (abs(theta-parameters["motor_position"]) > parameters["delta"]) * (2*(theta>parameters["motor_position"])-1) * parameters["motor_velocity"]
+                    clipping_a[c_idx] = 0
+                    clipping_b[c_idx] = parameters["motor_torque"]
+
+                    c_idx += 1
+
+                if constraint == "ground":
+                    v[c_idx,0,:] = newv[idx1,:]
+                    v[c_idx,1,:] = np.array([0,0,0,0,0,0])
+                    J[c_idx,0,:] = np.array([0,0,1,0,0,0])
+                    J[c_idx,1,:] = np.array([0,0,0,0,0,0])
+                    b_error[c_idx] = np.max(self.positionVectors[idx1,Z] - parameters["delta"],0)
+                    b_res[c_idx] = parameters["alpha"] * newv[idx1,Z]
+                    C[c_idx] = (self.positionVectors[idx1,Z] < 0.0)
+                    only_when_positive[c_idx] = 1.0
+                    ground_contact_idx = c_idx
+                    c_idx += 1
+
+                if constraint == "ground" and parameters["mu"]!=0:
+                    for i in xrange(2):
+                        v[c_idx+i,0,:] = newv[idx1,:]
+                        v[c_idx+i,1,:] = np.array([0,0,0,0,0,0])
+                        if i==0:
+                            J[c_idx+i,0,:] = np.array([0,1,0,1,0,0])
+                        else:
+                            J[c_idx+i,0,:] = np.array([1,0,0,0,1,0])
+                        J[c_idx+i,1,:] = np.array([0,0,0,0,0,0])
+                        clipping_a[c_idx+i] = parameters["mu"]
+                        clipping_idx[c_idx+i] = ground_contact_idx
+                        clipping_b[c_idx+i] = 0
+                        C[c_idx+i] = (self.positionVectors[idx1,Z] < 0.0)
+                        b_res[c_idx+i] = 0
+                    c_idx += 2
+
+                if constraint == "ground" and parameters["torsional_friction"]:
+                    d = parameters["delta"]
+                    r = 1 #parameters["radius"]
+                    v[c_idx,0,:] = newv[idx1,:]
+                    v[c_idx,1,:] = np.array([0,0,0,0,0,0])
+                    J[c_idx+i,0,:] = np.array([0,0,0,0,0,1])
+                    J[c_idx+i,1,:] = np.array([0,0,0,0,0,0])
+                    clipping_a[c_idx+i] = 3.*np.pi/16. * np.sqrt(r*d) * parameters["mu"]
+                    clipping_idx[c_idx+i] = ground_contact_idx
+                    clipping_b[c_idx+i] = 0
+                    C[c_idx+i] = (self.positionVectors[idx1,Z] < 0.0)
+                    b_res[c_idx+i] = 0
+                    c_idx += 1
 
             m_eff = 1./np.sum(np.sum(J[:,:,None,:]*M, axis=-1)*J, axis=(-1,-2))
             m_c = 1/(1/m_eff + CFM)
 
             #print b_res
-            b = ERP/dt * b_res
+            b = ERP/dt * b_error + b_res
 
             lamb = - m_c * (np.sum(J*v, axis=(-1,-2)) + CFM * P + b)
             print lamb
             P += lamb
 
             #print v.shape, np.dot(mass_matrix, J.T).shape, lamb.shape,
+            clipping_limit = np.abs(clipping_a * P[clipping_idx] + clipping_b)
+
+            P = np.clip(P,-clipping_limit, clipping_limit)
 
             #result = np.dot(np.dot(mass_matrix, J.T), P[c_idx][1])
-            # applicable should be zero when P is negative, or C is zero, but only when only_when_positive is 1
-            applicable = 1-(only_when_positive*( 1-( (P<0) * C) ))
+            # applicable should be zero when (P is negative, but only when only_when_positive is 1), or when C is zero
+            applicable = (1-(only_when_positive*( 1-( P<0)) )) * C
 
             result = np.sum(M*J[:,:,None,:], axis=(-1)) * P[:,None,None] * applicable[:,None,None]
 
@@ -376,221 +426,6 @@ class Rigid3DBodyEngine(object):
             for i in xrange(newv.shape[0]):
                 newv[i,:] = originalv[i,:] + np.sum(result[map_object_to_constraint[i],:], axis=0)
 
-            '''
-            P = [[0,0,0,0,0] for _ in xrange(len(self.constraints))]
-
-            for c_idx, (constraint,references,parameters) in enumerate(self.constraints):
-
-                if constraint == "slider" or constraint == "fixed":
-                    idx1 = references[0]
-                    idx2 = references[1]
-
-                    v = np.concatenate([newv[idx1,:], newv[idx2,:]])
-
-                    J = np.concatenate([np.zeros((3,3)),-np.eye(3),np.zeros((3,3)),np.eye(3)]).T
-                    mass_matrix = scipy.linalg.block_diag(M[idx1,:,:], M[idx2,:,:])
-                    m_c = np.linalg.inv((np.dot(J,np.dot(mass_matrix, J.T))) + parameters["CFM"] * np.eye(3))
-
-                    q_current = normalize(q_div(self.positionVectors[idx2,3:], self.positionVectors[idx1,3:]))
-                    q_diff = q_div(q_current, parameters['q_init'])
-                    print q_diff[1:]
-                    C = 2*q_diff[1:]
-
-                    b_res = parameters["ERP"]/dt * C
-                    #print b_res
-                    b = b_res
-                    lamb = - np.dot(m_c, (np.dot(J, v) + parameters["CFM"] * P[c_idx][1] + b))
-                    P[c_idx][1] = P[c_idx][1] + lamb
-
-                    #print v.shape, np.dot(mass_matrix, J.T).shape, lamb.shape,
-                    result = np.dot(np.dot(mass_matrix, J.T), P[c_idx][1])
-                    #print result.shape
-
-                    total_lambda[idx1,:] = total_lambda[idx1,:] + result[:6]
-                    total_lambda[idx2,:] = total_lambda[idx2,:] + result[6:]
-
-
-
-                if constraint == "hinge":
-                    idx1 = references[0]
-                    idx2 = references[1]
-
-                    v = np.concatenate([newv[idx1,:], newv[idx2,:]])
-                    #print v.shape
-                    a2x = convert_model_to_world_coordinate_no_bias(parameters['axis_in_model2_coordinates'], self.positionVectors[idx2,:])
-                    b1x = convert_model_to_world_coordinate_no_bias(parameters['axis1_in_model1_coordinates'], self.positionVectors[idx1,:])
-                    c1x = convert_model_to_world_coordinate_no_bias(parameters['axis2_in_model1_coordinates'], self.positionVectors[idx1,:])
-
-                    #print np.dot(skew_symmetric(a2x),b1x).shape
-                    J1 = np.concatenate([np.zeros((3,)),-np.dot(skew_symmetric(a2x),b1x),np.zeros((3,)),np.dot(skew_symmetric(a2x),b1x)])[:,None]
-                    J2 = np.concatenate([np.zeros((3,)),-np.dot(skew_symmetric(a2x),c1x),np.zeros((3,)),np.dot(skew_symmetric(a2x),c1x)])[:,None]
-                    #print J1.shape, J2.shape
-                    J = np.concatenate([J1,J2],axis=1).T
-                    #print J.shape
-
-                    mass_matrix = scipy.linalg.block_diag(M[idx1,:,:], M[idx2,:,:])
-                    m_c = np.linalg.inv((np.dot(J,np.dot(mass_matrix, J.T))) + parameters["CFM"] * np.eye(2))
-
-                    b_res = parameters["ERP"]/dt * np.array([np.sum(a2x*b1x),np.sum(a2x*c1x)])
-                    #print np.array([np.sum(a2x*b1x),np.sum(a2x*c1x)])
-                    b = b_res
-                    lamb = - np.dot(m_c, (np.dot(J, v) + parameters["CFM"] * P[c_idx][1] + b))
-                    P[c_idx][1] += lamb
-
-                    #print v.shape, np.dot(mass_matrix, J.T).shape, lamb.shape,
-                    result = np.dot(np.dot(mass_matrix, J.T), P[c_idx][1])
-                    #print result.shape
-
-                    total_lambda[idx1,:] = total_lambda[idx1,:] + result[:6]
-                    total_lambda[idx2,:] = total_lambda[idx2,:] + result[6:]
-
-
-                    q_current = normalize(q_div(self.positionVectors[idx2,3:], self.positionVectors[idx1,3:]))
-                    q_diff = q_div(q_current, parameters['q_init'])
-
-
-                    if "limit" in parameters:
-                        a=parameters['axis']
-                        dot = np.sum(q_diff[1:] * a)
-                        sin_theta2 = ((dot>0) * 2 - 1) * np.sqrt(np.sum(q_diff[1:]*q_diff[1:]))
-                        theta = 2*np.arctan2(sin_theta2,q_diff[0])
-
-
-                        J = np.concatenate([np.zeros((3,)),-a,np.zeros((3,)),a])[:,None].T
-                        b_res = parameters["ERP"]/dt * (parameters["limit"] - theta)
-
-                        b = b_res
-                        m_c = np.linalg.inv(np.dot(J,np.dot(mass_matrix, J.T)) + parameters["CFM"] * np.eye(2))
-                        lamb1 = - np.dot(m_c, (np.dot(J, v) + parameters["CFM"] * P[c_idx][2] + b))
-                        P[c_idx][2] += lamb1
-
-                        result = np.dot(np.dot(mass_matrix, J.T), P[c_idx][2])
-
-                        applicable1 = (theta<-parameters["limit"]) and (P[c_idx][2]>0)
-                        total_lambda[idx1,:] = total_lambda[idx1,:] + applicable1 * result[:6]
-                        total_lambda[idx2,:] = total_lambda[idx2,:] + applicable1 * result[6:]
-
-                        J = np.concatenate([np.zeros((3,)),a,np.zeros((3,)),-a])[:,None].T
-                        b_res = parameters["ERP"]/dt * (theta - parameters["limit"])
-
-                        b = b_res
-                        m_c = np.linalg.inv(np.dot(J,np.dot(mass_matrix, J.T)))
-                        lamb2 = - np.dot(m_c, (np.dot(J, v) + b))
-
-                        P[c_idx][3] = P[c_idx][3] + lamb2
-
-                        result = np.dot(np.dot(mass_matrix, J.T), P[c_idx][3])
-
-                        applicable2 = (theta>parameters["limit"]) and (P[c_idx][3]>0)
-
-                        total_lambda[idx1,:] = total_lambda[idx1,:] + applicable2 * result[:6]
-                        total_lambda[idx2,:] = total_lambda[idx2,:] + applicable2 * result[6:]
-
-                    """
-                    if "motor_velocity" in parameters:
-                        a=parameters['axis']
-                        J = np.concatenate([np.zeros((3,)),-a,np.zeros((3,)),a])[:,None].T
-                        b_res = parameters["motor_velocity"]
-
-                        b = b_res
-                        m_c = np.linalg.inv(np.dot(J,np.dot(mass_matrix, J.T)))
-
-                        lamb = - np.dot(m_c, (np.dot(J, v) + b))
-                        lamb = np.clip(lamb, -parameters["motor_torque"], parameters["motor_torque"])
-                        P[c_idx][4] = P[c_idx][4] + lamb
-
-                        result = np.dot(np.dot(mass_matrix, J.T), P[c_idx][4])
-
-                        total_lambda[idx1,:] = total_lambda[idx1,:] + result[:6]
-                        total_lambda[idx2,:] = total_lambda[idx2,:] + result[6:]
-                    """
-                    if "motor_position" in parameters:
-
-                        a=parameters['axis']
-                        dot = np.sum(q_diff[1:] * a)
-                        sin_theta2 = np.sqrt(np.sum(q_diff[1:]*q_diff[1:]))
-                        theta = 2*((dot>0) * 2 - 1)*np.arctan2(sin_theta2,q_diff[0])
-                        #
-                        print theta, ((dot>0) * 2 - 1)
-
-                        a=parameters['axis']
-                        J = np.concatenate([np.zeros((3,)),-a,np.zeros((3,)),a])[:,None].T
-                        b_res = (abs(theta-parameters["motor_position"]) > parameters["delta"]) * (2*(theta>parameters["motor_position"])-1) * parameters["motor_velocity"]
-
-                        b = b_res
-                        m_c = np.linalg.inv(np.dot(J,np.dot(mass_matrix, J.T)))
-
-                        lamb = - np.dot(m_c, (np.dot(J, v) + b))
-                        lamb = np.clip(lamb, -parameters["motor_torque"], parameters["motor_torque"])
-                        P[c_idx][4] = P[c_idx][4] + lamb
-
-                        result = np.dot(np.dot(mass_matrix, J.T), P[c_idx][4])
-
-                        total_lambda[idx1,:] = total_lambda[idx1,:] + result[:6]
-                        total_lambda[idx2,:] = total_lambda[idx2,:] + result[6:]
-
-
-
-                ######################
-                # GROUND CONSTRAINTS #
-                ######################
-                if constraint == "ground":
-                    idx = references[0]
-                    J = np.array([[0,0,1,0,0,0]])
-
-                    m_c = 1./(np.dot(J,np.dot(M[idx,:,:], J.T)) + parameters["CFM"])
-
-                    b_error = parameters["ERP"] * np.max(self.positionVectors[idx,Z] - parameters["delta"],0)
-                    b_res = parameters["alpha"] * newv[idx,Z]
-
-                    b = b_error + b_res
-                    lamb = (- m_c * (np.dot(J, newv[idx,:]) + parameters["CFM"] * P[c_idx][0] + b))[0,0]
-                    P[c_idx][0] += lamb
-
-                    applicable = (P[c_idx][0]>0) * (self.positionVectors[idx,Z] < 0.0)
-                    Fn = applicable * P[c_idx][0]
-                    total_lambda[idx,:] = total_lambda[idx,:] + applicable * np.dot(J, M[idx,:,:]) * P[c_idx][0]
-
-                if constraint == "ground" and parameters["mu"]!=0:
-
-                    J = np.array([[1,0,0,0,1,0]])
-                    m_c = 1./(np.dot(J,np.dot(M[idx,:,:], J.T)) + parameters["CFM"])
-                    b = 0
-                    lamb_friction_1 = (- m_c * (np.dot(J, newv[idx,:]) + parameters["CFM"] * P[c_idx][1] + b))[0,0]
-                    P[c_idx][1] += lamb_friction_1
-
-                    lamb = np.clip(P[c_idx][1], -parameters["mu"]*Fn, parameters["mu"]*Fn)
-
-                    total_lambda[idx,:] = total_lambda[idx,:] + applicable * np.dot(J, M[idx,:,:]) * lamb
-
-                if constraint == "ground":
-                    J = np.array([[0,1,0,1,0,0]])
-                    m_c = 1./(np.dot(J,np.dot(M[idx,:,:], J.T)) + parameters["CFM"])
-                    b = 0
-                    lamb_friction_2 = (- m_c * (np.dot(J, newv[idx,:]) + parameters["CFM"] * P[c_idx][2] + b))[0,0]
-                    lamb_friction_2 = np.clip(lamb_friction_2, -parameters["mu"]*Fn, parameters["mu"]*Fn)
-
-                    P[c_idx][2] += lamb_friction_2
-                    lamb = np.clip(P[c_idx][2], -parameters["mu"]*Fn, parameters["mu"]*Fn)
-                    total_lambda[idx,:] = total_lambda[idx,:] + applicable * np.dot(J, M[idx,:,:]) * lamb
-
-                if constraint == "ground":
-                    if parameters["torsional_friction"]:
-                        J = np.array([[0,0,0,0,0,1]])
-                        m_c = 1./(np.dot(J,np.dot(M[idx,:,:], J.T)) + parameters["CFM"])
-                        b = 0
-                        lamb_friction_3 = (- m_c * (np.dot(J, newv[idx,:]) + parameters["CFM"] * P[c_idx][3] + b))[0,0]
-                        P[c_idx][3] += lamb_friction_3
-                        lamb = np.clip(P[c_idx][2], -parameters["mu"]*Fn, parameters["mu"]*Fn)
-
-                        total_lambda[idx,:] = total_lambda[idx,:] + applicable * np.dot(J, M[idx,:,:]) * lamb
-
-
-
-
-
-            newv = originalv + total_lambda
-            '''
 
         print
         ##################

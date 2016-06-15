@@ -69,7 +69,7 @@ class MyApp(ShowBase):
 
             self.objects.append(smiley)
             self.physics.addSphere(smiley, position, velocity)
-            self.physics.addConstraint("ground",[smiley],{"mu":0.5, "alpha":0.6, "gamma":0.0, "delta":0.001, "torsional_friction": False})
+            self.physics.addGroundConstraint(smiley,{"mu":0.5, "alpha":0.6, "gamma":0.0, "delta":0.001, "torsional_friction": False})
 
 
         addSphere([0,0,0,1,0,0,0], [16,0,6,1,-0,-6])
