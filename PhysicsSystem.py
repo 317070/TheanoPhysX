@@ -45,16 +45,6 @@ def skew_symmetric(x):
                     [ -b, a, 0 ]])
 
 
-def vec_vec_dot(a,b):
-    return np.tensordot(a,b, axes=([-1],[-1]))
-
-def vec_mat_dot(a,b):
-    return np.tensordot(a,b, axes=([-1],[-2]))
-
-def mat_vec_dot(a,b):
-    return np.tensordot(a,b, axes=([-1],[-1]))
-
-
 class Rigid3DBodyEngine(object):
     def __init__(self):
         self.positionVectors = np.zeros(shape=(0,7))
@@ -161,9 +151,21 @@ class Rigid3DBodyEngine(object):
         # now enforce the constraints by having corrective impulses
 
         # TODO: convert inertia matrices into world space!
+
+        # convert mass matrices to world coordinates
+
         M = np.linalg.inv(self.massMatrices)
 
-
+        inertia_in_world_coordinates = np.zeros_like(M)
+        for i in xrange(inertia_in_world_coordinates.shape[0]):
+            inertia_in_world_coordinates[i,:3,:3] = M[i,:3,:3]
+            inertia_in_world_coordinates[i,3:,3:] = np.dot(np.dot(
+                quat_to_rot_matrix(self.positionVectors[i,3:]).T,
+                M[i,3:,3:]
+            ),
+                quat_to_rot_matrix(self.positionVectors[i,3:])
+            )
+        M = inertia_in_world_coordinates
 
         num_constraints = 0
         for (constraint,references,parameters) in self.constraints:
