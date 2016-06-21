@@ -67,6 +67,10 @@
       "from": "tibia1",
       "to": "foot",
       "point": [0,0,0]
+    },
+    "left-floor": {
+      "type": "ground",
+      "from": "foot"
     }
   }
 }
