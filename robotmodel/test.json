@@ -1,12 +1,49 @@
 {
   "name": "Predator",
   "mass density": 1.0,
+  "default_joint_parameters":{
+    "default":{
+
+    },
+    "ground":{
+
+    }
+  },
+  "default_model_parameters":{
+    "default":{
+
+    },
+    "sphere":{
+      "dimensions": 1,
+      "rotation": [1,0,0,0]
+    },
+    "cube":{
+      "dimensions": [1,1,1],
+      "rotation": [1,0,0,0]
+    }
+  },
   "model":{
+    "reference1":[
+      {
+        "shape": "sphere",
+        "position": [0,0,4],
+        "dimensions": 2,
+        "rotation": [1,0,0,0]
+      }
+    ],
+    "reference2":[
+      {
+        "shape": "sphere",
+        "position": [0,0,1],
+        "dimensions": 1,
+        "rotation": [1,0,0,0]
+      }
+    ],
     "spine":[
       {
         "shape": "cube",
         "position": [0,0,0],
-        "dimensions": [2,3,4],
+        "dimensions": [1,1,1],
         "rotation": [1,0,0,0]
       }
     ],
@@ -29,8 +66,16 @@
     "foot1":[
       {
         "shape": "sphere",
-        "position": [-1,-1,0],
-        "dimensions": [1,1,1],
+        "position": [2,2,2],
+        "dimensions": 1,
+        "rotation": [1,0,0,0]
+      }
+    ],
+    "foot2":[
+      {
+        "shape": "sphere",
+        "position": [0,1,2],
+        "dimensions": 1,
         "rotation": [1,0,0,0]
       }
     ]
@@ -62,15 +107,23 @@
         "motor_id": 1
       }
     },
-    "left-heel": {
-      "type": "fixed",
-      "from": "tibia1",
-      "to": "foot",
-      "point": [0,0,0]
-    },
-    "left-floor": {
+    "right-floor": {
       "type": "ground",
-      "from": "foot"
+      "from": "foot2"
+    },
+    "references": {
+      "type": "fixed",
+      "from": "reference1",
+      "to": "reference2",
+      "point": [0,0,2]
+    },
+    "ref-ground": {
+      "type": "ground",
+      "from": "reference1"
+    },
+    "ref2-ground": {
+      "type": "ground",
+      "from": "reference2"
     }
   }
 }

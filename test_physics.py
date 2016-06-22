@@ -55,15 +55,11 @@ class MyApp(ShowBase):
 
         self.physics = Rigid3DBodyEngine()
         # Load the environment model.
-        self.objects = list()
-
-
-        self.addSphere(0, 2, [0,0,4,1,0,0,0], [-1,0,0,0,0,2])
-        self.addSphere(1, 1, [0,0,1,1,0,0,0], [0,0,0,0,-0,2])
+        self.objects = dict()
 
         #self.physics.addBallAndSocketConstraint(self.objects[0], self.objects[1],[0,0,1],{"beta": 0.8})
         #self.physics.addSliderConstraint(self.objects[0], self.objects[1],{"beta": 0.8})
-        self.physics.addFixedConstraint(self.objects[0], self.objects[1],[0,0,2],{"beta": 0.8})
+        #self.physics.addFixedConstraint(0, 1,[0,0,2],{"beta": 0.8})
 
         #self.physics.addHingeConstraint(self.objects[0], self.objects[1],[0,0,1],[0,1,0], {"beta": 0.001, "motor_position": -1, "motor_velocity": 1, "motor_torque": 0.5, "delta":0.01})
         self.load_robot_model("robotmodel/test.json")
@@ -80,9 +76,8 @@ class MyApp(ShowBase):
         smiley.setPos(*position[:3])
         smiley.setQuat(self.render, fixQuat(position[3:]))
 
-        self.objects.append(smiley)
-        self.physics.addSphere(smiley, radius, position, velocity)
-        self.physics.addGroundConstraint(smiley,{"mu":0.5, "alpha":0.6, "gamma":0.0, "delta":0.001, "torsional_friction": True})
+        self.objects[name] = smiley
+        self.physics.addSphere(name, radius, position, velocity)
 
 
     def addCube(self, name, sizes, position, velocity):
@@ -97,8 +92,8 @@ class MyApp(ShowBase):
         cube.setPos(*position[:3])
         cube.setQuat(self.render, fixQuat(position[3:]))
 
-        self.objects.append(cube)
-        self.physics.addCube(cube, sizes, position, velocity)
+        self.objects[name] = cube
+        self.physics.addCube(name, sizes, position, velocity)
 
     def load_robot_model(self, filename):
         robot_dict = json.load(open(filename,"rb"))
@@ -107,15 +102,18 @@ class MyApp(ShowBase):
             print primitive
             if primitive["shape"] == "cube":
                 self.addCube(elementname, primitive["dimensions"], primitive["position"]+primitive["rotation"],[0,0,0,0,0,0])
-            if primitive["shape"] == "sphere":
-                self.addCube(elementname, primitive["dimensions"], primitive["position"]+primitive["rotation"],[0,0,0,0,0,0])
+            elif primitive["shape"] == "sphere":
+                self.addSphere(elementname, primitive["dimensions"], primitive["position"]+primitive["rotation"],[0,0,0,0,0,0])
 
         for jointname, joint in robot_dict["joints"].iteritems():
             if joint["type"] == "hinge":
                 self.physics.addHingeConstraint(joint["from"], joint["to"], joint["point"], joint["axis"], {"beta": 0.001, "motor_position": -1, "motor_velocity": 1, "motor_torque": 0.5, "delta":0.01})
 
-            if joint["type"] == "ground":
+            elif joint["type"] == "ground":
                 self.physics.addGroundConstraint(joint["from"], {"mu":0.5, "alpha":0.6, "gamma":0.0, "delta":0.001, "torsional_friction": True})
+
+            elif joint["type"] == "fixed":
+                self.physics.addFixedConstraint(joint["from"], joint["to"], joint["point"], {"mu":0.5, "alpha":0.6, "gamma":0.0, "delta":0.001, "torsional_friction": True})
 
 
 
@@ -124,13 +122,14 @@ class MyApp(ShowBase):
     # Define a procedure to move the camera.
     def spinCameraTask(self, task):
         self.physics.do_time_step(dt=5e-3)
-        for obj in self.objects:
-            obj.setPos(*self.physics.getPosition(obj)[:3])
-            obj.setQuat(self.render, fixQuat(self.physics.getPosition(obj)[3:]))
+        for obj_name, obj in self.objects.iteritems():
+            print obj_name, self.physics.getPosition(obj_name)
+            obj.setPos(*self.physics.getPosition(obj_name)[:3])
+            obj.setQuat(self.render, fixQuat(self.physics.getPosition(obj_name)[3:]))
 
         # change camera movement
-        self.camera.setPos(*(self.physics.getPosition(self.objects[0])[:3] - [0,20,0]))
-        self.camera.lookAt(*self.physics.getPosition(self.objects[0])[:3])
+        self.camera.setPos(*(self.physics.getPosition("reference1")[:3] - [0,20,0]))
+        self.camera.lookAt(*self.physics.getPosition("reference1")[:3])
         time.sleep(0.001)
         return Task.cont
 
