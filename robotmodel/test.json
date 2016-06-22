@@ -11,15 +11,14 @@
   },
   "default_model_parameters":{
     "default":{
-
+      "velocity": [0,0,0,0,0,0],
+      "rotation": [1,0,0,0]
     },
     "sphere":{
-      "dimensions": 1,
-      "rotation": [1,0,0,0]
+      "radius": 1
     },
     "cube":{
-      "dimensions": [1,1,1],
-      "rotation": [1,0,0,0]
+      "dimensions": [1,1,1]
     }
   },
   "model":{
@@ -27,8 +26,9 @@
       {
         "shape": "sphere",
         "position": [0,0,4],
-        "dimensions": 2,
-        "rotation": [1,0,0,0]
+        "radius": 2,
+        "rotation": [1,0,0,0],
+        "velocity": [1,0,0,0,0,-6]
       }
     ],
     "reference2":[

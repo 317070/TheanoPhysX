@@ -64,7 +64,7 @@ class MyApp(ShowBase):
         #self.physics.addHingeConstraint(self.objects[0], self.objects[1],[0,0,1],[0,1,0], {"beta": 0.001, "motor_position": -1, "motor_velocity": 1, "motor_torque": 0.5, "delta":0.01})
         self.load_robot_model("robotmodel/test.json")
 
-    def addSphere(self, name, radius, position, velocity):
+    def addSphere(self, name, radius, position, rotation, velocity, **parameters):
         #smiley = self.loader.loadModel("zup-axis")
         smiley = self.loader.loadModel("smiley")
         smiley.setScale(radius,radius,radius)
@@ -73,39 +73,46 @@ class MyApp(ShowBase):
         # Reparent the model to render.
         smiley.reparentTo(self.render)
         # Apply scale and position transforms on the model.
-        smiley.setPos(*position[:3])
-        smiley.setQuat(self.render, fixQuat(position[3:]))
+        smiley.setPos(*position)
+        smiley.setQuat(self.render, fixQuat(rotation))
 
         self.objects[name] = smiley
-        self.physics.addSphere(name, radius, position, velocity)
+        self.physics.addSphere(name, radius, position+rotation, velocity)
 
 
-    def addCube(self, name, sizes, position, velocity):
+    def addCube(self, name, dimensions, position, rotation, velocity, **parameters):
         #smiley = self.loader.loadModel("zup-axis")
         cube = self.loader.loadModel("box")
-        cube.setScale(*sizes)
+        cube.setScale(*dimensions)
         cube.setTexture(self.loader.loadTexture('maps/noise.rgb'), 1)
 
         # Reparent the model to render.
         cube.reparentTo(self.render)
         # Apply scale and position transforms on the model.
-        cube.setPos(*position[:3])
-        cube.setQuat(self.render, fixQuat(position[3:]))
+        cube.setPos(*position)
+        cube.setQuat(self.render, fixQuat(rotation))
 
         self.objects[name] = cube
-        self.physics.addCube(name, sizes, position, velocity)
+        self.physics.addCube(name, dimensions, position + rotation, velocity)
 
     def load_robot_model(self, filename):
         robot_dict = json.load(open(filename,"rb"))
         for elementname, element in robot_dict["model"].iteritems():
             primitive = element[0]
-            print primitive
+            parameters = dict(robot_dict["default_model_parameters"]["default"])  # copy
+            if primitive["shape"] in robot_dict["default_model_parameters"]:
+                parameters.update(robot_dict["default_model_parameters"][primitive["shape"]])
+            parameters.update(primitive)
             if primitive["shape"] == "cube":
-                self.addCube(elementname, primitive["dimensions"], primitive["position"]+primitive["rotation"],[0,0,0,0,0,0])
+                self.addCube(elementname, **parameters)
             elif primitive["shape"] == "sphere":
-                self.addSphere(elementname, primitive["dimensions"], primitive["position"]+primitive["rotation"],[0,0,0,0,0,0])
+                self.addSphere(elementname, **parameters)
 
         for jointname, joint in robot_dict["joints"].iteritems():
+            parameters = dict(robot_dict["default_joint_parameters"]["default"])  # copy
+            if joint["type"] in robot_dict["default_joint_parameters"]:
+                parameters.update(robot_dict["default_joint_parameters"][joint["type"]])
+            parameters.update(joint)
             if joint["type"] == "hinge":
                 self.physics.addHingeConstraint(joint["from"], joint["to"], joint["point"], joint["axis"], {"beta": 0.001, "motor_position": -1, "motor_velocity": 1, "motor_torque": 0.5, "delta":0.01})
 
@@ -118,12 +125,10 @@ class MyApp(ShowBase):
 
 
 
-
     # Define a procedure to move the camera.
     def spinCameraTask(self, task):
         self.physics.do_time_step(dt=5e-3)
         for obj_name, obj in self.objects.iteritems():
-            print obj_name, self.physics.getPosition(obj_name)
             obj.setPos(*self.physics.getPosition(obj_name)[:3])
             obj.setQuat(self.render, fixQuat(self.physics.getPosition(obj_name)[3:]))
 
