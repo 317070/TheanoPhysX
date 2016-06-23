@@ -78,37 +78,33 @@ class Rigid3DBodyEngine(object):
 
     def addConstraint(self, constraint, references, parameters):
         references = [self.objects[reference] for reference in references]
-        parameters["CFM"] = 1.0
-        parameters["ERP"] = 0.8
-
-        parameters["w"] = 2.5 * 2*np.pi #HZ
-        parameters["zeta"] = 0.005
+        parameters["w"] = parameters["f"] * 2*np.pi
 
         self.constraints.append([constraint, references, parameters])
 
-    def addGroundConstraint(self, object, parameters):
-        self.addConstraint("ground", [object, object], parameters)
+    def addGroundConstraint(self, jointname, object1, **parameters):
+        self.addConstraint("ground", [object1, object1], parameters)
 
-    def addTouchConstraint(self, object1, object2, parameters):
+    def addTouchConstraint(self, jointname, object1, object2, **parameters):
         self.addConstraint("touch", [object1, object2], parameters)
 
 
-    def addBallAndSocketConstraint(self, object1, object2, world_coordinates, parameters):
+    def addBallAndSocketConstraint(self, jointname, object1, object2, point, **parameters):
         idx1 = self.objects[object1]
         idx2 = self.objects[object2]
 
-        parameters['joint_in_model1_coordinates'] = convert_world_to_model_coordinate(world_coordinates, self.positionVectors[idx1,:])
-        parameters['joint_in_model2_coordinates'] = convert_world_to_model_coordinate(world_coordinates, self.positionVectors[idx2,:])
+        parameters['joint_in_model1_coordinates'] = convert_world_to_model_coordinate(point, self.positionVectors[idx1,:])
+        parameters['joint_in_model2_coordinates'] = convert_world_to_model_coordinate(point, self.positionVectors[idx2,:])
 
         self.addConstraint("ball-and-socket", [object1, object2], parameters)
 
 
-    def addHingeConstraint(self, object1, object2, world_coordinates, axis, parameters):
+    def addHingeConstraint(self, jointname, object1, object2, point, axis, **parameters):
         idx1 = self.objects[object1]
         idx2 = self.objects[object2]
 
-        parameters['joint_in_model1_coordinates'] = convert_world_to_model_coordinate(world_coordinates, self.positionVectors[idx1,:])
-        parameters['joint_in_model2_coordinates'] = convert_world_to_model_coordinate(world_coordinates, self.positionVectors[idx2,:])
+        parameters['joint_in_model1_coordinates'] = convert_world_to_model_coordinate(point, self.positionVectors[idx1,:])
+        parameters['joint_in_model2_coordinates'] = convert_world_to_model_coordinate(point, self.positionVectors[idx2,:])
 
         # create two forbidden axis:
         axis = np.array(axis)
@@ -132,7 +128,7 @@ class Rigid3DBodyEngine(object):
 
 
 
-    def addSliderConstraint(self, object1, object2, parameters):
+    def addSliderConstraint(self, jointname, object1, object2, **parameters):
         idx1 = self.objects[object1]
         idx2 = self.objects[object2]
 
@@ -140,12 +136,12 @@ class Rigid3DBodyEngine(object):
 
         self.addConstraint("slider", [object1, object2], parameters)
 
-    def addFixedConstraint(self, object1, object2, world_coordinates, parameters):
+    def addFixedConstraint(self, jointname, object1, object2, point, **parameters):
         idx1 = self.objects[object1]
         idx2 = self.objects[object2]
 
-        parameters['joint_in_model1_coordinates'] = convert_world_to_model_coordinate(world_coordinates, self.positionVectors[idx1,:])
-        parameters['joint_in_model2_coordinates'] = convert_world_to_model_coordinate(world_coordinates, self.positionVectors[idx2,:])
+        parameters['joint_in_model1_coordinates'] = convert_world_to_model_coordinate(point, self.positionVectors[idx1,:])
+        parameters['joint_in_model2_coordinates'] = convert_world_to_model_coordinate(point, self.positionVectors[idx2,:])
 
         parameters['q_init'] = q_div(self.positionVectors[idx2,3:], self.positionVectors[idx1,3:])
 
@@ -236,8 +232,6 @@ class Rigid3DBodyEngine(object):
 
             # constant
             mass_matrix = np.zeros((num_constraints,2,6,6))  # 0 constraints x 2 objects x 6 states x 6 states
-            CFM = np.zeros((num_constraints,))  # 0 constraints
-            ERP = np.zeros((num_constraints,))  # 0 constraints
             w = np.zeros((num_constraints,))  # 0 constraints
             zeta = np.zeros((num_constraints,))  # 0 constraints
 
@@ -268,9 +262,7 @@ class Rigid3DBodyEngine(object):
                         map_object_to_constraint[idx2].append(2*(c_idx+i) + 1)
 
                     b_error[c_idx:c_idx+3] = (self.positionVectors[idx2,:3]+r2x-self.positionVectors[idx1,:3]-r1x)
-                    CFM[c_idx:c_idx+3] = parameters["CFM"]
-                    ERP[c_idx:c_idx+3] = parameters["ERP"]
-                    w[c_idx:c_idx+3] = parameters["w"]
+                    w[c_idx:c_idx+3] = parameters["f"] * 2*np.pi
                     zeta[c_idx:c_idx+3] = parameters["zeta"]
                     c_idx += 3
 
@@ -289,9 +281,7 @@ class Rigid3DBodyEngine(object):
                     q_current = normalize(q_div(self.positionVectors[idx2,3:], self.positionVectors[idx1,3:]))
                     q_diff = q_div(q_current, parameters['q_init'])
                     b_error[c_idx:c_idx+3] = 2*q_diff[1:]
-                    CFM[c_idx:c_idx+3] = parameters["CFM"]
-                    ERP[c_idx:c_idx+3] = parameters["ERP"]
-                    w[c_idx:c_idx+3] = parameters["w"]
+                    w[c_idx:c_idx+3] = parameters["f"] * 2*np.pi
                     zeta[c_idx:c_idx+3] = parameters["zeta"]
                     c_idx += 3
 
@@ -315,9 +305,7 @@ class Rigid3DBodyEngine(object):
                         map_object_to_constraint[idx2].append(2*(c_idx+i) + 1)
 
                     b_error[c_idx:c_idx+2] =np.array([np.sum(a2x*b1x),np.sum(a2x*c1x)])
-                    CFM[c_idx:c_idx+3] = parameters["CFM"]
-                    ERP[c_idx:c_idx+3] = parameters["ERP"]
-                    w[c_idx:c_idx+3] = parameters["w"]
+                    w[c_idx:c_idx+3] = parameters["f"] * 2*np.pi
                     zeta[c_idx:c_idx+3] = parameters["zeta"]
 
                     c_idx += 2
@@ -347,9 +335,7 @@ class Rigid3DBodyEngine(object):
                     b_error[c_idx:c_idx+2] = np.array([(parameters["limit"] - theta),(theta - parameters["limit"])])
                     C[c_idx:c_idx+2] = np.array([(theta<-parameters["limit"]), (theta>parameters["limit"])])
                     only_when_positive[c_idx:c_idx+2] = 1.0
-                    CFM[c_idx:c_idx+2] = parameters["CFM"]
-                    ERP[c_idx:c_idx+2] = parameters["ERP"]
-                    w[c_idx:c_idx+2] = parameters["w"]
+                    w[c_idx:c_idx+2] = parameters["f"] * 2*np.pi
                     zeta[c_idx:c_idx+2] = parameters["zeta"]
 
 
@@ -371,15 +357,15 @@ class Rigid3DBodyEngine(object):
                     b_error[c_idx] = parameters["motor_velocity"]
                     clipping_a[c_idx] = 0
                     clipping_b[c_idx] = parameters["motor_torque"]
-                    CFM[c_idx] = parameters["CFM"]
-                    ERP[c_idx] = parameters["ERP"]
-                    w[c_idx] = parameters["w"]
+                    w[c_idx] = parameters["f"] * 2*np.pi
                     zeta[c_idx] = parameters["zeta"]
 
                     c_idx += 1
 
                 if constraint == "hinge" and "position_motor" in parameters:
                     a=parameters['axis']
+                    q_current = normalize(q_div(self.positionVectors[idx2,3:], self.positionVectors[idx1,3:]))
+                    q_diff = q_div(q_current, parameters['q_init'])
                     dot = np.sum(q_diff[1:] * a)
                     sin_theta2 = np.sqrt(np.sum(q_diff[1:]*q_diff[1:]))
                     theta = 2*((dot>0) * 2 - 1)*np.arctan2(sin_theta2,q_diff[0])
@@ -397,9 +383,7 @@ class Rigid3DBodyEngine(object):
                     b_error[c_idx] = (abs(theta-parameters["motor_position"]) > parameters["delta"]) * (2*(theta>parameters["motor_position"])-1) * parameters["motor_velocity"]
                     clipping_a[c_idx] = 0
                     clipping_b[c_idx] = parameters["motor_torque"]
-                    CFM[c_idx] = parameters["CFM"]
-                    ERP[c_idx] = parameters["ERP"]
-                    w[c_idx] = parameters["w"]
+                    w[c_idx] = parameters["f"] * 2*np.pi
                     zeta[c_idx] = parameters["zeta"]
                     c_idx += 1
 
@@ -416,9 +400,7 @@ class Rigid3DBodyEngine(object):
                     b_res[c_idx] = parameters["alpha"] * newv[idx1,Z]
                     C[c_idx] = (self.positionVectors[idx1,Z] - r < 0.0)
                     map_object_to_constraint[idx1].append(2*c_idx + 0)
-                    CFM[c_idx] = parameters["CFM"]
-                    ERP[c_idx] = parameters["ERP"]
-                    w[c_idx] = parameters["w"]
+                    w[c_idx] = parameters["f"] * 2*np.pi
                     zeta[c_idx] = parameters["zeta"]
 
 
@@ -442,9 +424,7 @@ class Rigid3DBodyEngine(object):
                         clipping_b[c_idx+i] = 0
                         C[c_idx+i] = (self.positionVectors[idx1,Z] - r < 0.0)
                         map_object_to_constraint[idx1].append(2*(c_idx+i) + 0)
-                        CFM[c_idx+i] = parameters["CFM"]
-                        ERP[c_idx+i] = parameters["ERP"]
-                        w[c_idx+i] = parameters["w"]
+                        w[c_idx+i] = parameters["f"] * 2*np.pi
                         zeta[c_idx+i] = parameters["zeta"]
 
                         b_res[c_idx+i] = 0
@@ -464,9 +444,7 @@ class Rigid3DBodyEngine(object):
                     C[c_idx] = (self.positionVectors[idx1,Z] < 0.0)
                     map_object_to_constraint[idx1].append(2*c_idx + 0)
                     b_res[c_idx] = 0
-                    CFM[c_idx] = parameters["CFM"]
-                    ERP[c_idx] = parameters["ERP"]
-                    w[c_idx] = parameters["w"]
+                    w[c_idx] = parameters["f"] * 2*np.pi
                     zeta[c_idx] = parameters["zeta"]
 
                     c_idx += 1

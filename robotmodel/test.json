@@ -3,10 +3,17 @@
   "mass density": 1.0,
   "default_joint_parameters":{
     "default":{
-
+      "f": 2.5,
+      "zeta": 0.001
     },
     "ground":{
-
+      "mu": 0.5,
+      "torsional_friction": true,
+      "delta": 0.001,
+      "alpha": 0.5
+    },
+    "hinge":{
+      "axis": [0,1,0]
     }
   },
   "default_model_parameters":{
@@ -28,7 +35,7 @@
         "position": [0,0,4],
         "radius": 2,
         "rotation": [1,0,0,0],
-        "velocity": [1,0,0,0,0,-6]
+        "velocity": [-1,0,0,0,0,9.5]
       }
     ],
     "reference2":[
@@ -38,92 +45,22 @@
         "dimensions": 1,
         "rotation": [1,0,0,0]
       }
-    ],
-    "spine":[
-      {
-        "shape": "cube",
-        "position": [0,0,0],
-        "dimensions": [1,1,1],
-        "rotation": [1,0,0,0]
-      }
-    ],
-    "femur1":[
-      {
-        "shape": "cube",
-        "position": [-1,-1,0],
-        "dimensions": [1,1,1],
-        "rotation": [1,0,0,0]
-      }
-    ],
-    "tibia1":[
-      {
-        "shape": "cube",
-        "position": [-1,-1,0],
-        "dimensions": [1,1,1],
-        "rotation": [1,0,0,0]
-      }
-    ],
-    "foot1":[
-      {
-        "shape": "sphere",
-        "position": [2,2,2],
-        "dimensions": 1,
-        "rotation": [1,0,0,0]
-      }
-    ],
-    "foot2":[
-      {
-        "shape": "sphere",
-        "position": [0,1,2],
-        "dimensions": 1,
-        "rotation": [1,0,0,0]
-      }
     ]
   },
   "joints": {
-    "left-shoulder": {
-      "type": "hinge",
-      "from": "spine",
-      "to": "femur1",
-      "axis": [0,0,1],
-      "point": [0,0,0],
-      "position_motor": {
-        "angle_limit": 90,
-        "maximum_velocity": 60,
-        "maximum_torque": 1,
-        "motor_id": 0
-      }
-    },
-    "left-knee": {
-      "type": "hinge",
-      "from": "femur1",
-      "to": "tibia1",
-      "axis": [0,0,1],
-      "point": [0,0,0],
-      "position_motor": {
-        "angle_limit": 90,
-        "maximum_velocity": 60,
-        "maximum_torque": 1,
-        "motor_id": 1
-      }
-    },
-    "right-floor": {
-      "type": "ground",
-      "from": "foot2"
-    },
     "references": {
       "type": "fixed",
-      "from": "reference1",
-      "to": "reference2",
+      "object1": "reference1",
+      "object2": "reference2",
       "point": [0,0,2]
     },
     "ref-ground": {
       "type": "ground",
-      "from": "reference1"
+      "object1": "reference1"
     },
     "ref2-ground": {
       "type": "ground",
-      "from": "reference2"
+      "object1": "reference2"
     }
   }
 }

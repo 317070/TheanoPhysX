@@ -1,72 +1,237 @@
 {
   "name": "Predator",
   "mass density": 1.0,
+  "default_joint_parameters":{
+    "default":{
+      "f": 0.1,
+      "zeta": 0.9
+    },
+    "ground":{
+      "mu": 0.5,
+      "torsional_friction": true,
+      "delta": 0.001,
+      "alpha": 0.5
+    },
+    "hinge":{
+      "axis": [0,1,0]
+    }
+  },
+  "default_model_parameters":{
+    "default":{
+      "velocity": [0,0,0,0,0,0],
+      "rotation": [1,0,0,0]
+    },
+    "sphere":{
+      "radius": 1
+    },
+    "cube":{
+      "dimensions": [1,1,1]
+    }
+  },
   "model":{
     "spine":[
       {
         "shape": "cube",
-        "position": [0,0,0],
-        "dimensions": [2,3,4],
-        "rotation": [1,0,0,0]
+        "position": [0,0,5],
+        "dimensions": [7,3,2],
+        "rotation": [1,0,0,0],
+        "velocity": [0.1,0,0,0,0,0],
+        "color": [0,0.8,0.2]
       }
     ],
     "femur1":[
       {
         "shape": "cube",
-        "position": [-1,-1,0],
-        "dimensions": [1,1,1],
-        "rotation": [1,0,0,0]
+        "position": [3,2,3],
+        "dimensions": [0.5,0.5,2],
+        "rotation": [1,0,0,0],
+        "color": [1,0.8,0.0]
       }
     ],
     "tibia1":[
       {
         "shape": "cube",
-        "position": [-1,-1,0],
-        "dimensions": [1,1,1],
-        "rotation": [1,0,0,0]
+        "position": [3,2,1.25],
+        "dimensions": [0.5,0.5,1.5],
+        "rotation": [1,0,0,0],
+        "color": [1,0.2,0.0]
       }
     ],
     "foot1":[
       {
         "shape": "sphere",
-        "position": [-1,-1,0],
-        "dimensions": [1,1,1],
+        "position": [3,2,0.5],
+        "radius": 0.5,
+        "rotation": [1,0,0,0]
+      }
+    ],
+    "femur2":[
+      {
+        "shape": "cube",
+        "position": [3,-2,3],
+        "dimensions": [0.5,0.5,2],
+        "rotation": [1,0,0,0],
+        "color": [1,0.8,0.0]
+      }
+    ],
+    "tibia2":[
+      {
+        "shape": "cube",
+        "position": [3,-2,1.25],
+        "dimensions": [0.5,0.5,1.5],
+        "rotation": [1,0,0,0],
+        "color": [1,0.2,0.0]
+      }
+    ],
+    "foot2":[
+      {
+        "shape": "sphere",
+        "position": [3,-2,0.5],
+        "radius": 0.5,
+        "rotation": [1,0,0,0]
+      }
+    ],
+    "femur3":[
+      {
+        "shape": "cube",
+        "position": [-3,2,3],
+        "dimensions": [0.5,0.5,2],
+        "rotation": [1,0,0,0],
+        "color": [1,0.8,0.0]
+      }
+    ],
+    "tibia3":[
+      {
+        "shape": "cube",
+        "position": [-3,2,1.25],
+        "dimensions": [0.5,0.5,1.5],
+        "rotation": [1,0,0,0],
+        "color": [1,0.2,0.0]
+      }
+    ],
+    "foot3":[
+      {
+        "shape": "sphere",
+        "position": [-3,2,0.5],
+        "radius": 0.5,
+        "rotation": [1,0,0,0]
+      }
+    ],
+    "femur4":[
+      {
+        "shape": "cube",
+        "position": [-3,-2,3],
+        "dimensions": [0.5,0.5,2],
+        "rotation": [1,0,0,0],
+        "color": [1,0.8,0.0]
+      }
+    ],
+    "tibia4":[
+      {
+        "shape": "cube",
+        "position": [-3,-2,1.25],
+        "dimensions": [0.5,0.5,1.5],
+        "rotation": [1,0,0,0],
+        "color": [1,0.2,0.0]
+      }
+    ],
+    "foot4":[
+      {
+        "shape": "sphere",
+        "position": [-3,-2,0.5],
+        "radius": 0.5,
         "rotation": [1,0,0,0]
       }
     ]
   },
   "joints": {
-    "left-shoulder": {
-      "type": "hinge",
-      "from": "spine",
-      "to": "femur1",
-      "axis": [0,0,1],
-      "point": [0,0,0],
-      "position_motor": {
-        "angle_limit": 90,
-        "maximum_velocity": 60,
-        "maximum_torque": 1,
-        "motor_id": 0
-      }
+    "floor1": {
+      "type": "ground",
+      "object1": "foot1"
     },
-    "left-knee": {
-      "type": "hinge",
-      "from": "femur1",
-      "to": "tibia1",
-      "axis": [0,0,1],
-      "point": [0,0,0],
-      "position_motor": {
-        "angle_limit": 90,
-        "maximum_velocity": 60,
-        "maximum_torque": 1,
-        "motor_id": 1
-      }
+    "floor2": {
+      "type": "ground",
+      "object1": "foot2"
     },
-    "left-heel": {
+    "floor3": {
+      "type": "ground",
+      "object1": "foot3"
+    },
+    "floor4": {
+      "type": "ground",
+      "object1": "foot4"
+    },
+    "heel1": {
       "type": "fixed",
-      "from": "tibia1",
-      "to": "foot",
-      "point": [0,0,0]
+      "object1": "foot1",
+      "object2": "tibia1",
+      "point": [3,2,0.5]
+    },
+    "heel2": {
+      "type": "fixed",
+      "object1": "foot2",
+      "object2": "tibia2",
+      "point": [3,-2,0.5]
+    },
+    "heel3": {
+      "type": "fixed",
+      "object1": "foot3",
+      "object2": "tibia3",
+      "point": [-3,2,0.5]
+    },
+    "heel4": {
+      "type": "fixed",
+      "object1": "foot4",
+      "object2": "tibia4",
+      "point": [-3,-2,0.5]
+    },
+    "knee1": {
+      "type": "hinge",
+      "object1": "tibia1",
+      "object2": "femur1",
+      "point": [3,2,2]
+    },
+    "knee2": {
+      "type": "hinge",
+      "object1": "tibia2",
+      "object2": "femur2",
+      "point": [3,-2,2]
+    },
+    "knee3": {
+      "type": "hinge",
+      "object1": "tibia3",
+      "object2": "femur3",
+      "point": [-3,2,2]
+    },
+    "knee4": {
+      "type": "hinge",
+      "object1": "tibia4",
+      "object2": "femur4",
+      "point": [-3,-2,2]
+    },
+    "hip1": {
+      "type": "ball",
+      "object1": "femur1",
+      "object2": "spine",
+      "point": [3,2,4]
+    },
+    "hip2": {
+      "type": "ball",
+      "object1": "femur2",
+      "object2": "spine",
+      "point": [3,-2,4]
+    },
+    "hip3": {
+      "type": "ball",
+      "object1": "femur3",
+      "object2": "spine",
+      "point": [-3,2,4]
+    },
+    "hip4": {
+      "type": "ball",
+      "object1": "femur4",
+      "object2": "spine",
+      "point": [-3,-2,4]
     }
   }
 }

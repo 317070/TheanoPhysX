@@ -57,18 +57,14 @@ class MyApp(ShowBase):
         # Load the environment model.
         self.objects = dict()
 
-        #self.physics.addBallAndSocketConstraint(self.objects[0], self.objects[1],[0,0,1],{"beta": 0.8})
-        #self.physics.addSliderConstraint(self.objects[0], self.objects[1],{"beta": 0.8})
-        #self.physics.addFixedConstraint(0, 1,[0,0,2],{"beta": 0.8})
-
-        #self.physics.addHingeConstraint(self.objects[0], self.objects[1],[0,0,1],[0,1,0], {"beta": 0.001, "motor_position": -1, "motor_velocity": 1, "motor_torque": 0.5, "delta":0.01})
-        self.load_robot_model("robotmodel/test.json")
+        #self.load_robot_model("robotmodel/test.json")
+        self.load_robot_model("robotmodel/predator.json")
 
     def addSphere(self, name, radius, position, rotation, velocity, **parameters):
         #smiley = self.loader.loadModel("zup-axis")
         smiley = self.loader.loadModel("smiley")
         smiley.setScale(radius,radius,radius)
-        smiley.setTexture(self.loader.loadTexture('maps/noise.rgb'), 1)
+        smiley.setTexture(self.loader.loadTexture('textures/soccer.png'), 1)
 
         # Reparent the model to render.
         smiley.reparentTo(self.render)
@@ -82,9 +78,16 @@ class MyApp(ShowBase):
 
     def addCube(self, name, dimensions, position, rotation, velocity, **parameters):
         #smiley = self.loader.loadModel("zup-axis")
-        cube = self.loader.loadModel("box")
+        cube = self.loader.loadModel("textures/box.egg")
         cube.setScale(*dimensions)
         cube.setTexture(self.loader.loadTexture('maps/noise.rgb'), 1)
+
+        tex = self.loader.loadTexture('textures/square.png')
+        tex.setWrapU(Texture.WMClamp)
+        tex.setWrapV(Texture.WMClamp)
+        cube.setTexture(tex,1)
+        if "color" in parameters:
+            cube.setColor(*parameters["color"])
 
         # Reparent the model to render.
         cube.reparentTo(self.render)
@@ -122,25 +125,30 @@ class MyApp(ShowBase):
             elif joint["type"] == "fixed":
                 self.physics.addFixedConstraint(jointname, **parameters)
 
+            elif joint["type"] == "ball":
+                self.physics.addBallAndSocketConstraint(jointname, **parameters)
+        """
         for motorname, motor in robot_dict["motors"].iteritems():
             parameters = dict(robot_dict["default_motor_parameters"]["default"])  # copy
             if joint["type"] in robot_dict["default_motor_parameters"]:
                 parameters.update(robot_dict["default_motor_parameters"][joint["type"]])
             parameters.update(joint)
-
+        """
 
 
 
     # Define a procedure to move the camera.
     def spinCameraTask(self, task):
-        self.physics.do_time_step(dt=5e-3)
+        self.physics.do_time_step(dt=0.005)
         for obj_name, obj in self.objects.iteritems():
+            if (abs(self.physics.getPosition(obj_name)) > 10**5).any():
+                print "problem with", obj_name
             obj.setPos(*self.physics.getPosition(obj_name)[:3])
             obj.setQuat(self.render, fixQuat(self.physics.getPosition(obj_name)[3:]))
 
         # change camera movement
-        self.camera.setPos(*(self.physics.getPosition("reference1")[:3] - [0,20,0]))
-        self.camera.lookAt(*self.physics.getPosition("reference1")[:3])
+        self.camera.setPos(0,20,3)
+        self.camera.lookAt(0,0,3)
         time.sleep(0.001)
         return Task.cont
 
