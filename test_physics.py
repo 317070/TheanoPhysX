@@ -114,13 +114,19 @@ class MyApp(ShowBase):
                 parameters.update(robot_dict["default_joint_parameters"][joint["type"]])
             parameters.update(joint)
             if joint["type"] == "hinge":
-                self.physics.addHingeConstraint(joint["from"], joint["to"], joint["point"], joint["axis"], {"beta": 0.001, "motor_position": -1, "motor_velocity": 1, "motor_torque": 0.5, "delta":0.01})
+                self.physics.addHingeConstraint(jointname, **parameters)
 
             elif joint["type"] == "ground":
-                self.physics.addGroundConstraint(joint["from"], {"mu":0.5, "alpha":0.6, "gamma":0.0, "delta":0.001, "torsional_friction": True})
+                self.physics.addGroundConstraint(jointname, **parameters)
 
             elif joint["type"] == "fixed":
-                self.physics.addFixedConstraint(joint["from"], joint["to"], joint["point"], {"mu":0.5, "alpha":0.6, "gamma":0.0, "delta":0.001, "torsional_friction": True})
+                self.physics.addFixedConstraint(jointname, **parameters)
+
+        for motorname, motor in robot_dict["motors"].iteritems():
+            parameters = dict(robot_dict["default_motor_parameters"]["default"])  # copy
+            if joint["type"] in robot_dict["default_motor_parameters"]:
+                parameters.update(robot_dict["default_motor_parameters"][joint["type"]])
+            parameters.update(joint)
 
 
 
