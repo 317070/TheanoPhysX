@@ -3,23 +3,20 @@
   "mass density": 1.0,
   "default_joint_parameters":{
     "default":{
-      "f": 0.01,
-      "zeta": 1.0
+      "f": 2,
+      "zeta": 0.001
     },
     "ground":{
       "mu": 0.5,
       "torsional_friction": true,
       "delta": 0.001,
       "alpha": 0.5,
-      "f": 200,
-      "zeta": 0.8
+      "f": 20
     },
     "hinge":{
       "axis": [0,1,0]
     },
     "fixed":{
-      "f": 200,
-      "zeta": 0.8
     },
     "ball":{
 
@@ -44,7 +41,7 @@
         "position": [0,0,5],
         "dimensions": [7,3,2],
         "rotation": [1,0,0,0],
-        "velocity": [0.1,0,0,0,2,0],
+        "velocity": [0.01,0,0,0,0,0],
         "color": [0,0.8,0.2]
       }
     ],
