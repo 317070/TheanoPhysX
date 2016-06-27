@@ -53,7 +53,7 @@ class Rigid3DBodyEngine(object):
         self.massMatrices = np.zeros(shape=(0,6,6))
         self.objects = dict()
         self.constraints = []
-        self.num_iterations = 1
+        self.num_iterations = 5
 
     def addCube(self, reference, dimensions, position, velocity):
         self.objects[reference] = self.positionVectors.shape[0]
@@ -177,7 +177,7 @@ class Rigid3DBodyEngine(object):
         parameters['axis'] = axis
         parameters['axis_in_model1_coordinates'] = convert_world_to_model_coordinate_no_bias(axis, self.positionVectors[idx1,:])
 
-        parameters['q_init'] = q_div(self.positionVectors[idx2,3:], self.positionVectors[idx1,3:])
+        parameters['q_init'] = normalize(q_mult(self.positionVectors[idx2,3:], q_inv(self.positionVectors[idx1,3:])))
 
         self.addConstraint("limit", [object1, object2], parameters)
 
@@ -320,7 +320,7 @@ class Rigid3DBodyEngine(object):
                         v[c_idx+i,1,:] = newv[idx2,:]
                         if i==0:
                             J[c_idx+i,0,:] = np.concatenate([np.zeros((3,)),-np.dot(b1x,skew_symmetric(a2x))])
-                            J[c_idx+i,1,:] = np.concatenate([np.zeros((3,)), np.dot(b1x, skew_symmetric(a2x))])
+                            J[c_idx+i,1,:] = np.concatenate([np.zeros((3,)), np.dot(b1x,skew_symmetric(a2x))])
                         else:
                             J[c_idx+i,0,:] = np.concatenate([np.zeros((3,)),-np.dot(c1x,skew_symmetric(a2x))])
                             J[c_idx+i,1,:] = np.concatenate([np.zeros((3,)), np.dot(c1x,skew_symmetric(a2x))])
@@ -329,7 +329,7 @@ class Rigid3DBodyEngine(object):
                         map_object_to_constraint[idx1].append(2*(c_idx+i) + 0)
                         map_object_to_constraint[idx2].append(2*(c_idx+i) + 1)
 
-                    b_error[c_idx:c_idx+2] =np.array([np.sum(a2x*b1x),np.sum(a2x*c1x)])
+                    b_error[c_idx:c_idx+2] = np.array([np.sum(a2x*b1x),np.sum(a2x*c1x)])
                     w[c_idx:c_idx+3] = parameters["f"] * 2*np.pi
                     zeta[c_idx:c_idx+3] = parameters["zeta"]
 
@@ -337,13 +337,15 @@ class Rigid3DBodyEngine(object):
 
                 if constraint == "limit":
                     angle = parameters["angle"]/180. * np.pi
-
-                    q_current = normalize(q_div(positions[idx2,3:], positions[idx1,3:]))
-                    q_diff = q_div(q_current, parameters['q_init'])
+                    q_current = normalize(q_mult(positions[idx2,3:], q_inv(positions[idx1,3:])))
+                    q_diff = q_mult(q_current, q_inv(parameters['q_init']))
                     a = convert_model_to_world_coordinate_no_bias(parameters['axis_in_model1_coordinates'], positions[idx1,:])
                     dot = np.sum(q_diff[1:] * a)
                     sin_theta2 = ((dot>0) * 2 - 1) * np.sqrt(np.sum(q_diff[1:]*q_diff[1:]))
                     theta = 2*np.arctan2(sin_theta2,q_diff[0])
+
+                    if c_idx==47:
+                        print theta, dot
 
                     v[c_idx,0,:] = newv[idx1,:]
                     v[c_idx,1,:] = newv[idx2,:]
@@ -488,14 +490,14 @@ class Rigid3DBodyEngine(object):
             CFM = 1./(c+dt*k)
             ERP = dt*k/(c+dt*k)
 
-            m_c = 1/(1/m_eff + CFM)
+            m_c = 1./(1./m_eff + CFM)
             b = ERP/dt * b_error + b_res
             lamb = - m_c * (np.sum(J*v, axis=(-1,-2)) + CFM * P + b)
             P += lamb
             clipping_limit = np.abs(clipping_a * P[clipping_idx] + clipping_b)
             P = np.clip(P,-clipping_limit, clipping_limit)
             applicable = (1-(only_when_positive*( 1-(P>=0)) )) * C
-
+            print applicable[[47,48]]
             result = np.sum(mass_matrix*J[:,:,None,:], axis=(-1)) * P[:,None,None] * applicable[:,None,None]
             result = result.reshape(result.shape[:-3] + (2*num_constraints,6))
             for i in xrange(newv.shape[0]):
@@ -541,6 +543,11 @@ def q_mult(q1, q2):
     z = w1 * z2 + z1 * w2 + x1 * y2 - y1 * x2
     res = np.array([w, x, y, z]).T
     return res
+
+def q_inv(q):
+    w, x, y, z = q
+    return [w,-x,-y,-z]
+
 
 def q_div(q1, q2):
     w, x, y, z = q2

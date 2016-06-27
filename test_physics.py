@@ -149,7 +149,7 @@ class MyApp(ShowBase):
 
     # Define a procedure to move the camera.
     def spinCameraTask(self, task):
-        self.physics.do_time_step(dt=0.001)
+        self.physics.do_time_step(dt=0.01)
         for obj_name, obj in self.objects.iteritems():
             if (abs(self.physics.getPosition(obj_name)) > 10**5).any():
                 print "problem with", obj_name
@@ -158,7 +158,9 @@ class MyApp(ShowBase):
 
         # change camera movement
         self.camera.setPos(0,20,3)
-        self.camera.lookAt(0,0,3)
+        #self.camera.lookAt(0,0,3)
+        self.camera.lookAt(*self.physics.getPosition("spine")[:3])
+
         time.sleep(0.001)
         return Task.cont
 

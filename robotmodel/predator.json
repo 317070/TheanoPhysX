@@ -4,7 +4,7 @@
   "default_constraint_parameters":{
     "default":{
       "f": 1,
-      "zeta": 0.0001
+      "zeta": 0.1
     },
     "ground":{
       "mu": 0.5,
@@ -28,10 +28,20 @@
     "fixed":{
     },
     "ball":{
+      "limits": [
+        {
+          "axis": [0,0,1],
+          "angle": -45
+        },
+        {
+          "axis": [0,0,1],
+          "angle": 45
+        }
+      ]
     },
     "limit":{
-      "f": 1,
-      "zeta": 0.0001
+      "f": 0.7,
+      "zeta": 0.01
     }
   },
   "default_model_parameters":{
