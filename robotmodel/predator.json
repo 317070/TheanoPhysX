@@ -1,10 +1,10 @@
 {
   "name": "Predator",
   "mass density": 1.0,
-  "default_joint_parameters":{
+  "default_constraint_parameters":{
     "default":{
-      "f": 3,
-      "zeta": 0.000
+      "f": 1,
+      "zeta": 0.0001
     },
     "ground":{
       "mu": 0.5,
@@ -13,12 +13,25 @@
       "alpha": 0.5
     },
     "hinge":{
-      "axis": [0,1,0]
+      "axis": [0,1,0],
+      "limits": [
+        {
+          "axis": [0,1,0],
+          "angle": -90
+        },
+        {
+          "axis": [0,1,0],
+          "angle": 90
+        }
+      ]
     },
     "fixed":{
     },
     "ball":{
-
+    },
+    "limit":{
+      "f": 1,
+      "zeta": 0.0001
     }
   },
   "default_model_parameters":{

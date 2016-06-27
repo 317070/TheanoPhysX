@@ -24,7 +24,7 @@ class MyApp(ShowBase):
         tmp.reparentTo(self.render)
 
         tmp.setPos(0, 0, 0)
-        tmp.lookAt((0, 0, -2))
+        tmp.lookAt((0, 0, 2))
         tmp.setColor(1.0,1.0,1.0,0.)
         tex = self.loader.loadTexture('textures/grid2.png')
         tex.setWrapU(Texture.WMRepeat)
@@ -42,7 +42,7 @@ class MyApp(ShowBase):
         directionalLight.setColor(Vec4(0.8, 0.8, 0.8, 1))
         directionalLightNP = self.render.attachNewNode(directionalLight)
         # This light is facing backwards, towards the camera.
-        directionalLightNP.setHpr(-130, -50, 0)
+        directionalLightNP.setHpr(-120, -50, 0)
         directionalLightNP.node().setScene(self.render)
         directionalLightNP.node().setShadowCaster(True)
         directionalLightNP.node().getLens().setFov(40)
@@ -112,9 +112,9 @@ class MyApp(ShowBase):
                 self.addSphere(elementname, **parameters)
 
         for jointname, joint in robot_dict["joints"].iteritems():
-            parameters = dict(robot_dict["default_joint_parameters"]["default"])  # copy
-            if joint["type"] in robot_dict["default_joint_parameters"]:
-                parameters.update(robot_dict["default_joint_parameters"][joint["type"]])
+            parameters = dict(robot_dict["default_constraint_parameters"]["default"])  # copy
+            if joint["type"] in robot_dict["default_constraint_parameters"]:
+                parameters.update(robot_dict["default_constraint_parameters"][joint["type"]])
             parameters.update(joint)
             if joint["type"] == "hinge":
                 self.physics.addHingeConstraint(jointname, **parameters)
@@ -127,6 +127,16 @@ class MyApp(ShowBase):
 
             elif joint["type"] == "ball":
                 self.physics.addBallAndSocketConstraint(jointname, **parameters)
+
+            if "limits" in parameters:
+                for limit in parameters["limits"]:
+                    limitparameters = dict(robot_dict["default_constraint_parameters"]["default"])
+                    if "limit" in robot_dict["default_constraint_parameters"]:
+                        limitparameters.update(robot_dict["default_constraint_parameters"]["limit"])
+                    limitparameters.update(limit)
+                    self.physics.addLimitConstraint(joint["object1"], joint["object2"], **limitparameters)
+
+
         """
         for motorname, motor in robot_dict["motors"].iteritems():
             parameters = dict(robot_dict["default_motor_parameters"]["default"])  # copy
@@ -139,7 +149,7 @@ class MyApp(ShowBase):
 
     # Define a procedure to move the camera.
     def spinCameraTask(self, task):
-        self.physics.do_time_step(dt=0.005)
+        self.physics.do_time_step(dt=0.001)
         for obj_name, obj in self.objects.iteritems():
             if (abs(self.physics.getPosition(obj_name)) > 10**5).any():
                 print "problem with", obj_name
