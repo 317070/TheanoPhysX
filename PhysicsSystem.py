@@ -148,6 +148,32 @@ class Rigid3DBodyEngine(object):
         self.addConstraint("fixed", [object1, object2], parameters)
 
 
+    def addMotorConstraint(self, motor_id, object1, object2, axis, **parameters):
+        idx1 = self.objects[object1]
+        idx2 = self.objects[object2]
+
+        # create two forbidden axis:
+        axis = np.array(axis)
+        axis = axis / np.linalg.norm(axis)
+        parameters['motor_id'] = motor_id
+        parameters['axis'] = axis
+        parameters['axis_in_model1_coordinates'] = convert_world_to_model_coordinate_no_bias(axis, self.positionVectors[idx1,:])
+
+        self.addConstraint("motor", [object1, object2], parameters)
+
+
+    def addAngleLimitConstraint(self, motor_id, object1, object2, axis, **parameters):
+        idx1 = self.objects[object1]
+        idx2 = self.objects[object2]
+
+        # create two forbidden axis:
+        axis = np.array(axis)
+        axis = axis / np.linalg.norm(axis)
+        parameters['axis'] = axis
+        parameters['axis_in_model1_coordinates'] = convert_world_to_model_coordinate_no_bias(axis, self.positionVectors[idx1,:])
+
+        self.addConstraint("limit", [object1, object2], parameters)
+
 
     def evaluate(self, dt, positions, velocities):
         # ALL CONSTRAINTS CAN BE TRANSFORMED TO VELOCITY CONSTRAINTS!
@@ -463,16 +489,14 @@ class Rigid3DBodyEngine(object):
         return newv
 
 
-    def do_time_step(self, dt=1e-3):
+    def do_time_step(self, dt=1e-3, motor_signals=[]):
 
-        newv = self.evaluate(dt, self.positionVectors, self.velocityVectors)
-        print
         ##################
         # --- Step 3 --- #
         ##################
         # In the third step, we integrate the new position x2 of the bodies using the new velocities
         # v2 computed in the second step with : x2 = x1 + dt * v2.
-        self.velocityVectors = newv
+        self.velocityVectors = self.evaluate(dt, self.positionVectors, self.velocityVectors)
 
         self.positionVectors[:,:3] = self.positionVectors[:,:3] + self.velocityVectors[:,:3] * dt
 
@@ -485,6 +509,9 @@ class Rigid3DBodyEngine(object):
     def getPosition(self, reference):
         idx = self.objects[reference]
         return self.positionVectors[idx]
+
+    def getSensorValues(self):
+        pass
 
 
 def q_mult(q1, q2):

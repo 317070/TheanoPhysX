@@ -42,7 +42,7 @@ class MyApp(ShowBase):
         directionalLight.setColor(Vec4(0.8, 0.8, 0.8, 1))
         directionalLightNP = self.render.attachNewNode(directionalLight)
         # This light is facing backwards, towards the camera.
-        directionalLightNP.setHpr(0, -50, 0)
+        directionalLightNP.setHpr(-130, -50, 0)
         directionalLightNP.node().setScene(self.render)
         directionalLightNP.node().setShadowCaster(True)
         directionalLightNP.node().getLens().setFov(40)
