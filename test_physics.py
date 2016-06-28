@@ -1,3 +1,4 @@
+from direct.gui.OnscreenText import OnscreenText
 from direct.showbase.ShowBase import ShowBase
 from math import pi, sin, cos
 from direct.task import Task
@@ -19,6 +20,8 @@ class MyApp(ShowBase):
         self.t = 0
 
         self.setFrameRateMeter(True)
+        cour = self.loader.loadFont('cmtt12.egg')
+        self.textObject = OnscreenText(font= cour, text = 'abcdefghijklmnopqrstuvwxyz', pos=(0, -0.045), parent = self.a2dTopCenter, bg=(0,0,0,0.5), fg =(1,1,1,1), scale = 0.07, mayChange=True)
         cm = CardMaker("ground")
         cm.setFrame(-2000, 2000, -2000, 2000)
         cm.setUvRange(Point2(-2000/5,-2000/5),Point2(2000/5,2000/5))
@@ -162,7 +165,7 @@ class MyApp(ShowBase):
     # Define a procedure to move the camera.
     def spinCameraTask(self, task):
         DT = 0.01
-        self.physics.do_time_step(dt=DT, motor_signals=[sin(self.t),-sin(self.t),sin(self.t),-sin(self.t)])
+        self.physics.do_time_step(dt=DT, motor_signals=[sin(self.t),sin(self.t),-sin(self.t),-sin(self.t)])
 
         self.t += DT
 
@@ -177,6 +180,7 @@ class MyApp(ShowBase):
         #self.camera.lookAt(0,0,3)
         self.camera.lookAt(*self.physics.getPosition("spine")[:3])
 
+        self.textObject.setText('Time: %3.3f s\n%3.3fx real time\n%s' % ( self.t,0 , ""))
         time.sleep(0.001)
         return Task.cont
 
