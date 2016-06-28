@@ -6,6 +6,16 @@
       "f": 1,
       "zeta": 0.1
     },
+    "motor": {
+      "type": "position",
+      "motor_velocity": 0.1,
+      "motor_velocity": 1,
+      "motor_torque": 0.5,
+      "min": -45,
+      "max": 45,
+      "delta": 0.01,
+      "axis": [0,1,0]
+    },
     "ground":{
       "mu": 0.5,
       "torsional_friction": true,
@@ -30,12 +40,28 @@
     "ball":{
       "limits": [
         {
-          "axis": [0,0,1],
+          "axis": [0,1,0],
+          "angle": -45
+        },
+        {
+          "axis": [0,1,0],
+          "angle": 45
+        },
+        {
+          "axis": [1,0,0],
+          "angle": 45
+        },
+        {
+          "axis": [1,0,0],
           "angle": -45
         },
         {
           "axis": [0,0,1],
           "angle": 45
+        },
+        {
+          "axis": [0,0,1],
+          "angle": -45
         }
       ]
     },
@@ -61,7 +87,7 @@
       {
         "shape": "cube",
         "position": [0,0,5],
-        "dimensions": [7,3,2],
+        "dimensions": [7,3,0.1],
         "rotation": [1,0,0,0],
         "velocity": [0.01,0,0,0,0,0],
         "color": [0,0.8,0.2]
@@ -217,25 +243,45 @@
       "type": "hinge",
       "object1": "tibia1",
       "object2": "femur1",
-      "point": [3,2,2]
+      "point": [3,2,2],
+      "motors": [
+        {
+          "motor_id": 0
+        }
+      ]
     },
     "knee2": {
       "type": "hinge",
       "object1": "tibia2",
       "object2": "femur2",
-      "point": [3,-2,2]
+      "point": [3,-2,2],
+      "motors": [
+        {
+          "motor_id": 1
+        }
+      ]
     },
     "knee3": {
       "type": "hinge",
       "object1": "tibia3",
       "object2": "femur3",
-      "point": [-3,2,2]
+      "point": [-3,2,2],
+      "motors": [
+        {
+          "motor_id": 2
+        }
+      ]
     },
     "knee4": {
       "type": "hinge",
       "object1": "tibia4",
       "object2": "femur4",
-      "point": [-3,-2,2]
+      "point": [-3,-2,2],
+      "motors": [
+        {
+          "motor_id": 3
+        }
+      ]
     },
     "hip1": {
       "type": "ball",

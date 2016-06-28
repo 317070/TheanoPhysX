@@ -53,7 +53,7 @@ class Rigid3DBodyEngine(object):
         self.massMatrices = np.zeros(shape=(0,6,6))
         self.objects = dict()
         self.constraints = []
-        self.num_iterations = 5
+        self.num_iterations = 1
 
     def addCube(self, reference, dimensions, position, velocity):
         self.objects[reference] = self.positionVectors.shape[0]
@@ -147,20 +147,16 @@ class Rigid3DBodyEngine(object):
 
         self.addConstraint("fixed", [object1, object2], parameters)
 
-    def addMotorConstraint(self, motor_id, object1, object2, axis, **parameters):
-        idx1 = self.objects[object1]
-        idx2 = self.objects[object2]
-
-    def addMotorConstraint(self, motor_id, object1, object2, axis, **parameters):
+    def addMotorConstraint(self, object1, object2, axis, **parameters):
         idx1 = self.objects[object1]
         idx2 = self.objects[object2]
 
         # create two forbidden axis:
         axis = np.array(axis)
         axis = axis / np.linalg.norm(axis)
-        parameters['motor_id'] = motor_id
         parameters['axis'] = axis
         parameters['axis_in_model1_coordinates'] = convert_world_to_model_coordinate_no_bias(axis, self.positionVectors[idx1,:])
+        parameters['q_init'] = q_div(self.positionVectors[idx2,3:], self.positionVectors[idx1,3:])
 
         self.addConstraint("motor", [object1, object2], parameters)
 
@@ -183,7 +179,7 @@ class Rigid3DBodyEngine(object):
 
 
 
-    def evaluate(self, dt, positions, velocities):
+    def evaluate(self, dt, positions, velocities, motor_signals):
         # ALL CONSTRAINTS CAN BE TRANSFORMED TO VELOCITY CONSTRAINTS!
 
         ##################
@@ -241,6 +237,8 @@ class Rigid3DBodyEngine(object):
             if constraint == "ground" and parameters["torsional_friction"]:
                 num_constraints += 1
             if constraint == "limit":
+                num_constraints += 1
+            if constraint == "motor":
                 num_constraints += 1
 
         # TODO: drop quaternions, use rotation matrices!
@@ -344,9 +342,6 @@ class Rigid3DBodyEngine(object):
                     sin_theta2 = ((dot>0) * 2 - 1) * np.sqrt(np.sum(q_diff[1:]*q_diff[1:]))
                     theta = 2*np.arctan2(sin_theta2,q_diff[0])
 
-                    if c_idx==47:
-                        print theta, dot
-
                     v[c_idx,0,:] = newv[idx1,:]
                     v[c_idx,1,:] = newv[idx2,:]
                     if parameters["angle"] < 0:
@@ -374,29 +369,9 @@ class Rigid3DBodyEngine(object):
 
                     c_idx += 1
 
-                if constraint == "hinge" and "velocity_motor" in parameters:
+                if constraint == "motor":
 
-                    a=parameters['axis']
-                    v[c_idx,0,:] = newv[idx1,:]
-                    v[c_idx,1,:] = newv[idx2,:]
-                    J[c_idx,0,:] = np.concatenate([np.zeros((3,)),-a])
-                    J[c_idx,1,:] = np.concatenate([np.zeros((3,)), a])
-
-                    mass_matrix[c_idx,0,:,:] = M[idx1,:,:]
-                    mass_matrix[c_idx,1,:,:] = M[idx2,:,:]
-                    map_object_to_constraint[idx1].append(2*c_idx + 0)
-                    map_object_to_constraint[idx2].append(2*c_idx + 1)
-
-                    b_error[c_idx] = parameters["motor_velocity"]
-                    clipping_a[c_idx] = 0
-                    clipping_b[c_idx] = parameters["motor_torque"]
-                    w[c_idx] = parameters["f"] * 2*np.pi
-                    zeta[c_idx] = parameters["zeta"]
-
-                    c_idx += 1
-
-                if constraint == "hinge" and "position_motor" in parameters:
-                    a=parameters['axis']
+                    a = convert_model_to_world_coordinate_no_bias(parameters['axis_in_model1_coordinates'], positions[idx1,:])
                     q_current = normalize(q_div(positions[idx2,3:], positions[idx1,3:]))
                     q_diff = q_div(q_current, parameters['q_init'])
                     dot = np.sum(q_diff[1:] * a)
@@ -413,13 +388,23 @@ class Rigid3DBodyEngine(object):
                     map_object_to_constraint[idx1].append(2*c_idx + 0)
                     map_object_to_constraint[idx2].append(2*c_idx + 1)
 
-                    b_error[c_idx] = (abs(theta-parameters["motor_position"]) > parameters["delta"]) * (2*(theta>parameters["motor_position"])-1) * parameters["motor_velocity"]
+                    motor_signal = motor_signals[parameters["motor_id"]]
+                    motor_signal = np.clip(motor_signal, parameters["min"]/180. * np.pi, parameters["max"]/180. * np.pi)
+                    print motor_signal
+
+                    if parameters["type"] == "velocity":
+                        b_error[c_idx] = motor_signal
+                    elif parameters["type"] == "position":
+                        if "delta" in parameters:
+                            b_error[c_idx] = (abs(theta-motor_signal) > parameters["delta"]) * (2*(theta>motor_signal)-1) * parameters["motor_velocity"]
+                        else:
+                            b_error[c_idx] = (2*(theta>motor_signal)-1) * parameters["motor_velocity"]
                     clipping_a[c_idx] = 0
                     clipping_b[c_idx] = parameters["motor_torque"]
                     w[c_idx] = parameters["f"] * 2*np.pi
                     zeta[c_idx] = parameters["zeta"]
-                    c_idx += 1
 
+                    c_idx += 1
 
                 if constraint == "ground":
                     r = self.radii[idx1]
@@ -497,7 +482,7 @@ class Rigid3DBodyEngine(object):
             clipping_limit = np.abs(clipping_a * P[clipping_idx] + clipping_b)
             P = np.clip(P,-clipping_limit, clipping_limit)
             applicable = (1-(only_when_positive*( 1-(P>=0)) )) * C
-            print applicable[[47,48]]
+
             result = np.sum(mass_matrix*J[:,:,None,:], axis=(-1)) * P[:,None,None] * applicable[:,None,None]
             result = result.reshape(result.shape[:-3] + (2*num_constraints,6))
             for i in xrange(newv.shape[0]):
@@ -508,15 +493,12 @@ class Rigid3DBodyEngine(object):
 
 
     def do_time_step(self, dt=1e-3, motor_signals=[]):
-
-        newv = self.evaluate(dt, self.positionVectors, self.velocityVectors)
-        #print
         ##################
         # --- Step 3 --- #
         ##################
         # In the third step, we integrate the new position x2 of the bodies using the new velocities
         # v2 computed in the second step with : x2 = x1 + dt * v2.
-        self.velocityVectors = self.evaluate(dt, self.positionVectors, self.velocityVectors)
+        self.velocityVectors = self.evaluate(dt, self.positionVectors, self.velocityVectors, motor_signals=motor_signals)
 
         self.positionVectors[:,:3] = self.positionVectors[:,:3] + self.velocityVectors[:,:3] * dt
 

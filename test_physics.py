@@ -15,7 +15,9 @@ class MyApp(ShowBase):
 
     def __init__(self):
         ShowBase.__init__(self)
-        self.names = []
+
+        self.t = 0
+
         self.setFrameRateMeter(True)
         cm = CardMaker("ground")
         cm.setFrame(-2000, 2000, -2000, 2000)
@@ -24,7 +26,7 @@ class MyApp(ShowBase):
         tmp.reparentTo(self.render)
 
         tmp.setPos(0, 0, 0)
-        tmp.lookAt((0, 0, 2))
+        tmp.lookAt((0, 0, -2))
         tmp.setColor(1.0,1.0,1.0,0.)
         tex = self.loader.loadTexture('textures/grid2.png')
         tex.setWrapU(Texture.WMRepeat)
@@ -98,6 +100,7 @@ class MyApp(ShowBase):
         self.objects[name] = cube
         self.physics.addCube(name, dimensions, position + rotation, velocity)
 
+
     def load_robot_model(self, filename):
         robot_dict = json.load(open(filename,"rb"))
         for elementname, element in robot_dict["model"].iteritems():
@@ -136,6 +139,15 @@ class MyApp(ShowBase):
                     limitparameters.update(limit)
                     self.physics.addLimitConstraint(joint["object1"], joint["object2"], **limitparameters)
 
+            if "motors" in parameters:
+                for motor in parameters["motors"]:
+                    motorparameters = dict(robot_dict["default_constraint_parameters"]["default"])
+                    if "motor" in robot_dict["default_constraint_parameters"]:
+                        motorparameters.update(robot_dict["default_constraint_parameters"]["motor"])
+                    motorparameters.update(motor)
+                    print "add"
+                    self.physics.addMotorConstraint(joint["object1"], joint["object2"], **motorparameters)
+
 
         """
         for motorname, motor in robot_dict["motors"].iteritems():
@@ -149,7 +161,11 @@ class MyApp(ShowBase):
 
     # Define a procedure to move the camera.
     def spinCameraTask(self, task):
-        self.physics.do_time_step(dt=0.01)
+        DT = 0.01
+        self.physics.do_time_step(dt=DT, motor_signals=[sin(self.t),-sin(self.t),sin(self.t),-sin(self.t)])
+
+        self.t += DT
+
         for obj_name, obj in self.objects.iteritems():
             if (abs(self.physics.getPosition(obj_name)) > 10**5).any():
                 print "problem with", obj_name
