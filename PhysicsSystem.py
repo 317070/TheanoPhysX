@@ -54,6 +54,7 @@ class Rigid3DBodyEngine(object):
         self.objects = dict()
         self.constraints = []
         self.num_iterations = 1
+        self.first_step = False
 
     def addCube(self, reference, dimensions, position, velocity):
         self.objects[reference] = self.positionVectors.shape[0]
@@ -180,6 +181,9 @@ class Rigid3DBodyEngine(object):
 
 
     def evaluate(self, dt, positions, velocities, motor_signals):
+
+
+
         # ALL CONSTRAINTS CAN BE TRANSFORMED TO VELOCITY CONSTRAINTS!
 
         ##################
@@ -390,7 +394,6 @@ class Rigid3DBodyEngine(object):
 
                     motor_signal = motor_signals[parameters["motor_id"]]
                     motor_signal = np.clip(motor_signal, parameters["min"]/180. * np.pi, parameters["max"]/180. * np.pi)
-                    print motor_signal
 
                     if parameters["type"] == "velocity":
                         b_error[c_idx] = motor_signal

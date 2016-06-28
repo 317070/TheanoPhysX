@@ -6,6 +6,7 @@ from panda3d.core import Point2, Texture, CardMaker, AmbientLight, Vec4, Directi
 from PhysicsSystem import Rigid3DBodyEngine
 import time
 import json
+import numpy as np
 
 def fixQuat(quat):
 
@@ -18,7 +19,7 @@ class MyApp(ShowBase):
         ShowBase.__init__(self)
 
         self.t = 0
-
+        self.starttime = time.time()
         self.setFrameRateMeter(True)
         cour = self.loader.loadFont('cmtt12.egg')
         self.textObject = OnscreenText(font= cour, text = 'abcdefghijklmnopqrstuvwxyz', pos=(0, -0.045), parent = self.a2dTopCenter, bg=(0,0,0,0.5), fg =(1,1,1,1), scale = 0.07, mayChange=True)
@@ -148,7 +149,6 @@ class MyApp(ShowBase):
                     if "motor" in robot_dict["default_constraint_parameters"]:
                         motorparameters.update(robot_dict["default_constraint_parameters"]["motor"])
                     motorparameters.update(motor)
-                    print "add"
                     self.physics.addMotorConstraint(joint["object1"], joint["object2"], **motorparameters)
 
 
@@ -164,8 +164,10 @@ class MyApp(ShowBase):
 
     # Define a procedure to move the camera.
     def spinCameraTask(self, task):
-        DT = 0.01
-        self.physics.do_time_step(dt=DT, motor_signals=[sin(self.t),sin(self.t),-sin(self.t),-sin(self.t)])
+        DT = 0.001
+        ph = self.t*2*np.pi
+        self.physics.do_time_step(dt=DT, motor_signals=[-sin(2*ph),sin(2*ph),sin(2*ph),-sin(2*ph)]+
+                                                       [cos(ph),0,0,-cos(ph),0,0,-cos(ph),0,0,cos(ph),0,0])
 
         self.t += DT
 
@@ -180,7 +182,9 @@ class MyApp(ShowBase):
         #self.camera.lookAt(0,0,3)
         self.camera.lookAt(*self.physics.getPosition("spine")[:3])
 
-        self.textObject.setText('Time: %3.3f s\n%3.3fx real time\n%s' % ( self.t,0 , ""))
+        real_time = time.time() - self.starttime
+
+        self.textObject.setText('Time: %3.3f s\n%3.3fx real time\n%s' % ( self.t, self.t/real_time , ""))
         time.sleep(0.001)
         return Task.cont
 
