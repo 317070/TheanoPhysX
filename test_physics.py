@@ -178,7 +178,7 @@ class MyApp(ShowBase):
 
     # Define a procedure to move the camera.
     def spinCameraTask(self, task):
-        DT = 0.01
+        DT = 0.001
         ph = self.t*2*np.pi
         sensors = self.physics.getSensorValues("spine").flatten()
         print sensors.shape

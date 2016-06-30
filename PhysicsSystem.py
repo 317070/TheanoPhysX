@@ -417,16 +417,19 @@ class Rigid3DBodyEngine(object):
                 q_current = q_mult(positions[idx2,3:], q_inv(positions[idx1,3:]))
                 q_diff = q_mult(q_current, q_inv(parameters['q_init']))
                 a = convert_model_to_world_coordinate_no_bias(parameters['axis_in_model1_coordinates'], self.rot_matrices[idx1,:,:])
+                #dot = np.sum(q_diff[1:]/np.sqrt(np.sum(q_diff[1:]**2)) * a)
                 dot = np.sum(q_diff[1:] * a)
                 sin_theta2 = ((dot>0) * 2 - 1) * np.sqrt(np.sum(q_diff[1:]*q_diff[1:]))
                 theta = 2*np.arctan2(sin_theta2,q_diff[0])
 
 
-                rot_current = np.dot(self.rot_matrices[idx1,:,:], self.rot_matrices[idx2,:,:].T)
+                rot_current = np.dot(self.rot_matrices[idx2,:,:], self.rot_matrices[idx1,:,:].T)
                 rot_diff = np.dot(rot_current, quat_to_rot_matrix(parameters['q_init']).T)
                 theta2 = np.arccos(0.5*(np.trace(rot_diff)-1))
 
-                dot2 = np.sum(np.dot(rot_diff, a))
+                #cross_product = np.dot(rot_diff - rot_diff.T, a)
+                cross = rot_diff.T - rot_diff
+                dot2 = cross[1,2] * a[0] + cross[2,0] * a[1] + cross[0,1] * a[2]
 
                 print theta,theta2,"->",dot,dot2
 
@@ -602,6 +605,8 @@ class Rigid3DBodyEngine(object):
         a = self.velocityVectors[:,3:] / (v_norm + 1e-13)[:,None]
         theta = v_norm*dt
         self.positionVectors[:,3:] = normalize(q_mult(self.positionVectors[:,3:].T, [np.cos(theta/2), a[:,0]*np.sin(theta/2), a[:,1]*np.sin(theta/2), a[:,2]*np.sin(theta/2)]))
+
+        # update rotation matrix with: http://www.euclideanspace.com/physics/kinematics/angularvelocity/
 
         for i in xrange(len(self.objects)):
             self.rot_matrices[i,:,:] = quat_to_rot_matrix(self.positionVectors[i,3:])
