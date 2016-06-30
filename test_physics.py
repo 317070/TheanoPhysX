@@ -180,6 +180,8 @@ class MyApp(ShowBase):
     def spinCameraTask(self, task):
         DT = 0.01
         ph = self.t*2*np.pi
+        sensors = self.physics.getSensorValues("spine").flatten()
+        print sensors.shape
         self.physics.do_time_step(dt=DT, motor_signals=[-sin(2*ph),sin(2*ph),sin(2*ph),-sin(2*ph)]+
                                                        [cos(ph),0,0,-cos(ph),0,0,-cos(ph),0,0,cos(ph),0,0])
 

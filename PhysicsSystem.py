@@ -64,6 +64,8 @@ class Rigid3DBodyEngine(object):
         self.clipping_a   = None
         self.clipping_idx = None
         self.clipping_b   = None
+        self.C = None
+
 
         self.rot_matrices = None
 
@@ -192,7 +194,7 @@ class Rigid3DBodyEngine(object):
 
 
     def addSensor(self, object, reference_object):
-        self.sensors
+        self.sensors.append((object,reference_object))
 
     def compile(self):
 
@@ -358,7 +360,7 @@ class Rigid3DBodyEngine(object):
         J = np.zeros((self.num_constraints,2,6))  # 0 constraints x 2 objects x 6 states
         b_res = np.zeros((self.num_constraints,))  # 0 constraints
         b_error = np.zeros((self.num_constraints,))  # 0 constraints
-        C = np.ones((self.num_constraints,))  # 0 constraints
+        self.C = np.ones((self.num_constraints,))  # 0 constraints
         mass_matrix = np.zeros((self.num_constraints,2,6,6))  # 0 constraints x 2 objects x 6 states x 6 states
 
         c_idx = 0
@@ -419,6 +421,15 @@ class Rigid3DBodyEngine(object):
                 sin_theta2 = ((dot>0) * 2 - 1) * np.sqrt(np.sum(q_diff[1:]*q_diff[1:]))
                 theta = 2*np.arctan2(sin_theta2,q_diff[0])
 
+
+                rot_current = np.dot(self.rot_matrices[idx1,:,:], self.rot_matrices[idx2,:,:].T)
+                rot_diff = np.dot(rot_current, quat_to_rot_matrix(parameters['q_init']).T)
+                theta2 = np.arccos(0.5*(np.trace(rot_diff)-1))
+
+                dot2 = np.sum(np.dot(rot_diff, a))
+
+                print theta,theta2,"->",dot,dot2
+
                 if parameters["angle"] < 0:
                     J[c_idx,0,:] = np.concatenate([np.zeros((3,)),-a])
                     J[c_idx,1,:] = np.concatenate([np.zeros((3,)), a])
@@ -432,10 +443,10 @@ class Rigid3DBodyEngine(object):
                 b_error[c_idx] = np.abs(angle - theta)
                 if parameters["angle"] > 0:
                     b_error[c_idx] = angle - theta
-                    C[c_idx] = (theta > angle)
+                    self.C[c_idx] = (theta > angle)
                 else:
                     b_error[c_idx] = theta - angle
-                    C[c_idx] = (theta < angle)
+                    self.C[c_idx] = (theta < angle)
 
                 c_idx += 1
 
@@ -473,7 +484,7 @@ class Rigid3DBodyEngine(object):
 
                 b_error[c_idx] = np.max(positions[idx1,Z] - r - parameters["delta"],0)
                 b_res[c_idx] = parameters["alpha"] * newv[idx1,Z]
-                C[c_idx] = (positions[idx1,Z] - r < 0.0)
+                self.C[c_idx] = (positions[idx1,Z] - r < 0.0)
                 c_idx += 1
 
             if constraint == "ground" and parameters["mu"]!=0:
@@ -484,7 +495,7 @@ class Rigid3DBodyEngine(object):
                     else:
                         J[c_idx+i,0,:] = np.array([1,0,0,0,r,0])
                     J[c_idx+i,1,:] = np.array([0,0,0,0,0,0])
-                    C[c_idx+i] = (positions[idx1,Z] - r < 0.0)
+                    self.C[c_idx+i] = (positions[idx1,Z] - r < 0.0)
                     mass_matrix[c_idx+i,0,:,:] = M[idx1,:,:]
                 c_idx += 2
 
@@ -492,7 +503,7 @@ class Rigid3DBodyEngine(object):
                 r = self.radii[idx1]
                 J[c_idx,0,:] = np.array([0,0,0,0,0,r])
                 J[c_idx,1,:] = np.array([0,0,0,0,0,0])
-                C[c_idx] = (positions[idx1,Z] < 0.0)
+                self.C[c_idx] = (positions[idx1,Z] < 0.0)
                 b_res[c_idx] = 0
                 mass_matrix[c_idx,0,:,:] = M[idx1,:,:]
                 c_idx += 1
@@ -566,7 +577,7 @@ class Rigid3DBodyEngine(object):
             #print np.sum(lamb**2), np.sum(self.P**2)
             clipping_limit = np.abs(self.clipping_a * self.P[self.clipping_idx] + self.clipping_b)
             self.P = np.clip(self.P,-clipping_limit, clipping_limit)
-            applicable = (1-(self.only_when_positive*( 1-(self.P>=0)) )) * C
+            applicable = (1-(self.only_when_positive*( 1-(self.P>=0)) )) * self.C
 
             result = np.sum(mass_matrix*J[:,:,None,:], axis=(-1)) * self.P[:,None,None] * applicable[:,None,None]
             result = result.reshape(result.shape[:-3] + (2*self.num_constraints,6))
@@ -577,7 +588,7 @@ class Rigid3DBodyEngine(object):
         return newv
 
 
-    def do_time_step(self, dt=1e-3, motor_signals=[]):
+    def do_time_step(self, dt=1e-3, motor_signals=list()):
         ##################
         # --- Step 3 --- #
         ##################
@@ -599,8 +610,25 @@ class Rigid3DBodyEngine(object):
         idx = self.objects[reference]
         return self.positionVectors[idx]
 
-    def getSensorValues(self):
-        pass
+    def getSensorValues(self, reference):
+        # make positionvectors neutral according to reference object
+        idx = self.objects[reference]
+        rot_matrix = self.rot_matrices[idx]
+
+        ref_position = self.positionVectors[idx,:]
+
+        result = self.positionVectors
+        result[:,:2] = result[:,:2]-ref_position[None,:2]
+        # step 1: flatten rot_matrix
+
+
+        # step 2: apply rot_matrix on positions and rotations
+
+
+
+        #result = result.flatten() + self.C[self.only_when_positive==1]
+
+        return result
 
 
 def q_mult(q1, q2):
