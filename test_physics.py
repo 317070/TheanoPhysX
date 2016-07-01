@@ -2,12 +2,12 @@ from direct.gui.OnscreenText import OnscreenText
 from direct.showbase.ShowBase import ShowBase
 from math import pi, sin, cos
 from direct.task import Task
-from panda3d.core import Point2, Texture, CardMaker, AmbientLight, Vec4, DirectionalLight, Spotlight, Quat
+from panda3d.core import Point2, Texture, CardMaker, AmbientLight, Vec4, DirectionalLight, Spotlight, Quat, LMatrix4f, \
+    LMatrix3f
 from PhysicsSystem import Rigid3DBodyEngine
 import time
 import json
 import numpy as np
-
 def fixQuat(quat):
 
     quat = (-quat[0],quat[1],quat[2],quat[3])
@@ -64,15 +64,15 @@ class MyApp(ShowBase):
         self.objects = dict()
 
         #self.load_robot_model("robotmodel/test.json")
-        self.load_robot_model("robotmodel/predator.json")
+        self.load_robot_model("robotmodel/simple_predator.json")
         self.physics.compile()
 
         if False:
             for x in xrange(1000):
                 DT = 0.01
                 ph = self.t*2*np.pi
-                self.physics.do_time_step(dt=DT, motor_signals=[-sin(2*ph),sin(2*ph),sin(2*ph),-sin(2*ph)]+
-                                                               [cos(ph),0,0,-cos(ph),0,0,-cos(ph),0,0,cos(ph),0,0])
+                self.physics.do_time_step(dt=DT, motor_signals=[0,0,0,0]+
+                                                               [0,0,0,0,0,0,0,0,0,0,0,0])
 
                 self.t += DT
                 real_time = time.time() - self.starttime
@@ -178,20 +178,25 @@ class MyApp(ShowBase):
 
     # Define a procedure to move the camera.
     def spinCameraTask(self, task):
-        DT = 0.001
+        DT = 0.01
         ph = self.t*2*np.pi
         sensors = self.physics.getSensorValues("spine").flatten()
-        print sensors.shape
-        self.physics.do_time_step(dt=DT, motor_signals=[-sin(2*ph),sin(2*ph),sin(2*ph),-sin(2*ph)]+
-                                                       [cos(ph),0,0,-cos(ph),0,0,-cos(ph),0,0,cos(ph),0,0])
+        #print sensors.shape
+        self.physics.do_time_step(dt=DT, motor_signals=[0,0,0,0]+
+                                                       [0,0,0,0,0,0,0,0,0,0,0,0])
 
         self.t += DT
 
         for obj_name, obj in self.objects.iteritems():
             if (abs(self.physics.getPosition(obj_name)) > 10**5).any():
                 print "problem with", obj_name
+            sc = obj.getScale()
+
+            #print obj_name, self.physics.getRotationMatrix(obj_name).flatten()
+
+            obj.setMat(self.render, LMatrix4f(LMatrix3f(*self.physics.getRotationMatrix(obj_name).flatten())))
             obj.setPos(*self.physics.getPosition(obj_name)[:3])
-            obj.setQuat(self.render, fixQuat(self.physics.getPosition(obj_name)[3:]))
+            obj.setScale(sc)
 
         # change camera movement
         self.camera.setPos(0,20,3)
@@ -202,7 +207,7 @@ class MyApp(ShowBase):
 
         self.textObject.setText('Time: %3.3f s\n%3.3fx real time\n%s' % ( self.t, self.t/real_time , ""))
         #time.sleep(0.001)
-        if real_time>10:
+        if real_time>100:
             self.userExit()
         return Task.cont
 

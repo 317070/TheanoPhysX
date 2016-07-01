@@ -4,6 +4,7 @@ __author__ = 'jonas'
 import numpy as np
 import scipy.linalg
 import random
+np.seterr(all='raise')
 
 X = 0
 Y = 1
@@ -171,7 +172,7 @@ class Rigid3DBodyEngine(object):
         axis = axis / np.linalg.norm(axis)
         parameters['axis'] = axis
         parameters['axis_in_model1_coordinates'] = convert_world_to_model_coordinate_no_bias(axis, self.positionVectors[idx1,:])
-        parameters['q_init'] = q_div(self.positionVectors[idx2,3:], self.positionVectors[idx1,3:])
+
 
         self.addConstraint("motor", [object1, object2], parameters)
 
@@ -253,6 +254,7 @@ class Rigid3DBodyEngine(object):
                 c_idx += 3
 
             if constraint == "slider" or constraint == "fixed":
+                parameters['rot_init'] = np.dot(self.rot_matrices[idx2,:,:], self.rot_matrices[idx1,:,:].T)
 
                 for i in xrange(3):
                     self.map_object_to_constraint[idx1].append(2*(c_idx+i) + 0)
@@ -273,6 +275,7 @@ class Rigid3DBodyEngine(object):
                 c_idx += 2
 
             if constraint == "limit":
+                parameters['rot_init'] = np.dot(self.rot_matrices[idx2,:,:], self.rot_matrices[idx1,:,:].T)
                 self.map_object_to_constraint[idx1].append(2*c_idx + 0)
                 self.map_object_to_constraint[idx2].append(2*c_idx + 1)
 
@@ -282,6 +285,8 @@ class Rigid3DBodyEngine(object):
                 c_idx += 1
 
             if constraint == "motor":
+                parameters['rot_init'] = np.dot(self.rot_matrices[idx2,:,:], self.rot_matrices[idx1,:,:].T)
+
                 self.map_object_to_constraint[idx1].append(2*c_idx + 0)
                 self.map_object_to_constraint[idx2].append(2*c_idx + 1)
 
@@ -389,9 +394,17 @@ class Rigid3DBodyEngine(object):
                     mass_matrix[c_idx+i,0,:,:] = M[idx1,:,:]
                     mass_matrix[c_idx+i,1,:,:] = M[idx2,:,:]
 
+                rot_current = np.dot(self.rot_matrices[idx2,:,:], self.rot_matrices[idx1,:,:].T)
+                rot_diff = np.dot(rot_current, parameters['rot_init'].T)
+                cross = rot_diff.T - rot_diff
+
                 q_current = q_div(positions[idx2,3:], positions[idx1,3:])
                 q_diff = q_div(q_current, parameters['q_init'])
                 b_error[c_idx:c_idx+3] = 2*q_diff[1:]
+
+                b_error[c_idx] = 0#cross[1,2]
+                b_error[c_idx+1] = 0#cross[2,0]
+                b_error[c_idx+2] = 0#cross[0,1]
                 c_idx += 3
 
             if constraint == "hinge":
@@ -414,24 +427,13 @@ class Rigid3DBodyEngine(object):
 
             if constraint == "limit":
                 angle = parameters["angle"]/180. * np.pi
-                q_current = q_mult(positions[idx2,3:], q_inv(positions[idx1,3:]))
-                q_diff = q_mult(q_current, q_inv(parameters['q_init']))
                 a = convert_model_to_world_coordinate_no_bias(parameters['axis_in_model1_coordinates'], self.rot_matrices[idx1,:,:])
-                #dot = np.sum(q_diff[1:]/np.sqrt(np.sum(q_diff[1:]**2)) * a)
-                dot = np.sum(q_diff[1:] * a)
-                sin_theta2 = ((dot>0) * 2 - 1) * np.sqrt(np.sum(q_diff[1:]*q_diff[1:]))
-                theta = 2*np.arctan2(sin_theta2,q_diff[0])
-
-
                 rot_current = np.dot(self.rot_matrices[idx2,:,:], self.rot_matrices[idx1,:,:].T)
                 rot_diff = np.dot(rot_current, quat_to_rot_matrix(parameters['q_init']).T)
                 theta2 = np.arccos(0.5*(np.trace(rot_diff)-1))
-
-                #cross_product = np.dot(rot_diff - rot_diff.T, a)
                 cross = rot_diff.T - rot_diff
                 dot2 = cross[1,2] * a[0] + cross[2,0] * a[1] + cross[0,1] * a[2]
-
-                print theta,theta2,"->",dot,dot2
+                theta = ((dot2>0) * 2 - 1) * theta2
 
                 if parameters["angle"] < 0:
                     J[c_idx,0,:] = np.concatenate([np.zeros((3,)),-a])
@@ -456,11 +458,12 @@ class Rigid3DBodyEngine(object):
             if constraint == "motor":
 
                 a = convert_model_to_world_coordinate_no_bias(parameters['axis_in_model1_coordinates'], self.rot_matrices[idx1,:,:])
-                q_current = q_div(positions[idx2,3:], positions[idx1,3:])
-                q_diff = q_div(q_current, parameters['q_init'])
-                dot = np.sum(q_diff[1:] * a)
-                sin_theta2 = np.sqrt(np.sum(q_diff[1:]*q_diff[1:]))
-                theta = 2*((dot>0) * 2 - 1)*np.arctan2(sin_theta2,q_diff[0])
+                rot_current = np.dot(self.rot_matrices[idx2,:,:], self.rot_matrices[idx1,:,:].T)
+                rot_diff = np.dot(rot_current, parameters['rot_init'].T)
+                theta2 = np.arccos(0.5*(np.trace(rot_diff)-1))
+                cross = rot_diff.T - rot_diff
+                dot2 = cross[1,2] * a[0] + cross[2,0] * a[1] + cross[0,1] * a[2]
+                theta = ((dot2>0) * 2 - 1) * theta2
 
                 J[c_idx,0,:] = np.concatenate([np.zeros((3,)),-a])
                 J[c_idx,1,:] = np.concatenate([np.zeros((3,)), a])
@@ -473,10 +476,16 @@ class Rigid3DBodyEngine(object):
                 if parameters["type"] == "velocity":
                     b_error[c_idx] = motor_signal
                 elif parameters["type"] == "position":
+                    b_error[c_idx] = (theta-motor_signal) * 0.000000 * parameters["motor_velocity"]
+                    """
                     if "delta" in parameters:
-                        b_error[c_idx] = (abs(theta-motor_signal) > parameters["delta"]) * (2*(theta>motor_signal)-1) * parameters["motor_velocity"]
+                        b_error[c_idx] = (abs(theta-motor_signal) > parameters["delta"]) * 10 * (theta-motor_signal) * parameters["motor_velocity"]
                     else:
-                        b_error[c_idx] = (2*(theta>motor_signal)-1) * parameters["motor_velocity"]
+                        b_error[c_idx] = (theta-motor_signal) * parameters["motor_velocity"]
+                    """
+
+                print theta, motor_signal
+
                 c_idx += 1
 
             if constraint == "ground":
@@ -601,19 +610,27 @@ class Rigid3DBodyEngine(object):
 
         self.positionVectors[:,:3] = self.positionVectors[:,:3] + self.velocityVectors[:,:3] * dt
 
-        v_norm = np.linalg.norm(self.velocityVectors[:,3:], axis=-1)
-        a = self.velocityVectors[:,3:] / (v_norm + 1e-13)[:,None]
-        theta = v_norm*dt
-        self.positionVectors[:,3:] = normalize(q_mult(self.positionVectors[:,3:].T, [np.cos(theta/2), a[:,0]*np.sin(theta/2), a[:,1]*np.sin(theta/2), a[:,2]*np.sin(theta/2)]))
+        #v_norm = np.linalg.norm(self.velocityVectors[:,3:], axis=-1)
+        #a = self.velocityVectors[:,3:] / (v_norm + 1e-13)[:,None]
+        #theta = v_norm*dt
+        #self.positionVectors[:,3:] = normalize(q_mult(self.positionVectors[:,3:].T, [np.cos(theta/2), a[:,0]*np.sin(theta/2), a[:,1]*np.sin(theta/2), a[:,2]*np.sin(theta/2)]))
 
         # update rotation matrix with: http://www.euclideanspace.com/physics/kinematics/angularvelocity/
 
         for i in xrange(len(self.objects)):
-            self.rot_matrices[i,:,:] = quat_to_rot_matrix(self.positionVectors[i,3:])
+            self.rot_matrices[i,:,:] = normalize_matrix(self.rot_matrices[i,:,:] + np.dot(self.rot_matrices[i,:,:], skew_symmetric(dt * self.velocityVectors[i,3:])))
+
+        #for i in xrange(len(self.objects)):
+            #self.rot_matrices[i,:,:] = quat_to_rot_matrix(self.positionVectors[i,3:])
+
 
     def getPosition(self, reference):
         idx = self.objects[reference]
         return self.positionVectors[idx]
+
+    def getRotationMatrix(self, reference):
+        idx = self.objects[reference]
+        return self.rot_matrices[idx]
 
     def getSensorValues(self, reference):
         # make positionvectors neutral according to reference object
@@ -634,6 +651,7 @@ class Rigid3DBodyEngine(object):
         #result = result.flatten() + self.C[self.only_when_positive==1]
 
         return result
+
 
 
 def q_mult(q1, q2):
@@ -657,3 +675,9 @@ def q_div(q1, q2):
 
 def normalize(q):
     return q/np.linalg.norm(q, axis=-1, keepdims=True)
+
+
+def normalize_matrix(A):
+    for i in xrange(10):
+        A = (3*A - np.dot(A, np.dot(A.T, A))) / 2
+    return A
