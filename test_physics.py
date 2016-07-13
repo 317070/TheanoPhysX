@@ -64,7 +64,8 @@ class MyApp(ShowBase):
         self.objects = dict()
 
         #self.load_robot_model("robotmodel/test.json")
-        self.load_robot_model("robotmodel/simple_predator.json")
+        self.load_robot_model("robotmodel/predator.json")
+        #self.load_robot_model("robotmodel/simple_predator.json")
         self.physics.compile()
 
         if False:
@@ -72,7 +73,7 @@ class MyApp(ShowBase):
                 DT = 0.01
                 ph = self.t*2*np.pi
                 self.physics.do_time_step(dt=DT, motor_signals=[0,0,0,0]+
-                                                               [0,0,0,0,0,0,0,0,0,0,0,0])
+                                                               [1,0,0,0,0,0,0,0,0,0,0,0])
 
                 self.t += DT
                 real_time = time.time() - self.starttime
@@ -157,6 +158,7 @@ class MyApp(ShowBase):
                     limitparameters.update(limit)
                     self.physics.addLimitConstraint(joint["object1"], joint["object2"], **limitparameters)
 
+            #"""
             if "motors" in parameters:
                 for motor in parameters["motors"]:
                     motorparameters = dict(robot_dict["default_constraint_parameters"]["default"])
@@ -164,28 +166,20 @@ class MyApp(ShowBase):
                         motorparameters.update(robot_dict["default_constraint_parameters"]["motor"])
                     motorparameters.update(motor)
                     self.physics.addMotorConstraint(joint["object1"], joint["object2"], **motorparameters)
-
-
-        """
-        for motorname, motor in robot_dict["motors"].iteritems():
-            parameters = dict(robot_dict["default_motor_parameters"]["default"])  # copy
-            if joint["type"] in robot_dict["default_motor_parameters"]:
-                parameters.update(robot_dict["default_motor_parameters"][joint["type"]])
-            parameters.update(joint)
-        """
+            #"""
 
 
 
     # Define a procedure to move the camera.
     def spinCameraTask(self, task):
         DT = 0.01
+        self.t += DT
         ph = self.t*2*np.pi
         sensors = self.physics.getSensorValues("spine").flatten()
         #print sensors.shape
-        self.physics.do_time_step(dt=DT, motor_signals=[0,0,0,0]+
-                                                       [0,0,0,0,0,0,0,0,0,0,0,0])
+        self.physics.do_time_step(dt=DT, motor_signals=[-cos(ph),cos(ph),-cos(ph),cos(ph)]+
+                                                       [sin(ph),0,0,-sin(ph),0,0,sin(ph),0,0,-sin(ph),0,0])
 
-        self.t += DT
 
         for obj_name, obj in self.objects.iteritems():
             if (abs(self.physics.getPosition(obj_name)) > 10**5).any():

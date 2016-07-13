@@ -3,20 +3,21 @@
   "mass density": 1.0,
   "default_constraint_parameters":{
     "default":{
-      "f": 1,
-      "zeta": 0.1
+      "f": 1.0,
+      "zeta": 1.0
     },
     "motor": {
       "type": "position",
       "motor_velocity": 1,
-      "motor_torque": 0.5,
+      "motor_torque": 1e20,
       "min": -45,
       "max": 45,
       "delta": 0.01,
-      "axis": [0,1,0]
+      "axis": [0,1,0],
+      "zeta": 0.0
     },
     "ground":{
-      "mu": 0.0,
+      "mu": 1.0,
       "torsional_friction": true,
       "delta": 0.001,
       "alpha": 0.5
@@ -37,7 +38,7 @@
   },
   "default_model_parameters":{
     "default":{
-      "velocity": [0.001,0,0,0,0,0],
+      "velocity": [0,0,0,0,0,0],
       "rotation": [1,0,0,0]
     },
     "sphere":{
@@ -54,7 +55,6 @@
         "position": [0,0,4],
         "dimensions": [7,3,0.1],
         "rotation": [1,0,0,0],
-        "velocity": [0,0,0,0,0,0],
         "color": [0,0.8,0.2]
       }
     ],
@@ -230,27 +230,51 @@
     },
     "hip1": {
       "type": "ball",
-      "object1": "femur1",
-      "object2": "spine",
-      "point": [3,2,4]
+      "object2": "femur1",
+      "object1": "spine",
+      "point": [3,2,4],
+      "motors": [
+        {
+          "motor_id": 5,
+          "axis": [0,0,1]
+        }
+      ]
     },
     "hip2": {
       "type": "ball",
-      "object1": "femur2",
-      "object2": "spine",
-      "point": [3,-2,4]
+      "object2": "femur2",
+      "object1": "spine",
+      "point": [3,-2,4],
+      "motors": [
+        {
+          "motor_id": 8,
+          "axis": [0,0,1]
+        }
+      ]
     },
     "hip3": {
       "type": "ball",
-      "object1": "femur3",
-      "object2": "spine",
-      "point": [-3,2,4]
+      "object2": "femur3",
+      "object1": "spine",
+      "point": [-3,2,4],
+      "motors": [
+        {
+          "motor_id": 11,
+          "axis": [0,0,1]
+        }
+      ]
     },
     "hip4": {
       "type": "ball",
-      "object1": "femur4",
-      "object2": "spine",
-      "point": [-3,-2,4]
+      "object2": "femur4",
+      "object1": "spine",
+      "point": [-3,-2,4],
+      "motors": [
+        {
+          "motor_id": 14,
+          "axis": [0,0,1]
+        }
+      ]
     }
   }
 }
