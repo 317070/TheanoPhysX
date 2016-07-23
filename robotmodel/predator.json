@@ -14,14 +14,14 @@
       "max": 45,
       "delta": 0.01,
       "axis": [0,1,0],
-      "zeta": 0.0,
-      "f": 100.0
+      "zeta": 0.000,
+      "f": 10.0
     },
     "ground":{
       "mu": 1.5,
       "torsional_friction": true,
-      "delta": 0.001,
-      "alpha": 0.5
+      "delta": 0.01,
+      "alpha": 0.01
     },
     "hinge":{
       "axis": [0,1,0],
@@ -29,7 +29,7 @@
       ]
     },
     "fixed":{
-      "zeta": 0.0,
+      "zeta": 1.0,
       "f": 10.0
     },
     "ball":{
@@ -55,8 +55,8 @@
     "spine":[
       {
         "shape": "cube",
-        "position": [0,0,4],
-        "dimensions": [7,3,0.1],
+        "position": [0,0,0.4],
+        "dimensions": [0.7,0.3,0.01],
         "rotation": [1,0,0,0],
         "color": [0,0.8,0.2]
       }
@@ -64,8 +64,8 @@
     "femur1":[
       {
         "shape": "cube",
-        "position": [3,2,3],
-        "dimensions": [0.5,0.5,2],
+        "position": [0.3,0.2,0.3],
+        "dimensions": [0.05,0.05,0.2],
         "rotation": [1,0,0,0],
         "color": [1,0.8,0.0]
       }
@@ -73,8 +73,8 @@
     "tibia1":[
       {
         "shape": "cube",
-        "position": [3,2,1.25],
-        "dimensions": [0.5,0.5,1.5],
+        "position": [0.3,0.2,0.125],
+        "dimensions": [0.05,0.05,0.15],
         "rotation": [1,0,0,0],
         "color": [1,0.2,0.0]
       }
@@ -82,16 +82,16 @@
     "foot1":[
       {
         "shape": "sphere",
-        "position": [3,2,0.5],
-        "radius": 0.5,
+        "position": [0.3,0.2,0.05],
+        "radius": 0.05,
         "rotation": [1,0,0,0]
       }
     ],
     "femur2":[
       {
         "shape": "cube",
-        "position": [3,-2,3],
-        "dimensions": [0.5,0.5,2],
+        "position": [0.3,-0.2,0.3],
+        "dimensions": [0.05,0.05,0.2],
         "rotation": [1,0,0,0],
         "color": [1,0.8,0.0]
       }
@@ -99,8 +99,8 @@
     "tibia2":[
       {
         "shape": "cube",
-        "position": [3,-2,1.25],
-        "dimensions": [0.5,0.5,1.5],
+        "position": [0.3,-0.2,0.125],
+        "dimensions": [0.05,0.05,0.15],
         "rotation": [1,0,0,0],
         "color": [1,0.2,0.0]
       }
@@ -108,16 +108,16 @@
     "foot2":[
       {
         "shape": "sphere",
-        "position": [3,-2,0.5],
-        "radius": 0.5,
+        "position": [0.3,-0.2,0.05],
+        "radius": 0.05,
         "rotation": [1,0,0,0]
       }
     ],
     "femur3":[
       {
         "shape": "cube",
-        "position": [-3,2,3],
-        "dimensions": [0.5,0.5,2],
+        "position": [-0.3,0.2,0.3],
+        "dimensions": [0.05,0.05,0.2],
         "rotation": [1,0,0,0],
         "color": [1,0.8,0.0]
       }
@@ -125,8 +125,8 @@
     "tibia3":[
       {
         "shape": "cube",
-        "position": [-3,2,1.25],
-        "dimensions": [0.5,0.5,1.5],
+        "position": [-0.3,0.2,0.125],
+        "dimensions": [0.05,0.05,0.15],
         "rotation": [1,0,0,0],
         "color": [1,0.2,0.0]
       }
@@ -134,16 +134,16 @@
     "foot3":[
       {
         "shape": "sphere",
-        "position": [-3,2,0.5],
-        "radius": 0.5,
+        "position": [-0.3,0.2,0.05],
+        "radius": 0.05,
         "rotation": [1,0,0,0]
       }
     ],
     "femur4":[
       {
         "shape": "cube",
-        "position": [-3,-2,3],
-        "dimensions": [0.5,0.5,2],
+        "position": [-0.3,-0.2,0.3],
+        "dimensions": [0.05,0.05,0.2],
         "rotation": [1,0,0,0],
         "color": [1,0.8,0.0]
       }
@@ -151,8 +151,8 @@
     "tibia4":[
       {
         "shape": "cube",
-        "position": [-3,-2,1.25],
-        "dimensions": [0.5,0.5,1.5],
+        "position": [-0.3,-0.2,0.125],
+        "dimensions": [0.05,0.05,0.15],
         "rotation": [1,0,0,0],
         "color": [1,0.2,0.0]
       }
@@ -160,8 +160,8 @@
     "foot4":[
       {
         "shape": "sphere",
-        "position": [-3,-2,0.5],
-        "radius": 0.5,
+        "position": [-0.3,-0.2,0.05],
+        "radius": 0.05,
         "rotation": [1,0,0,0]
       }
     ]
@@ -187,31 +187,31 @@
       "type": "fixed",
       "object1": "foot1",
       "object2": "tibia1",
-      "point": [3,2,0.5]
+      "point": [0.3,0.2,0.05]
     },
     "heel2": {
       "type": "fixed",
       "object1": "foot2",
       "object2": "tibia2",
-      "point": [3,-2,0.5]
+      "point": [0.3,-0.2,0.05]
     },
     "heel3": {
       "type": "fixed",
       "object1": "foot3",
       "object2": "tibia3",
-      "point": [-3,2,0.5]
+      "point": [-0.3,0.2,0.05]
     },
     "heel4": {
       "type": "fixed",
       "object1": "foot4",
       "object2": "tibia4",
-      "point": [-3,-2,0.5]
+      "point": [-0.3,-0.2,0.05]
     },
     "knee1": {
       "type": "hinge",
       "object1": "tibia1",
       "object2": "femur1",
-      "point": [3,2,2],
+      "point": [0.3,0.2,0.2],
       "motors": [
         {
           "motor_id": 0
@@ -222,7 +222,7 @@
       "type": "hinge",
       "object1": "tibia2",
       "object2": "femur2",
-      "point": [3,-2,2],
+      "point": [0.3,-0.2,0.2],
       "motors": [
         {
           "motor_id": 1
@@ -233,7 +233,7 @@
       "type": "hinge",
       "object1": "tibia3",
       "object2": "femur3",
-      "point": [-3,2,2],
+      "point": [-0.3,0.2,0.2],
       "motors": [
         {
           "motor_id": 2
@@ -244,7 +244,7 @@
       "type": "hinge",
       "object1": "tibia4",
       "object2": "femur4",
-      "point": [-3,-2,2],
+      "point": [-0.3,-0.2,0.2],
       "motors": [
         {
           "motor_id": 3
@@ -255,7 +255,7 @@
       "type": "ball",
       "object1": "femur1",
       "object2": "spine",
-      "point": [3,2,4],
+      "point": [0.3,0.2,0.4],
       "motors": [
         {
           "motor_id": 4,
@@ -275,7 +275,7 @@
       "type": "ball",
       "object1": "femur2",
       "object2": "spine",
-      "point": [3,-2,4],
+      "point": [0.3,-0.2,0.4],
       "motors": [
         {
           "motor_id": 7,
@@ -295,7 +295,7 @@
       "type": "ball",
       "object1": "femur3",
       "object2": "spine",
-      "point": [-3,2,4],
+      "point": [-0.3,0.2,0.4],
       "motors": [
         {
           "motor_id": 10,
@@ -315,7 +315,7 @@
       "type": "ball",
       "object1": "femur4",
       "object2": "spine",
-      "point": [-3,-2,4],
+      "point": [-0.3,-0.2,0.4],
       "motors": [
         {
           "motor_id": 13,

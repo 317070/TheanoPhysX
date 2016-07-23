@@ -1,19 +1,42 @@
 {
   "name": "Predator",
   "mass density": 1.0,
-  "default_joint_parameters":{
+  "default_constraint_parameters":{
     "default":{
-      "f": 2.5,
+      "f": 1.0,
       "zeta": 0.001
     },
+    "motor": {
+      "type": "position",
+      "motor_velocity": 1,
+      "motor_torque": 10,
+      "min": -45,
+      "max": 45,
+      "delta": 0.01,
+      "axis": [0,1,0],
+      "zeta": 0.0,
+      "f": 100.0
+    },
     "ground":{
-      "mu": 0.5,
+      "mu": 1.5,
       "torsional_friction": true,
       "delta": 0.001,
       "alpha": 0.5
     },
     "hinge":{
-      "axis": [0,1,0]
+      "axis": [0,1,0],
+      "limits": [
+      ]
+    },
+    "fixed":{
+      "zeta": 0.0,
+      "f": 10.0
+    },
+    "ball":{
+    },
+    "limit":{
+      "f": 0.7,
+      "zeta": 0.01
     }
   },
   "default_model_parameters":{
@@ -22,7 +45,7 @@
       "rotation": [1,0,0,0]
     },
     "sphere":{
-      "radius": 1
+      "radius": 0.5
     },
     "cube":{
       "dimensions": [1,1,1]

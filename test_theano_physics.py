@@ -5,11 +5,15 @@ from direct.task import Task
 from panda3d.core import Point2, Texture, CardMaker, AmbientLight, Vec4, DirectionalLight, Spotlight, Quat, LMatrix4f, \
     LMatrix3f, TextureStage
 from PhysicsSystem import Rigid3DBodyEngine
+from TheanoPhysicsSystem import TheanoRigid3DBodyEngine
 import time
 import json
 import numpy as np
-def fixQuat(quat):
+import theano
 
+np.set_printoptions(formatter={'float': '{: 0.3f}'.format})
+
+def fixQuat(quat):
     quat = (-quat[0],quat[1],quat[2],quat[3])
     return Quat(*quat)
 
@@ -19,7 +23,7 @@ class MyApp(ShowBase):
         ShowBase.__init__(self)
 
         self.t = 0
-        self.starttime = time.time()
+        self.starttime = None
         self.setFrameRateMeter(True)
         cour = self.loader.loadFont('cmtt12.egg')
         self.textObject = OnscreenText(font= cour, text = 'abcdefghijklmnopqrstuvwxyz', pos=(0, -0.045), parent = self.a2dTopCenter, bg=(0,0,0,0.5), fg =(1,1,1,1), scale = 0.07, mayChange=True)
@@ -34,9 +38,8 @@ class MyApp(ShowBase):
         tmp.setPos(0, 0, 0)
         tmp.lookAt((0, 0, -2))
         tmp.setColor(1.0,1.0,1.0,0.)
-        tmp.setTexScale(TextureStage.getDefault(), 1, 1)
+        #tmp.setTexScale(TextureStage.getDefault(), 1, 1)
         tex = self.loader.loadTexture('textures/grid2.png')
-
         tex.setWrapU(Texture.WMRepeat)
         tex.setWrapV(Texture.WMRepeat)
         tmp.setTexture(tex,1)
@@ -62,26 +65,29 @@ class MyApp(ShowBase):
         # Add the spinCameraTask procedure to the task manager.
         self.taskMgr.add(self.spinCameraTask, "SpinCameraTask")
 
-
-        self.physics = Rigid3DBodyEngine()
+        self.physics = TheanoRigid3DBodyEngine()
+        self.benchmark_physics = None#Rigid3DBodyEngine()
         # Load the environment model.
         self.objects = dict()
 
         #self.load_robot_model("robotmodel/test.json")
         self.load_robot_model("robotmodel/predator.json")
         #self.load_robot_model("robotmodel/simple_predator.json")
+        if self.benchmark_physics:
+            self.benchmark_physics.compile()
+
+
+        print "Compiling..."
+        self.positions, self.velocities, self.rotations = self.physics.getState()
         self.physics.compile()
 
-        if False:
-            for x in xrange(1000):
-                DT = 0.01
-                ph = self.t*2*np.pi
-                self.physics.do_time_step(dt=DT, motor_signals=[0,0,0,0]+
-                                                               [1,0,0,0,0,0,0,0,0,0,0,0])
+        import theano.tensor as T
+        positions = T.fmatrix()
+        velocities = T.fmatrix()
+        rotations =  T.ftensor3()
 
-                self.t += DT
-                real_time = time.time() - self.starttime
-                print self.t/real_time
+        a,b,c = self.physics.step_from_this_state((positions,velocities,rotations), dt=0.001, motor_signals=[-1,1,-1,1,0,0,0,0,0,0,0,0,0,0,0,0])
+        self.timestep = theano.function(inputs=[positions, velocities, rotations], outputs=[a,b,c])
 
 
 
@@ -98,7 +104,9 @@ class MyApp(ShowBase):
         smiley.setQuat(self.render, fixQuat(rotation))
 
         self.objects[name] = smiley
-        self.physics.addSphere(name, radius, position+rotation, velocity)
+        self.physics.addSphere(name, radius, position, rotation, velocity)
+        if self.benchmark_physics:
+            self.benchmark_physics.addSphere(name, radius, position + rotation, velocity)
 
 
     def addCube(self, name, dimensions, position, rotation, velocity, **parameters):
@@ -121,7 +129,10 @@ class MyApp(ShowBase):
         cube.setQuat(self.render, fixQuat(rotation))
 
         self.objects[name] = cube
-        self.physics.addCube(name, dimensions, position + rotation, velocity)
+        self.physics.addCube(name, dimensions, position, rotation, velocity)
+        if self.benchmark_physics:
+            self.benchmark_physics.addCube(name, dimensions, position + rotation, velocity)
+
 
 
     def load_robot_model(self, filename):
@@ -144,15 +155,23 @@ class MyApp(ShowBase):
             parameters.update(joint)
             if joint["type"] == "hinge":
                 self.physics.addHingeConstraint(jointname, **parameters)
+                if self.benchmark_physics:
+                    self.benchmark_physics.addHingeConstraint(jointname, **parameters)
 
             elif joint["type"] == "ground":
                 self.physics.addGroundConstraint(jointname, **parameters)
+                if self.benchmark_physics:
+                    self.benchmark_physics.addGroundConstraint(jointname, **parameters)
 
             elif joint["type"] == "fixed":
                 self.physics.addFixedConstraint(jointname, **parameters)
+                if self.benchmark_physics:
+                    self.benchmark_physics.addFixedConstraint(jointname, **parameters)
 
             elif joint["type"] == "ball":
                 self.physics.addBallAndSocketConstraint(jointname, **parameters)
+                if self.benchmark_physics:
+                    self.benchmark_physics.addBallAndSocketConstraint(jointname, **parameters)
 
             if "limits" in parameters:
                 for limit in parameters["limits"]:
@@ -161,6 +180,8 @@ class MyApp(ShowBase):
                         limitparameters.update(robot_dict["default_constraint_parameters"]["limit"])
                     limitparameters.update(limit)
                     self.physics.addLimitConstraint(joint["object1"], joint["object2"], **limitparameters)
+                    if self.benchmark_physics:
+                        self.benchmark_physics.addLimitConstraint(joint["object1"], joint["object2"], **limitparameters)
 
             #"""
             if "motors" in parameters:
@@ -170,35 +191,34 @@ class MyApp(ShowBase):
                         motorparameters.update(robot_dict["default_constraint_parameters"]["motor"])
                     motorparameters.update(motor)
                     self.physics.addMotorConstraint(joint["object1"], joint["object2"], **motorparameters)
+                    if self.benchmark_physics:
+                        self.benchmark_physics.addMotorConstraint(joint["object1"], joint["object2"], **motorparameters)
             #"""
 
 
 
     # Define a procedure to move the camera.
     def spinCameraTask(self, task):
-        DT = 0.0001
+        if self.starttime is None:
+            self.starttime = time.time()
+        DT = 0.01
         self.t += DT
-        ph = self.t*2*np.pi
-        sensors = self.physics.getSensorValues("spine").flatten()
-        #print sensors.shape
-        self.physics.do_time_step(dt=DT, motor_signals=[-1,1,-1,1,0,0,0,0,0,0,0,0,0,0,0,0])
 
+        self.positions, self.velocities, self.rotations = self.timestep(self.positions, self.velocities, self.rotations)
+        #print positions, rotations, velocity
 
         for obj_name, obj in self.objects.iteritems():
-            if (abs(self.physics.getPosition(obj_name)) > 10**5).any():
-                print "problem with", obj_name
             sc = obj.getScale()
 
-            #print obj_name, self.physics.getRotationMatrix(obj_name).flatten()
-
-            obj.setMat(self.render, LMatrix4f(LMatrix3f(*self.physics.getRotationMatrix(obj_name).flatten())))
-            obj.setPos(*self.physics.getPosition(obj_name)[:3])
+            idx = self.physics.getObjectIndex(obj_name)
+            obj.setMat(self.render, LMatrix4f(LMatrix3f(*self.rotations[idx,:,:].flatten())))
+            obj.setPos(*self.positions[idx,:])
             obj.setScale(sc)
 
         # change camera movement
         self.camera.setPos(0,2,0.3)
         #self.camera.lookAt(0,0,3)
-        self.camera.lookAt(*self.physics.getPosition("spine")[:3])
+        self.camera.lookAt(*self.positions[self.physics.getObjectIndex("spine"),:])
 
         real_time = time.time() - self.starttime
 
@@ -206,6 +226,7 @@ class MyApp(ShowBase):
         #time.sleep(0.001)
         if real_time>100:
             self.userExit()
+
         return Task.cont
 
 
@@ -213,5 +234,6 @@ class MyApp(ShowBase):
 app = MyApp()
 import cProfile
 import re
+#cProfile.run('app.run()')
 app.run()
 
