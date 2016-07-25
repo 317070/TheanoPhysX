@@ -556,8 +556,8 @@ class Rigid3DBodyEngine(object):
             result = result.reshape(result.shape[:-3] + (2*self.num_constraints,6))
 
             for i in xrange(newv.shape[0]):
-                #newv[i,:] = newv[i,:] + np.sum(result[self.map_object_to_constraint[i],:], axis=0)
-                newv[i,:] = originalv[i,:] + np.sum(result[self.map_object_to_constraint[i],:], axis=0)
+                newv[i,:] = newv[i,:] + np.sum(result[self.map_object_to_constraint[i],:], axis=0)
+                #newv[i,:] = originalv[i,:] + np.sum(result[self.map_object_to_constraint[i],:], axis=0)
 
         #print
         return newv

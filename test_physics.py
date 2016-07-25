@@ -60,7 +60,7 @@ class MyApp(ShowBase):
         self.render.setLight(directionalLightNP)
 
         # Add the spinCameraTask procedure to the task manager.
-        self.taskMgr.add(self.spinCameraTask, "SpinCameraTask")
+        #self.taskMgr.add(self.spinCameraTask, "SpinCameraTask")
 
 
         self.physics = Rigid3DBodyEngine()
@@ -72,17 +72,20 @@ class MyApp(ShowBase):
         #self.load_robot_model("robotmodel/simple_predator.json")
         self.physics.compile()
 
-        if False:
-            for x in xrange(1000):
-                DT = 0.01
-                ph = self.t*2*np.pi
-                self.physics.do_time_step(dt=DT, motor_signals=[0,0,0,0]+
-                                                               [1,0,0,0,0,0,0,0,0,0,0,0])
+    def run_no_gui(self):
+        while True:
+            DT = 0.01
+            ph = self.t*2*np.pi
+            self.physics.do_time_step(dt=DT, motor_signals=[0,0,0,0]+
+                                                           [1,0,0,0,0,0,0,0,0,0,0,0])
 
-                self.t += DT
-                real_time = time.time() - self.starttime
-                print self.t/real_time
-
+            self.t += DT
+            real_time = time.time() - self.starttime
+            #
+            if real_time>10:
+                break
+        print self.t/real_time
+        self.userExit()
 
 
     def addSphere(self, name, radius, position, rotation, velocity, **parameters):
@@ -176,7 +179,7 @@ class MyApp(ShowBase):
 
     # Define a procedure to move the camera.
     def spinCameraTask(self, task):
-        DT = 0.0001
+        DT = 0.01
         self.t += DT
         ph = self.t*2*np.pi
         sensors = self.physics.getSensorValues("spine").flatten()
@@ -204,7 +207,7 @@ class MyApp(ShowBase):
 
         self.textObject.setText('Time: %3.3f s\n%3.3fx real time\n%s' % ( self.t, self.t/real_time , ""))
         #time.sleep(0.001)
-        if real_time>100:
+        if real_time>10:
             self.userExit()
         return Task.cont
 
@@ -213,5 +216,6 @@ class MyApp(ShowBase):
 app = MyApp()
 import cProfile
 import re
-app.run()
+cProfile.run('app.run_no_gui()')
+#app.run()
 

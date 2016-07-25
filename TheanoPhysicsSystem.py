@@ -1,3 +1,4 @@
+import json
 from math import pi
 
 __author__ = 'jonas'
@@ -96,7 +97,7 @@ class TheanoRigid3DBodyEngine(object):
         self.inertia_inv = None
 
 
-    def addCube(self, reference, dimensions, position, rotation, velocity):
+    def addCube(self, reference, dimensions, position, rotation, velocity, **kwargs):
         self.objects[reference] = self.positionVectors.shape[0]
         self.radii = np.append(self.radii, -1)
         self.positionVectors = np.append(self.positionVectors, np.array([position], dtype='float32'), axis=0)
@@ -109,7 +110,7 @@ class TheanoRigid3DBodyEngine(object):
         self.massMatrices = np.append(self.massMatrices, mass*np.diag([1,1,1,I1,I2,I3])[None,:,:], axis=0)
 
 
-    def addSphere(self, reference, radius, position, rotation, velocity):
+    def addSphere(self, reference, radius, position, rotation, velocity, **kwargs):
         self.objects[reference] = self.positionVectors.shape[0]
         self.radii = np.append(self.radii, radius)
         self.positionVectors = np.append(self.positionVectors, np.array([position], dtype='float32'), axis=0)
@@ -211,9 +212,52 @@ class TheanoRigid3DBodyEngine(object):
         self.addConstraint("limit", [object1, object2], parameters)
 
 
-    def addSensor(self, object, reference_object):
-        self.sensors.append((object,reference_object))
+    def load_robot_model(self, filename):
+        robot_dict = json.load(open(filename,"rb"))
+        for elementname, element in robot_dict["model"].iteritems():
+            primitive = element[0]
+            parameters = dict(robot_dict["default_model_parameters"]["default"])  # copy
+            if primitive["shape"] in robot_dict["default_model_parameters"]:
+                parameters.update(robot_dict["default_model_parameters"][primitive["shape"]])
+            parameters.update(primitive)
+            if primitive["shape"] == "cube":
+                self.addCube(elementname, **parameters)
+            elif primitive["shape"] == "sphere":
+                self.addSphere(elementname, **parameters)
 
+        for jointname, joint in robot_dict["joints"].iteritems():
+            parameters = dict(robot_dict["default_constraint_parameters"]["default"])  # copy
+            if joint["type"] in robot_dict["default_constraint_parameters"]:
+                parameters.update(robot_dict["default_constraint_parameters"][joint["type"]])
+            parameters.update(joint)
+            if joint["type"] == "hinge":
+                self.addHingeConstraint(jointname, **parameters)
+
+            elif joint["type"] == "ground":
+                self.addGroundConstraint(jointname, **parameters)
+
+            elif joint["type"] == "fixed":
+                self.addFixedConstraint(jointname, **parameters)
+
+            elif joint["type"] == "ball":
+                self.addBallAndSocketConstraint(jointname, **parameters)
+
+            if "limits" in parameters:
+                for limit in parameters["limits"]:
+                    limitparameters = dict(robot_dict["default_constraint_parameters"]["default"])
+                    if "limit" in robot_dict["default_constraint_parameters"]:
+                        limitparameters.update(robot_dict["default_constraint_parameters"]["limit"])
+                    limitparameters.update(limit)
+                    self.addLimitConstraint(joint["object1"], joint["object2"], **limitparameters)
+
+
+            if "motors" in parameters:
+                for motor in parameters["motors"]:
+                    motorparameters = dict(robot_dict["default_constraint_parameters"]["default"])
+                    if "motor" in robot_dict["default_constraint_parameters"]:
+                        motorparameters.update(robot_dict["default_constraint_parameters"]["motor"])
+                    motorparameters.update(motor)
+                    self.addMotorConstraint(joint["object1"], joint["object2"], **motorparameters)
 
 
     def compile(self):
@@ -236,7 +280,7 @@ class TheanoRigid3DBodyEngine(object):
                 self.num_constraints += 1
             if constraint == "ground" and parameters["mu"]!=0:
                 self.num_constraints += 2
-            if constraint == "ground" and parameters["torsional_friction"]:
+            if constraint == "ground" and parameters["torsional_friction"] and parameters["mu"]!=0:
                 self.num_constraints += 1
             if constraint == "limit":
                 self.num_constraints += 1
@@ -541,7 +585,7 @@ class TheanoRigid3DBodyEngine(object):
                     C[c_idx+i] = (positions[idx1,Z] - r < 0.0)
                 c_idx += 2
 
-            if constraint == "ground" and parameters["torsional_friction"]:
+            if constraint == "ground" and parameters["torsional_friction"] and parameters["mu"]!=0:
                 r = self.radii[idx1].astype('float32')
                 J[2*c_idx+0] = np.array([0,0,0,0,0,r], dtype='float32')
                 J[2*c_idx+1] = np.array([0,0,0,0,0,0], dtype='float32')
@@ -590,27 +634,11 @@ class TheanoRigid3DBodyEngine(object):
         return newv
 
 
-    def do_time_step(self, dt=1e-3, motor_signals=list()):
-        ##################
-        # --- Step 3 --- #
-        ##################
-        # In the third step, we integrate the new position x2 of the bodies using the new velocities
-        # v2 computed in the second step with : x2 = x1 + dt * v2.
-
-        # semi-implicit Euler integration
-        self.velocityVectors = self.evaluate(dt, self.positionVectors, self.velocityVectors, self.rot_matrices, motor_signals=motor_signals)
-
-        self.positionVectors = self.positionVectors[:,:] + self.velocityVectors[:,:3] * dt
-        self.rot_matrices = normalize_matrix(self.rot_matrices[:,:,:] + T.sum(self.rot_matrices[:,:,:,None] * skew_symmetric(dt * self.velocityVectors[:,3:])[:,None,:,:],axis=2) )
-
     def step_from_this_state(self, state, dt=1e-3, motor_signals=list()):
         positions, velocities, rot_matrices = state
         ##################
         # --- Step 3 --- #
         ##################
-        # In the third step, we integrate the new position x2 of the bodies using the new velocities
-        # v2 computed in the second step with : x2 = x1 + dt * v2.
-
         # semi-implicit Euler integration
         velocities = self.evaluate(dt, positions, velocities, rot_matrices, motor_signals=motor_signals)
 
@@ -621,7 +649,7 @@ class TheanoRigid3DBodyEngine(object):
 
 
 
-    def getState(self):
+    def getInitialState(self):
         return self.positionVectors, self.velocityVectors, self.rot_matrices
 
     def getPosition(self, reference):
@@ -635,27 +663,64 @@ class TheanoRigid3DBodyEngine(object):
     def getObjectIndex(self, reference):
         return self.objects[reference]
 
-    def getSensorValues(self, reference):
+    def addSensor(self, **kwargs):
+        if "axis" in kwargs and "reference" in kwargs:
+            kwargs["axis"] = convert_world_to_model_coordinate_no_bias(kwargs["axis"], self.rot_matrices[self.getObjectIndex(kwargs["reference"]),:,:])
+        self.sensors.append(kwargs)
+
+    def getSensorValues(self, state):
         # make positionvectors neutral according to reference object
-        idx = self.objects[reference]
-        rot_matrix = self.rot_matrices[idx]
+        positions, velocities, rot_matrices = state
 
-        ref_position = self.positionVectors[idx,:]
+        r = []
+        for sensor in self.sensors:
+            idx = self.getObjectIndex(sensor["object"])
+            if "reference" in sensor:
+                ref_idx = self.getObjectIndex(sensor["reference"])
+            else:
+                ref_idx = None
+            if sensor["type"] == "position":
+                if ref_idx:
+                    res = positions[idx,:]-positions[ref_idx,:]
+                    rot = rot_matrices[ref_idx,:,:]
+                    axis = sensor["axis"]
+                    axis = theano_convert_model_to_world_coordinate_no_bias(axis, rot)
+                else:
+                    res = positions[idx,:]
+                    axis = sensor["axis"]
+                r.append(T.sum(res*axis))
 
-        result = self.positionVectors
-        #result[:,:2] = result[:,:2]-ref_position[None,:2]
-        # step 1: flatten rot_matrix
+            if sensor["type"] == "velocity":
+                if ref_idx:
+                    res = velocities[idx,:]-velocities[ref_idx,:]
+                    rot = rot_matrices[ref_idx,:,:]
+                    axis = sensor["axis"]
+                    axis = theano_convert_model_to_world_coordinate_no_bias(axis, rot)
+                else:
+                    res = velocities[idx,:]
+                    axis = sensor["axis"]
+                r.append(T.sum(res*axis))
 
+            if sensor["type"] == "orientation":
+                if ref_idx:
+                    res = T.sum(rot_matrices[idx,:,:,None]*rot_matrices[ref_idx,None,:,:], axis=-2)
+                    rot = rot_matrices[ref_idx,:,:]
+                    axis = sensor["axis"]
+                    axis = theano_convert_model_to_world_coordinate_no_bias(axis, rot)
+                else:
+                    res = rot_matrices[ref_idx,:,:]
+                    axis = sensor["axis"]
 
-        # step 2: apply rot_matrix on positions and rotations
+                # if angle is >90degrees, you're in the negative lobe
+                #cos_theta = (res[0,0] + res[1,1] + res[2,2] - 1)/2
+                #sign = ((cos_theta>0) * 2 - 1)
 
+                # gimbal lock can occur witht this sensor
+                r.append(T.sum(axis[:,None]*res[:,:]*axis[None,:], axis=(-2,-1)))
 
-
-        #result = result.flatten() + self.C[self.only_when_positive==1]
+        result = T.stack(r, axis=0)
 
         return result
-
-
 
 def q_mult(q1, q2):
     w1, x1, y1, z1 = q1
