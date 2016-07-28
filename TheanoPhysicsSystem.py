@@ -81,7 +81,7 @@ class TheanoRigid3DBodyEngine(object):
         self.massMatrices = np.zeros(shape=(0,6,6), dtype='float32')
         self.objects = dict()
         self.constraints = []
-        self.num_iterations = 10
+        self.num_iterations = 1
         self.sensors = []
 
         self.P = None
@@ -259,6 +259,8 @@ class TheanoRigid3DBodyEngine(object):
                     motorparameters.update(motor)
                     self.addMotorConstraint(joint["object1"], joint["object2"], **motorparameters)
 
+        for sensor in robot_dict["sensors"]:
+            self.addSensor(**sensor)
 
     def compile(self):
 
@@ -439,9 +441,9 @@ class TheanoRigid3DBodyEngine(object):
         M01 = T.zeros_like(M00)
         M10 = M01
         M11 = T.sum(rot_matrices.dimshuffle(0,1,'x',2,'x') * self.inertia_inv[:,3:,3:].dimshuffle(0,1,2,'x','x') * rot_matrices.dimshuffle(0,'x',1,'x',2), axis=(1,2))
-        M0 = T.concatenate([M00,M01],axis=-1)
-        M1 = T.concatenate([M10,M11],axis=-1)
-        M = T.concatenate([M0,M1],axis=-2)
+        M0 = T.concatenate([M00,M01],axis=2)
+        M1 = T.concatenate([M10,M11],axis=2)
+        M = T.concatenate([M0,M1],axis=1)
 
         #self.P = np.zeros((self.num_constraints,))# constant
         # changes every timestep
@@ -449,7 +451,6 @@ class TheanoRigid3DBodyEngine(object):
         b_res = [0 for _ in xrange(self.num_constraints)]  # 0 constraints
         b_error = [0 for _ in xrange(self.num_constraints)]  # 0 constraints
         C = [1 for _ in xrange(self.num_constraints)]  # 0 constraints
-        mass_matrix = [np.zeros((2,6,6)) for _ in xrange(self.num_constraints)]  # 0 constraints x 2 objects x 6 states x 6 states
 
         c_idx = 0
         for constraint,references,parameters in self.constraints:
@@ -485,7 +486,7 @@ class TheanoRigid3DBodyEngine(object):
                 rot_current = np.dot(rot_matrices[idx2,:,:], rot_matrices[idx1,:,:].T)
                 rot_diff = np.dot(rot_current, parameters['rot_init'].T)
                 cross = rot_diff.T - rot_diff
-
+                # TODO: add stabilization of this constraint
                 b_error[c_idx] = 0#cross[1,2]
                 b_error[c_idx+1] = 0#cross[2,0]
                 b_error[c_idx+2] = 0#cross[0,1]
@@ -548,9 +549,10 @@ class TheanoRigid3DBodyEngine(object):
                 J[2*c_idx+1] = T.concatenate([np.zeros((3,), dtype='float32'), a])
 
                 motor_signal = motor_signals[parameters["motor_id"]]
+
                 motor_min = (parameters["min"]/180. * np.pi)
                 motor_max = (parameters["max"]/180. * np.pi)
-                motor_signal = np.clip(motor_signal, motor_min, motor_max).astype('float32')
+                motor_signal = T.clip(motor_signal, motor_min, motor_max).astype('float32')
 
                 if parameters["type"] == "velocity":
                     b_error[c_idx] = motor_signal
@@ -593,16 +595,26 @@ class TheanoRigid3DBodyEngine(object):
                 b_res[c_idx] = 0
                 c_idx += 1
 
-        mass_matrix = T.concatenate((M[self.zero_index,None,:,:], M[self.one_index,None,:,:]), axis=1)
+        #mass_matrix = T.concatenate((M[self.zero_index,None,:,:], M[self.one_index,None,:,:]), axis=1)
+        mass_matrix = T.concatenate((
+                                    T.stack([M[i,None,:,:] for i in self.zero_index], axis=0),
+                                    T.stack([M[i,None,:,:] for i in self.one_index], axis=0)
+                                    ), axis=1)
+
         J = T.stack(J, axis=0).reshape(shape=(self.num_constraints,2,6))
         C = T.stack(C, axis=0)
         #v = np.zeros((self.num_constraints,2,6))  # 0 constraints x 2 objects x 6 states
 
         for iteration in xrange(self.num_iterations):
             # changes every iteration
-            v = T.concatenate((newv[self.zero_index,None,:],newv[self.one_index,None,:]),axis=1)
+            #v = T.concatenate((newv[self.zero_index,None,:],newv[self.one_index,None,:]),axis=1)
+            v = T.concatenate((
+                T.stack([newv[i,None,:] for i in self.zero_index], axis=0),
+                T.stack([newv[i,None,:] for i in self.one_index], axis=0)
+            ),axis=1)
 
-            m_eff = 1./T.sum(T.sum(J[:,:,None,:]*mass_matrix, axis=-1)*J, axis=(-1,-2))
+            m_eff = 1./T.sum(T.sum(J[:,:,None,:]*mass_matrix, axis=3)*J, axis=(1,2))
+            #m_eff = 1./T.sum(T.sum(J[:,:,None,:]*mass_matrix, axis=-1)*J, axis=(-1,-2))
 
             k = m_eff * (self.w**2)
             c = m_eff * 2*self.zeta*self.w
@@ -613,7 +625,7 @@ class TheanoRigid3DBodyEngine(object):
             m_c = 1./(1./m_eff + CFM)
 
             b = ERP/dt * b_error + b_res
-            lamb = - m_c * (T.sum(J*v, axis=(-1,-2)) + CFM * self.P + b)
+            lamb = - m_c * (T.sum(J*v, axis=(1,2)) + CFM * self.P + b)
 
             self.P += lamb
             #print J[[39,61,65,69],:]
@@ -622,12 +634,14 @@ class TheanoRigid3DBodyEngine(object):
             self.P = T.clip(self.P,-clipping_limit, clipping_limit)
             applicable = (1-(self.only_when_positive*( 1-(self.P>=0)) )) * C
 
-            result = T.sum(mass_matrix*J[:,:,None,:], axis=(-1)) * self.P[:,None,None] * applicable[:,None,None]
+            result = T.sum(mass_matrix*J[:,:,None,:], axis=3) * self.P[:,None,None] * applicable[:,None,None]
             result = result.reshape((2*self.num_constraints,6))
 
             r = []
             for i in xrange(len(self.map_object_to_constraint)):
-                r.append(originalv[i,:] + T.sum(result[self.map_object_to_constraint[i],:], axis=0))
+                #r.append(originalv[i,:] + T.sum(result[self.map_object_to_constraint[i],:], axis=0))
+                delta_v = T.sum(T.stack([result[j,:] for j in self.map_object_to_constraint[i]],axis=0), axis=0)
+                r.append(originalv[i,:] + delta_v)
             newv = T.stack(r, axis=0)
 
         #print
@@ -666,6 +680,7 @@ class TheanoRigid3DBodyEngine(object):
     def addSensor(self, **kwargs):
         if "axis" in kwargs and "reference" in kwargs:
             kwargs["axis"] = convert_world_to_model_coordinate_no_bias(kwargs["axis"], self.rot_matrices[self.getObjectIndex(kwargs["reference"]),:,:])
+        kwargs["axis"] = np.array(kwargs["axis"], dtype='float32')
         self.sensors.append(kwargs)
 
     def getSensorValues(self, state):
@@ -692,23 +707,23 @@ class TheanoRigid3DBodyEngine(object):
 
             if sensor["type"] == "velocity":
                 if ref_idx:
-                    res = velocities[idx,:]-velocities[ref_idx,:]
+                    res = velocities[idx,:3]-velocities[ref_idx,:3]
                     rot = rot_matrices[ref_idx,:,:]
                     axis = sensor["axis"]
                     axis = theano_convert_model_to_world_coordinate_no_bias(axis, rot)
                 else:
-                    res = velocities[idx,:]
+                    res = velocities[idx,:3]
                     axis = sensor["axis"]
                 r.append(T.sum(res*axis))
 
             if sensor["type"] == "orientation":
                 if ref_idx:
-                    res = T.sum(rot_matrices[idx,:,:,None]*rot_matrices[ref_idx,None,:,:], axis=-2)
+                    res = T.sum(rot_matrices[idx,:,:,None]*rot_matrices[ref_idx,None,:,:], axis=2)
                     rot = rot_matrices[ref_idx,:,:]
                     axis = sensor["axis"]
                     axis = theano_convert_model_to_world_coordinate_no_bias(axis, rot)
                 else:
-                    res = rot_matrices[ref_idx,:,:]
+                    res = rot_matrices[idx,:,:]
                     axis = sensor["axis"]
 
                 # if angle is >90degrees, you're in the negative lobe
@@ -716,7 +731,7 @@ class TheanoRigid3DBodyEngine(object):
                 #sign = ((cos_theta>0) * 2 - 1)
 
                 # gimbal lock can occur witht this sensor
-                r.append(T.sum(axis[:,None]*res[:,:]*axis[None,:], axis=(-2,-1)))
+                r.append(T.sum(axis[:,None]*res[:,:]*axis[None,:]))
 
         result = T.stack(r, axis=0)
 
@@ -747,5 +762,5 @@ def normalize(q):
 
 def normalize_matrix(A):
     for i in xrange(1):
-        A = (3*A - T.sum(A[:,:,None,:,None] * A[:,None,:,:,None] * A[:,None,:,None,:], axis=(-3,-2))) / 2
+        A = (3*A - T.sum(A[:,:,None,:,None] * A[:,None,:,:,None] * A[:,None,:,None,:], axis=(2,3))) / 2
     return A

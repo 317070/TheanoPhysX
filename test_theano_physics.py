@@ -78,7 +78,7 @@ class MyApp(ShowBase):
 
 
         print "Compiling..."
-        self.positions, self.velocities, self.rotations = self.physics.getState()
+        self.positions, self.velocities, self.rotations = self.physics.getInitialState()
         self.physics.compile()
 
         import theano.tensor as T
@@ -87,7 +87,7 @@ class MyApp(ShowBase):
         rotations =  T.ftensor3()
 
         a,b,c = self.physics.step_from_this_state((positions,velocities,rotations), dt=0.001, motor_signals=[-1,1,-1,1,0,0,0,0,0,0,0,0,0,0,0,0])
-        self.timestep = theano.function(inputs=[positions, velocities, rotations], outputs=[a,b,c])
+        self.timestep = theano.function(inputs=[positions, velocities, rotations], outputs=[a,b,c], allow_input_downcast=True)
 
 
 

@@ -1,21 +1,31 @@
 import numpy as np
 import scipy.linalg
 
-num_constraints = 3
+import json
 
-M = np.random.rand(*(2,6,6))  # 0 constraints x 2 objects x 6 states x 6 states
-J = np.random.rand(*(2,6))  # 0 constraints x 2 objects x 6 states
+r = []
 
+for object, reference in [("spine", None),
+                          ("tibia1", "spine"),
+                          ("tibia2", "spine"),
+                          ("tibia3", "spine"),
+                          ("tibia4", "spine"),
+                          ("femur1", "tibia1"),
+                          ("femur2", "tibia2"),
+                          ("femur3", "tibia3"),
+                          ("femur4", "tibia4"),]:
 
-#M = np.ones((2,6,6))  # 0 constraints x 2 objects x 6 states x 6 states
-#J = np.ones((2,6))  # 0 constraints x 2 objects x 6 states
-
-mass = scipy.linalg.block_diag(M[0,:,:], M[1,:,:])
-Jl = np.concatenate([J[0],J[1]])[None,:]
-print mass
-print Jl.shape
-
-print np.dot(Jl,np.dot(mass,Jl.T))
-
-B = np.sum(np.sum(J[:,None,:]*M, axis=-1)*J)
-print B
+    for i in xrange(3):
+        a = [0,0,0]
+        a[i] = 1
+        for type in ["velocity", "position", "orientation"]:
+            d = {
+              "type": type,
+              "object": object,
+              "axis": a
+            }
+            if reference:
+                d["reference"] = reference
+            r.append(d)
+print len(r)
+print json.dumps(r, sort_keys=True, indent=2)
