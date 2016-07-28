@@ -44,6 +44,21 @@ def convert_model_to_world_coordinate_no_bias(coor, rot_matrix):
 def theano_convert_model_to_world_coordinate_no_bias(coor, rot_matrix):
     return T.sum(rot_matrix * coor[:,None], axis=0)
 
+def theano_stack_integers_mixed_numpy(L):
+    r = []
+    last_numpy = np.array([])
+    for l in L:
+        if "theano" in str(type(l)):
+            if len(last_numpy)!=0:
+                r.append(last_numpy.astype('float32'))
+                last_numpy = np.array([])
+            r.append(l.dimshuffle('x'))
+        else:
+            last_numpy = np.concatenate([last_numpy, [l]], axis=0)
+    if len(last_numpy)!=0:
+        r.append(last_numpy.astype('float32'))
+    return T.concatenate(r, axis=0)
+
 def numpy_skew_symmetric(x):
     a,b,c = x[...,0,None,None],x[...,1,None,None],x[...,2,None,None]
     z = np.zeros(x.shape[:-1]+(1,1))
@@ -434,11 +449,11 @@ class TheanoRigid3DBodyEngine(object):
         ##################
         # now enforce the constraints by having corrective impulses
         # convert mass matrices to world coordinates
-        M = T.zeros_like(self.inertia_inv)
+        M = T.zeros(shape=(self.massMatrices.shape[0],6,6))
 
 
         M00 = self.inertia_inv[:,:3,:3]
-        M01 = T.zeros_like(M00)
+        M01 = T.zeros(shape=(self.massMatrices.shape[0],3,3))
         M10 = M01
         M11 = T.sum(rot_matrices.dimshuffle(0,1,'x',2,'x') * self.inertia_inv[:,3:,3:].dimshuffle(0,1,2,'x','x') * rot_matrices.dimshuffle(0,'x',1,'x',2), axis=(1,2))
         M0 = T.concatenate([M00,M01],axis=2)
@@ -450,7 +465,7 @@ class TheanoRigid3DBodyEngine(object):
         J = [np.zeros((1,6)) for _ in xrange(2 * self.num_constraints)]  # 0 constraints x 2 objects x 6 states
         b_res = [0 for _ in xrange(self.num_constraints)]  # 0 constraints
         b_error = [0 for _ in xrange(self.num_constraints)]  # 0 constraints
-        C = [1 for _ in xrange(self.num_constraints)]  # 0 constraints
+        C = [0 for _ in xrange(self.num_constraints)]  # 0 constraints
 
         c_idx = 0
         for constraint,references,parameters in self.constraints:
@@ -573,7 +588,7 @@ class TheanoRigid3DBodyEngine(object):
 
                 b_error[c_idx] = T.clip(positions[idx1,Z] - r + parameters["delta"], np.finfo('float32').min, 0)
                 b_res[c_idx] = parameters["alpha"] * newv[idx1,Z]
-                C[c_idx] = (positions[idx1,Z] - r < 0.0)
+                C[c_idx] = positions[idx1,Z] - r
                 c_idx += 1
 
             if constraint == "ground" and parameters["mu"]!=0:
@@ -584,15 +599,14 @@ class TheanoRigid3DBodyEngine(object):
                     else:
                         J[2*(c_idx+i)+0] = np.array([1,0,0,0,r,0], dtype='float32')
                     J[2*(c_idx+i)+1] = np.array([0,0,0,0,0,0], dtype='float32')
-                    C[c_idx+i] = (positions[idx1,Z] - r < 0.0)
+                    C[c_idx+i] = positions[idx1,Z] - r
                 c_idx += 2
 
             if constraint == "ground" and parameters["torsional_friction"] and parameters["mu"]!=0:
                 r = self.radii[idx1].astype('float32')
                 J[2*c_idx+0] = np.array([0,0,0,0,0,r], dtype='float32')
                 J[2*c_idx+1] = np.array([0,0,0,0,0,0], dtype='float32')
-                C[c_idx] = (positions[idx1,Z] - r < 0.0)
-                b_res[c_idx] = 0
+                C[c_idx] = positions[idx1,Z] - r
                 c_idx += 1
 
         #mass_matrix = T.concatenate((M[self.zero_index,None,:,:], M[self.one_index,None,:,:]), axis=1)
@@ -602,8 +616,10 @@ class TheanoRigid3DBodyEngine(object):
                                     ), axis=1)
 
         J = T.stack(J, axis=0).reshape(shape=(self.num_constraints,2,6))
-        C = T.stack(C, axis=0)
+        C = theano_stack_integers_mixed_numpy(C)
         #v = np.zeros((self.num_constraints,2,6))  # 0 constraints x 2 objects x 6 states
+        b_res = theano_stack_integers_mixed_numpy(b_res)
+        b_error = theano_stack_integers_mixed_numpy(b_error)
 
         for iteration in xrange(self.num_iterations):
             # changes every iteration
@@ -630,9 +646,10 @@ class TheanoRigid3DBodyEngine(object):
             self.P += lamb
             #print J[[39,61,65,69],:]
             #print np.sum(lamb**2), np.sum(self.P**2)
-            clipping_limit = abs(self.clipping_a * self.P[self.clipping_idx] + self.clipping_b * dt)
+            clipping_force = T.concatenate([self.P[j].dimshuffle('x') for j in self.clipping_idx],axis=0)
+            clipping_limit = abs(self.clipping_a * clipping_force + self.clipping_b * dt)
             self.P = T.clip(self.P,-clipping_limit, clipping_limit)
-            applicable = (1-(self.only_when_positive*( 1-(self.P>=0)) )) * C
+            applicable = (1-(self.only_when_positive*( 1-(self.P>=0)) )) * (C<=0)
 
             result = T.sum(mass_matrix*J[:,:,None,:], axis=3) * self.P[:,None,None] * applicable[:,None,None]
             result = result.reshape((2*self.num_constraints,6))
@@ -733,7 +750,7 @@ class TheanoRigid3DBodyEngine(object):
                 # gimbal lock can occur witht this sensor
                 r.append(T.sum(axis[:,None]*res[:,:]*axis[None,:]))
 
-        result = T.stack(r, axis=0)
+        result = theano_stack_integers_mixed_numpy(r)
 
         return result
 
