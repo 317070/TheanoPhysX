@@ -88,7 +88,7 @@ def skew_symmetric(x):
 
 
 class TheanoRigid3DBodyEngine(object):
-    def __init__(self):
+    def __init__(self, num_iterations=1):
         self.radii = np.zeros(shape=(0,), dtype='float32')
         self.positionVectors = np.zeros(shape=(0,3), dtype='float32')
         self.rot_matrices = np.zeros(shape=(0,3,3), dtype='float32')
@@ -96,7 +96,7 @@ class TheanoRigid3DBodyEngine(object):
         self.massMatrices = np.zeros(shape=(0,6,6), dtype='float32')
         self.objects = dict()
         self.constraints = []
-        self.num_iterations = 1
+        self.num_iterations = num_iterations
         self.sensors = []
 
         self.P = None

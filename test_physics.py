@@ -60,7 +60,7 @@ class MyApp(ShowBase):
         self.render.setLight(directionalLightNP)
 
         # Add the spinCameraTask procedure to the task manager.
-        #self.taskMgr.add(self.spinCameraTask, "SpinCameraTask")
+        self.taskMgr.add(self.spinCameraTask, "SpinCameraTask")
 
 
         self.physics = Rigid3DBodyEngine()
@@ -165,7 +165,7 @@ class MyApp(ShowBase):
                     limitparameters.update(limit)
                     self.physics.addLimitConstraint(joint["object1"], joint["object2"], **limitparameters)
 
-            #"""
+            """
             if "motors" in parameters:
                 for motor in parameters["motors"]:
                     motorparameters = dict(robot_dict["default_constraint_parameters"]["default"])
@@ -179,7 +179,7 @@ class MyApp(ShowBase):
 
     # Define a procedure to move the camera.
     def spinCameraTask(self, task):
-        DT = 0.01
+        DT = 1./6000.
         self.t += DT
         ph = self.t*2*np.pi
         sensors = self.physics.getSensorValues("spine").flatten()
@@ -207,7 +207,7 @@ class MyApp(ShowBase):
 
         self.textObject.setText('Time: %3.3f s\n%3.3fx real time\n%s' % ( self.t, self.t/real_time , ""))
         #time.sleep(0.001)
-        if real_time>10:
+        if real_time>100:
             self.userExit()
         return Task.cont
 
@@ -216,6 +216,6 @@ class MyApp(ShowBase):
 app = MyApp()
 import cProfile
 import re
-cProfile.run('app.run_no_gui()')
-#app.run()
+#cProfile.run('app.run_no_gui()')
+app.run()
 

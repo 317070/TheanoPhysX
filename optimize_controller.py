@@ -13,8 +13,8 @@ engine.compile()
 
 
 # step 2: build the model, controller and engine for simulation
-DT = 0.001
-total_time = 1
+DT = 1./6000.
+total_time = 2
 
 def build_controller(sensor_values):
     l_input = lasagne.layers.InputLayer((1,81), input_var=sensor_values[None,:], name="sensor_values")
@@ -52,7 +52,7 @@ def build_model():
 states, all_parameters = build_model()
 fitness = build_objectives(states)
 
-updates = lasagne.updates.sgd(fitness, all_parameters, 0.01)
+updates = lasagne.updates.sgd(fitness, all_parameters, 0.001)
 from time import strftime, localtime
 import datetime
 
@@ -62,8 +62,8 @@ iter_train = theano.function([],
                              updates=updates
                              )
 print "Running since %s..." % strftime("%H:%M:%S", localtime())
-import theano.printing
-theano.printing.debugprint(iter_train.maker.fgraph.outputs[0])
+#import theano.printing
+#theano.printing.debugprint(iter_train.maker.fgraph.outputs[0])
 print "Running since %s..." % strftime("%H:%M:%S", localtime())
 while True:
     print iter_train(),datetime.datetime.now().strftime("%H:%M:%S.%f")

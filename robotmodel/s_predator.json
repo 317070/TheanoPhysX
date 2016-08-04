@@ -3,8 +3,8 @@
   "mass density": 1.0,
   "default_constraint_parameters": {
     "default": {
-      "f": 10,
-      "zeta": 0.2
+      "f": 10.0,
+      "zeta": 0.1
     },
     "motor": {
       "type": "position",
@@ -40,6 +40,8 @@
     "ball": {
     },
     "limit": {
+      "f": 0.7,
+      "zeta": 0.01
     }
   },
   "default_model_parameters": {
@@ -392,7 +394,7 @@
       "object1": "foot4"
     },
     "heel1": {
-      "type": "fixed",
+      "type": "ball",
       "object1": "foot1",
       "object2": "tibia1",
       "point": [
@@ -402,7 +404,7 @@
       ]
     },
     "heel2": {
-      "type": "fixed",
+      "type": "ball",
       "object1": "foot2",
       "object2": "tibia2",
       "point": [
@@ -412,7 +414,7 @@
       ]
     },
     "heel3": {
-      "type": "fixed",
+      "type": "ball",
       "object1": "foot3",
       "object2": "tibia3",
       "point": [
@@ -422,7 +424,7 @@
       ]
     },
     "heel4": {
-      "type": "fixed",
+      "type": "ball",
       "object1": "foot4",
       "object2": "tibia4",
       "point": [
