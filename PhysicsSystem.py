@@ -226,7 +226,7 @@ class Rigid3DBodyEngine(object):
                 self.num_constraints += 1
             if constraint == "ground" and parameters["mu"]!=0:
                 self.num_constraints += 2
-            if constraint == "ground" and parameters["torsional_friction"]:
+            if constraint == "ground" and parameters["torsional_friction"] and parameters["mu"]!=0:
                 self.num_constraints += 1
             if constraint == "limit":
                 self.num_constraints += 1
@@ -336,7 +336,7 @@ class Rigid3DBodyEngine(object):
 
                 c_idx += 2
 
-            if constraint == "ground" and parameters["torsional_friction"]:
+            if constraint == "ground" and parameters["torsional_friction"] and parameters["mu"]!=0:
                 d = parameters["delta"]
                 r = self.radii[idx1]
                 self.clipping_a[c_idx] = 3.*np.pi/16. * np.sqrt(r*d) * parameters["mu"]
@@ -522,7 +522,7 @@ class Rigid3DBodyEngine(object):
                     self.C[c_idx+i] = (positions[idx1,Z] - r < 0.0)
                 c_idx += 2
 
-            if constraint == "ground" and parameters["torsional_friction"]:
+            if constraint == "ground" and parameters["torsional_friction"] and parameters["mu"]!=0:
                 r = self.radii[idx1]
                 J[c_idx,0,:] = np.array([0,0,0,0,0,r])
                 J[c_idx,1,:] = np.array([0,0,0,0,0,0])

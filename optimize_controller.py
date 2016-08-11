@@ -61,7 +61,7 @@ iter_train = theano.function([],
                              [fitness],
                              updates=updates
                              )
-print "Running since %s..." % strftime("%H:%M:%S", localtime())
+#print "Running since %s..." % strftime("%H:%M:%S", localtime())
 #import theano.printing
 #theano.printing.debugprint(iter_train.maker.fgraph.outputs[0])
 print "Running since %s..." % strftime("%H:%M:%S", localtime())

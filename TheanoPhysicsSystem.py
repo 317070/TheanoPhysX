@@ -287,12 +287,6 @@ class TheanoRigid3DBodyEngine(object):
                 self.num_constraints += 3
             if constraint == "hinge":
                 self.num_constraints += 2
-            if constraint == "hinge" and "limit" in parameters:
-                self.num_constraints += 2
-            if constraint == "hinge" and "velocity_motor" in parameters:
-                self.num_constraints += 1
-            if constraint == "hinge" and "position_motor" in parameters:
-                self.num_constraints += 1
             if constraint == "ground":
                 self.num_constraints += 1
             if constraint == "ground" and parameters["mu"]!=0:
@@ -390,9 +384,9 @@ class TheanoRigid3DBodyEngine(object):
                 self.zeta[c_idx] = parameters["zeta"]
                 self.only_when_positive[c_idx] = 1.0
                 ground_contact_idx = c_idx
-                c_idx += 1
                 self.zero_index.append(idx1)
                 self.one_index.append(idx2)
+                c_idx += 1
 
             if constraint == "ground" and parameters["mu"]!=0:
                 for i in xrange(2):
@@ -407,7 +401,7 @@ class TheanoRigid3DBodyEngine(object):
 
                 c_idx += 2
 
-            if constraint == "ground" and parameters["torsional_friction"]:
+            if constraint == "ground" and parameters["torsional_friction"] and parameters["mu"]!=0:
                 d = parameters["delta"]
                 r = self.radii[idx1]
                 self.clipping_a[c_idx] = 3.*np.pi/16. * np.sqrt(r*d) * parameters["mu"]
@@ -425,7 +419,6 @@ class TheanoRigid3DBodyEngine(object):
         self.velocityVectors = theano.shared(self.velocityVectors.astype('float32'), name="velocityVectors")
         self.rot_matrices = theano.shared(self.rot_matrices.astype('float32'), name="rot_matrices", )
         self.inertia_inv = theano.shared(np.linalg.inv(self.massMatrices).astype('float32'), name="inertia_inv", )
-
 
 
 
@@ -608,6 +601,7 @@ class TheanoRigid3DBodyEngine(object):
                 J[2*c_idx+1] = np.array([0,0,0,0,0,0], dtype='float32')
                 C[c_idx] = positions[idx1,Z] - r
                 c_idx += 1
+
 
         #mass_matrix = T.concatenate((M[self.zero_index,None,:,:], M[self.one_index,None,:,:]), axis=1)
         mass_matrix = T.concatenate((
