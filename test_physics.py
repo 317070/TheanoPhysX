@@ -68,8 +68,8 @@ class MyApp(ShowBase):
         self.objects = dict()
 
         #self.load_robot_model("robotmodel/test.json")
-        self.load_robot_model("robotmodel/predator.json")
-        #self.load_robot_model("robotmodel/simple_predator.json")
+        #self.load_robot_model("robotmodel/predator.json")
+        self.load_robot_model("robotmodel/simple_predator.json")
         self.physics.compile()
 
     def run_no_gui(self):
@@ -179,7 +179,7 @@ class MyApp(ShowBase):
 
     # Define a procedure to move the camera.
     def spinCameraTask(self, task):
-        DT = 1./6000.
+        DT = 1./1000.
         self.t += DT
         ph = self.t*2*np.pi
         sensors = self.physics.getSensorValues("spine").flatten()

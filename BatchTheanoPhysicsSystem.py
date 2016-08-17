@@ -110,6 +110,7 @@ class TheanoRigid3DBodyEngine(object):
         self.zero_index = None
         self.one_index = None
         self.inertia_inv = None
+        self.batch_size = None
 
 
     def addCube(self, reference, dimensions, position, rotation, velocity, **kwargs):
@@ -277,9 +278,10 @@ class TheanoRigid3DBodyEngine(object):
         for sensor in robot_dict["sensors"]:
             self.addSensor(**sensor)
 
-    def compile(self):
-
+    def compile(self, batch_size=1):
+        self.batch_size = batch_size
         self.num_constraints = 0
+
         for (constraint,references,parameters) in self.constraints:
             if constraint == "ball-and-socket" or constraint == "hinge" or constraint == "fixed":
                 self.num_constraints += 3
@@ -298,7 +300,7 @@ class TheanoRigid3DBodyEngine(object):
             if constraint == "motor":
                 self.num_constraints += 1
 
-        self.P = T.zeros((self.num_constraints,))
+        self.P = T.zeros((self.batch_size, self.num_constraints,))
         self.w = np.zeros((self.num_constraints,), dtype='float32')  # 0 constraints
         self.zeta = np.zeros((self.num_constraints,), dtype='float32')  # 0 constraints
 
@@ -370,6 +372,7 @@ class TheanoRigid3DBodyEngine(object):
                 self.map_object_to_constraint[idx2].append(2*c_idx + 1)
                 self.zero_index.append(idx1)
                 self.one_index.append(idx2)
+
                 if "motor_torque" in parameters:
                     self.clipping_a[c_idx] = 0
                     self.clipping_b[c_idx] = parameters["motor_torque"]
@@ -414,11 +417,11 @@ class TheanoRigid3DBodyEngine(object):
 
                 c_idx += 1
 
-        self.positionVectors = theano.shared(self.positionVectors.astype('float32'), name="positionVectors")
-        self.velocityVectors = theano.shared(self.velocityVectors.astype('float32'), name="velocityVectors")
-        self.rot_matrices = theano.shared(self.rot_matrices.astype('float32'), name="rot_matrices", )
-        self.lower_inertia_inv = theano.shared(np.linalg.inv(self.massMatrices).astype('float32')[:,:3,:3], name="lower_inertia_inv", )
-        self.upper_inertia_inv = theano.shared(np.linalg.inv(self.massMatrices).astype('float32')[:,3:,3:], name="upper_inertia_inv", )
+        self.positionVectors = theano.shared(self.positionVectors.astype('float32'), name="positionVectors")[None,:,:]
+        self.velocityVectors = theano.shared(self.velocityVectors.astype('float32'), name="velocityVectors")[None,:,:]
+        self.rot_matrices = theano.shared(self.rot_matrices.astype('float32'), name="rot_matrices", )[None,:,:,:]
+        self.lower_inertia_inv = theano.shared(np.linalg.inv(self.massMatrices).astype('float32')[None,:,:3,:3], name="lower_inertia_inv", )
+        self.upper_inertia_inv = theano.shared(np.linalg.inv(self.massMatrices).astype('float32')[None,:,3:,3:], name="upper_inertia_inv", )
 
 
     def evaluate(self, dt, positions, velocities, rot_matrices, motor_signals):
@@ -432,7 +435,7 @@ class TheanoRigid3DBodyEngine(object):
 
         totalforce = np.array([0,0,0,0,0,0], dtype='float32')  # total force acting on body outside of constraints
         acceleration = np.array([0,0,-9.81,0,0,0], dtype='float32')  # acceleration of the default frame
-        newv = velocities + dt * acceleration[None,:]
+        newv = velocities + dt * acceleration[None,None,:]
         originalv = newv
 
 
@@ -441,23 +444,23 @@ class TheanoRigid3DBodyEngine(object):
         ##################
         # now enforce the constraints by having corrective impulses
         # convert mass matrices to world coordinates
-        M = T.zeros(shape=(self.massMatrices.shape[0],6,6))
+        M = T.zeros(shape=(self.massMatrices.shape[0],self.massMatrices.shape[1],6,6))
 
 
         M00 = self.lower_inertia_inv
         M01 = T.zeros(shape=(self.massMatrices.shape[0],3,3))
         M10 = M01
-        M11 = T.sum(rot_matrices.dimshuffle(0,1,'x',2,'x') * self.upper_inertia_inv.dimshuffle(0,1,2,'x','x') * rot_matrices.dimshuffle(0,'x',1,'x',2), axis=(1,2))
-        M0 = T.concatenate([M00,M01],axis=2)
-        M1 = T.concatenate([M10,M11],axis=2)
-        M = T.concatenate([M0,M1],axis=1)
+        M11 = T.sum(rot_matrices[:,:,:,None,:,None] * self.upper_inertia_inv[:,:,:,:,None,None] * rot_matrices[:,:,None,:,None,:], axis=(2,3))
+        M0 = T.concatenate([M00,M01],axis=4)
+        M1 = T.concatenate([M10,M11],axis=4)
+        M = T.concatenate([M0,M1],axis=3)
 
         #self.P = np.zeros((self.num_constraints,))# constant
         # changes every timestep
-        J = [np.zeros((1,6)) for _ in xrange(2 * self.num_constraints)]  # 0 constraints x 2 objects x 6 states
-        b_res = [0 for _ in xrange(self.num_constraints)]  # 0 constraints
-        b_error = [0 for _ in xrange(self.num_constraints)]  # 0 constraints
-        C = [0 for _ in xrange(self.num_constraints)]  # 0 constraints
+        J = [np.zeros((1,1,6)) for _ in xrange(2 * self.num_constraints)]  # 0 constraints x 0 bodies x 2 objects x 6 states
+        b_res =   [np.zeros((self.batch_size,)) for _ in xrange(self.num_constraints)]  # 0 constraints x 0 bodies
+        b_error = [np.zeros((self.batch_size,)) for _ in xrange(self.num_constraints)]  # 0 constraints x 0 bodies
+        C =       [np.zeros((self.batch_size,)) for _ in xrange(self.num_constraints)]  # 0 constraints x 0 bodies
 
         c_idx = 0
         for constraint,references,parameters in self.constraints:
@@ -556,16 +559,15 @@ class TheanoRigid3DBodyEngine(object):
                 J[2*c_idx+1] = T.concatenate([np.zeros((3,), dtype='float32'), a])
 
                 motor_signal = motor_signals[parameters["motor_id"]]
-                motor_min = parameters["min"]/180. * np.pi
-                motor_max = parameters["max"]/180. * np.pi
 
-                motor_signal = T.clip(motor_signal, motor_min, motor_max)
-                print motor_signal
+                motor_min = (parameters["min"]/180. * np.pi)
+                motor_max = (parameters["max"]/180. * np.pi)
+                motor_signal = T.clip(motor_signal, motor_min, motor_max).astype('float32')
 
                 if parameters["type"] == "velocity":
                     b_error[c_idx] = motor_signal
                 elif parameters["type"] == "position":
-                    if "delta" in parameters and parameters["delta"]>0:
+                    if "delta" in parameters:
                         b_error[c_idx] = dt * (abs(theta-motor_signal) > parameters["delta"]) * (2*(theta>motor_signal)-1) * parameters["motor_velocity"]
                     else:
                         b_error[c_idx] = dt * (theta-motor_signal) * parameters["motor_velocity"]
@@ -603,6 +605,7 @@ class TheanoRigid3DBodyEngine(object):
                 c_idx += 1
 
 
+        #mass_matrix = T.concatenate((M[self.zero_index,None,:,:], M[self.one_index,None,:,:]), axis=1)
         mass_matrix = T.concatenate((
                                     T.stack([M[i,None,:,:] for i in self.zero_index], axis=0),
                                     T.stack([M[i,None,:,:] for i in self.one_index], axis=0)
@@ -616,12 +619,14 @@ class TheanoRigid3DBodyEngine(object):
 
         for iteration in xrange(self.num_iterations):
             # changes every iteration
+            #v = T.concatenate((newv[self.zero_index,None,:],newv[self.one_index,None,:]),axis=1)
             v = T.concatenate((
                 T.stack([newv[i,None,:] for i in self.zero_index], axis=0),
                 T.stack([newv[i,None,:] for i in self.one_index], axis=0)
             ),axis=1)
 
             m_eff = 1./T.sum(T.sum(J[:,:,None,:]*mass_matrix, axis=3)*J, axis=(1,2))
+            #m_eff = 1./T.sum(T.sum(J[:,:,None,:]*mass_matrix, axis=-1)*J, axis=(-1,-2))
 
             k = m_eff * (self.w**2)
             c = m_eff * 2*self.zeta*self.w
@@ -637,7 +642,7 @@ class TheanoRigid3DBodyEngine(object):
             self.P += lamb
             #print J[[39,61,65,69],:]
             #print np.sum(lamb**2), np.sum(self.P**2)
-            clipping_force = T.concatenate([self.P[j].dimshuffle('x') for j in self.clipping_idx], axis=0)
+            clipping_force = T.concatenate([self.P[j].dimshuffle('x') for j in self.clipping_idx],axis=0)
             clipping_limit = abs(self.clipping_a * clipping_force + self.clipping_b * dt)
             self.P = T.clip(self.P,-clipping_limit, clipping_limit)
             applicable = (1-(self.only_when_positive*( 1-(self.P>=0)) )) * (C<=0)
@@ -647,11 +652,10 @@ class TheanoRigid3DBodyEngine(object):
 
             r = []
             for i in xrange(len(self.map_object_to_constraint)):
+                #r.append(originalv[i,:] + T.sum(result[self.map_object_to_constraint[i],:], axis=0))
                 delta_v = T.sum(T.stack([result[j,:] for j in self.map_object_to_constraint[i]],axis=0), axis=0)
-                r.append(delta_v)
-            delta_v = T.stack(r, axis=0)
-            #newv = originalv + delta_v
-            newv = newv + delta_v
+                r.append(originalv[i,:] + delta_v)
+            newv = T.stack(r, axis=0)
 
         #print
         return newv
@@ -663,7 +667,6 @@ class TheanoRigid3DBodyEngine(object):
         # --- Step 3 --- #
         ##################
         # semi-implicit Euler integration
-        print motor_signals
         velocities = self.evaluate(dt, positions, velocities, rot_matrices, motor_signals=motor_signals)
 
         positions = positions + velocities[:,:3] * dt

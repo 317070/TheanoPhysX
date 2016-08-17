@@ -3,13 +3,13 @@
   "mass density": 1.0,
   "default_constraint_parameters": {
     "default": {
-      "f": 10,
+      "f": 1,
       "zeta": 0.2
     },
     "motor": {
       "type": "position",
-      "motor_velocity": 0.00000000000000,
-      "motor_torque": 0.00000000000000,
+      "motor_velocity": 1.00000000000000,
+      "motor_torque": 1e20,
       "min": -45,
       "max": 45,
       "delta": 0.0,
@@ -21,8 +21,8 @@
       "zeta": 0.000
     },
     "ground": {
-      "mu": 0,
-      "torsional_friction": true,
+      "mu": 1.0,
+      "torsional_friction": false,
       "delta": 0.01,
       "alpha": 0.01
     },
@@ -45,7 +45,7 @@
   "default_model_parameters": {
     "default": {
       "velocity": [
-        1,
+        0.1,
         0,
         0,
         0,
