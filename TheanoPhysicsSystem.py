@@ -7,6 +7,7 @@ import theano
 import theano.tensor as T
 
 np.seterr(all='raise')
+theano_to_print = list()
 
 X = 0
 Y = 1
@@ -560,7 +561,6 @@ class TheanoRigid3DBodyEngine(object):
                 motor_max = parameters["max"]/180. * np.pi
 
                 motor_signal = T.clip(motor_signal, motor_min, motor_max)
-                print motor_signal
 
                 if parameters["type"] == "velocity":
                     b_error[c_idx] = motor_signal
@@ -632,28 +632,37 @@ class TheanoRigid3DBodyEngine(object):
             m_c = 1./(1./m_eff + CFM)
 
             b = ERP/dt * b_error + b_res
+
+            #theano_to_print.extend([b[i] for i in [3,7,11,15]])
+
             lamb = - m_c * (T.sum(J*v, axis=(1,2)) + CFM * self.P + b)
 
             self.P += lamb
+
             #print J[[39,61,65,69],:]
             #print np.sum(lamb**2), np.sum(self.P**2)
             clipping_force = T.concatenate([self.P[j].dimshuffle('x') for j in self.clipping_idx], axis=0)
             clipping_limit = abs(self.clipping_a * clipping_force + self.clipping_b * dt)
             self.P = T.clip(self.P,-clipping_limit, clipping_limit)
             applicable = (1-(self.only_when_positive*( 1-(self.P>=0)) )) * (C<=0)
-
             result = T.sum(mass_matrix*J[:,:,None,:], axis=3) * self.P[:,None,None] * applicable[:,None,None]
+            #theano_to_print.extend([T.sum(abs(result[i]),axis=(-1,-2)) for i in [3,7,11,15]])
             result = result.reshape((2*self.num_constraints,6))
+            #theano_to_print.extend([T.sum(abs(result[i]),axis=(-1)) for i in [6,14,22,30]])
 
             r = []
             for i in xrange(len(self.map_object_to_constraint)):
                 delta_v = T.sum(T.stack([result[j,:] for j in self.map_object_to_constraint[i]],axis=0), axis=0)
                 r.append(delta_v)
+
+            #theano_to_print.extend([T.sum(abs(newv[i]),axis=(-1)) for i in [4,3,5,11]])
             delta_v = T.stack(r, axis=0)
             #newv = originalv + delta_v
             newv = newv + delta_v
 
+
         #print
+
         return newv
 
 
@@ -663,18 +672,20 @@ class TheanoRigid3DBodyEngine(object):
         # --- Step 3 --- #
         ##################
         # semi-implicit Euler integration
-        print motor_signals
         velocities = self.evaluate(dt, positions, velocities, rot_matrices, motor_signals=motor_signals)
-
+        #theano_to_print.extend([velocities[4]])
+        #theano_to_print.extend([T.sum(abs(velocities[i]),axis=(-1)) for i in [4,3,5,11]])
         positions = positions + velocities[:,:3] * dt
+        #theano_to_print.extend([T.sum(abs(positions[i,3:]),axis=(-1)) for i in [4,3,5,11]])
         rot_matrices = normalize_matrix(rot_matrices[:,:,:] + T.sum(rot_matrices[:,:,:,None] * skew_symmetric(dt * velocities[:,3:])[:,None,:,:],axis=2) )
-
+        #theano_to_print.extend([T.sum(abs(rot_matrices[i]),axis=(-1,-2)) for i in [4,3,5,11]])
+        #theano_to_print.extend([rot_matrices[4]])
         return (positions, velocities, rot_matrices)
 
 
 
     def getInitialState(self):
-        return self.positionVectors, self.velocityVectors, self.rot_matrices
+        return self.positionVectors.copy(), self.velocityVectors.copy(), self.rot_matrices.copy()
 
     def getPosition(self, reference):
         idx = self.getObjectIndex(reference)
