@@ -42,7 +42,13 @@ def convert_model_to_world_coordinate_no_bias(coor, rot_matrix):
     return np.sum(rot_matrix[:,:] * coor[:,None], axis=0)
 
 def theano_convert_model_to_world_coordinate_no_bias(coor, rot_matrix):
-    return T.sum(rot_matrix * coor[:,None], axis=0)
+    return T.sum(rot_matrix * coor[:,:,None], axis=1)
+
+def theano_dot_last_dimension_matrices(A, B):
+    return T.batched_tensordot(A, B, axes=[(-2,-1), (-2,-1)])
+
+def theano_dot_last_dimension_vectors(A, B):
+    return T.batched_tensordot(A, B, axes=[(-1,), (-1,)])
 
 def theano_stack_integers_mixed_numpy(L):
     r = []
@@ -69,7 +75,7 @@ def numpy_skew_symmetric(x):
                             ],axis=-2)
 
 def single_skew_symmetric(x):
-    a,b,c = x[0,None,None],x[1,None,None],x[2,None,None]
+    a,b,c = x[:,0,None,None],x[:,1,None,None],x[:,2,None,None]
     z = T.zeros_like(a)
     return T.concatenate([
                     T.concatenate(( z,-c, b),axis=-1),
@@ -457,6 +463,8 @@ class TheanoRigid3DBodyEngine(object):
 
         #self.P = np.zeros((self.num_constraints,))# constant
         # changes every timestep
+
+        # constraints are first dimension! We will need to stack them afterwards!
         J = [np.zeros((1,1,6)) for _ in xrange(2 * self.num_constraints)]  # 0 constraints x 0 bodies x 2 objects x 6 states
         b_res =   [np.zeros((self.batch_size,)) for _ in xrange(self.num_constraints)]  # 0 constraints x 0 bodies
         b_error = [np.zeros((self.batch_size,)) for _ in xrange(self.num_constraints)]  # 0 constraints x 0 bodies
@@ -471,57 +479,58 @@ class TheanoRigid3DBodyEngine(object):
                 idx2 = None
 
             if constraint == "ball-and-socket" or constraint == "hinge" or constraint == "fixed":
-                r1x = theano_convert_model_to_world_coordinate_no_bias(parameters["joint_in_model1_coordinates"], rot_matrices[idx1,:,:])
-                r2x = theano_convert_model_to_world_coordinate_no_bias(parameters["joint_in_model2_coordinates"], rot_matrices[idx2,:,:])
+                r1x = theano_convert_model_to_world_coordinate_no_bias(parameters["joint_in_model1_coordinates"], rot_matrices[:,idx1,:,:])
+                r2x = theano_convert_model_to_world_coordinate_no_bias(parameters["joint_in_model2_coordinates"], rot_matrices[:,idx2,:,:])
                 ss_r1x = single_skew_symmetric(r1x)
                 ss_r2x = single_skew_symmetric(r2x)
-                complete_J1 = T.concatenate([-np.eye(3, dtype='float32'), ss_r1x])
-                complete_J2 = T.concatenate([ np.eye(3, dtype='float32'),-ss_r2x])
-                error = positions[idx2,:]+r2x-positions[idx1,:]-r1x
+                complete_J1 = T.concatenate([-np.eye(3, dtype='float32')[None,:,:], ss_r1x],axis=1)
+                complete_J2 = T.concatenate([ np.eye(3, dtype='float32')[None,:,:],-ss_r2x],axis=1)
+                error = positions[:,idx2,:]+r2x-positions[:,idx1,:]-r1x
                 for i in xrange(3):
-                    J[2*(c_idx+i)+0] = complete_J1[:,i]
-                    J[2*(c_idx+i)+1] = complete_J2[:,i]
+                    J[2*(c_idx+i)+0] = complete_J1[:,:,i]
+                    J[2*(c_idx+i)+1] = complete_J2[:,:,i]
 
-                    b_error[c_idx+i] = error[i]
+                    b_error[c_idx+i] = error[:,i]
                 c_idx += 3
 
             if constraint == "slider" or constraint == "fixed":
-                complete_J1 = np.concatenate([np.zeros((3,3)),-np.eye(3)]).astype('float32')
-                complete_J2 = np.concatenate([np.zeros((3,3)), np.eye(3)]).astype('float32')
+                complete_J1 = np.concatenate([np.zeros((3,3)),-np.eye(3)])[None,:,:].astype('float32')
+                complete_J2 = np.concatenate([np.zeros((3,3)), np.eye(3)])[None,:,:].astype('float32')
 
                 for i in xrange(3):
-                    J[2*(c_idx+i)+0] = complete_J1[:,i]
-                    J[2*(c_idx+i)+1] = complete_J2[:,i]
+                    J[2*(c_idx+i)+0] = complete_J1[:,:,i]
+                    J[2*(c_idx+i)+1] = complete_J2[:,:,i]
 
                 rot_current = np.dot(rot_matrices[idx2,:,:], rot_matrices[idx1,:,:].T)
                 rot_diff = np.dot(rot_current, parameters['rot_init'].T)
                 cross = rot_diff.T - rot_diff
                 # TODO: add stabilization of this constraint
-                b_error[c_idx] = 0#cross[1,2]
-                b_error[c_idx+1] = 0#cross[2,0]
-                b_error[c_idx+2] = 0#cross[0,1]
+                b_error[c_idx] = T.zeros(shape=(self.batch_size,))#cross[1,2]
+                b_error[c_idx+1] = T.zeros(shape=(self.batch_size,))#cross[2,0]
+                b_error[c_idx+2] = T.zeros(shape=(self.batch_size,))#cross[0,1]
                 c_idx += 3
 
             if constraint == "hinge":
-                a2x = theano_convert_model_to_world_coordinate_no_bias(parameters['axis_in_model2_coordinates'], rot_matrices[idx2,:,:])
-                b1x = theano_convert_model_to_world_coordinate_no_bias(parameters['axis1_in_model1_coordinates'], rot_matrices[idx1,:,:])
-                c1x = theano_convert_model_to_world_coordinate_no_bias(parameters['axis2_in_model1_coordinates'], rot_matrices[idx1,:,:])
+                a2x = theano_convert_model_to_world_coordinate_no_bias(parameters['axis_in_model2_coordinates'], rot_matrices[:,idx2,:,:])
+                b1x = theano_convert_model_to_world_coordinate_no_bias(parameters['axis1_in_model1_coordinates'], rot_matrices[:,idx1,:,:])
+                c1x = theano_convert_model_to_world_coordinate_no_bias(parameters['axis2_in_model1_coordinates'], rot_matrices[:,idx1,:,:])
                 ss_a2x = single_skew_symmetric(a2x)
 
-                J[2*(c_idx+0)+0] = T.concatenate([np.zeros((3,), dtype='float32'),-T.dot(b1x,ss_a2x)])
-                J[2*(c_idx+0)+1] = T.concatenate([np.zeros((3,), dtype='float32'), T.dot(b1x,ss_a2x)])
-                J[2*(c_idx+1)+0] = T.concatenate([np.zeros((3,), dtype='float32'),-T.dot(c1x,ss_a2x)])
-                J[2*(c_idx+1)+1] = T.concatenate([np.zeros((3,), dtype='float32'), T.dot(c1x,ss_a2x)])
+                J[2*(c_idx+0)+0] = T.concatenate([np.zeros((3,), dtype='float32')[None,:,:],-theano_dot_last_dimension_matrices(b1x,ss_a2x)],axis=1)
+                J[2*(c_idx+0)+1] = T.concatenate([np.zeros((3,), dtype='float32')[None,:,:], theano_dot_last_dimension_matrices(b1x,ss_a2x)],axis=1)
+                J[2*(c_idx+1)+0] = T.concatenate([np.zeros((3,), dtype='float32')[None,:,:],-theano_dot_last_dimension_matrices(c1x,ss_a2x)],axis=1)
+                J[2*(c_idx+1)+1] = T.concatenate([np.zeros((3,), dtype='float32')[None,:,:], theano_dot_last_dimension_matrices(c1x,ss_a2x)],axis=1)
 
-                b_error[c_idx+0] = T.sum(a2x*b1x)
-                b_error[c_idx+1] = T.sum(a2x*c1x)
+                b_error[c_idx+0] = theano_dot_last_dimension_vectors(a2x,b1x)
+                b_error[c_idx+1] = theano_dot_last_dimension_vectors(a2x,c1x)
                 c_idx += 2
 
             if constraint == "limit":
+                #TODO: move to Theano...
                 angle = parameters["angle"]/180. * np.pi
-                a = theano_convert_model_to_world_coordinate_no_bias(parameters['axis_in_model1_coordinates'], rot_matrices[idx1,:,:])
-                rot_current = np.dot(rot_matrices[idx2,:,:], rot_matrices[idx1,:,:].T)
-                rot_diff = np.dot(rot_current, quat_to_rot_matrix(parameters['rot_init']).T)
+                a = theano_convert_model_to_world_coordinate_no_bias(parameters['axis_in_model1_coordinates'], rot_matrices[:,idx1,:,:])
+                rot_current = theano_dot_last_dimension_vectors(rot_matrices[:,idx2,:,:], rot_matrices[idx1,:,:].dimshuffle(0,2,1))
+                rot_diff = theano_dot_last_dimension_vectors(rot_current, quat_to_rot_matrix(parameters['rot_init']).dimshuffle(0,2,1))
                 theta2 = np.arccos(0.5*(np.trace(rot_diff)-1))
                 cross = rot_diff.T - rot_diff
                 dot2 = cross[1,2] * a[0] + cross[2,0] * a[1] + cross[0,1] * a[2]
@@ -545,11 +554,14 @@ class TheanoRigid3DBodyEngine(object):
                 c_idx += 1
 
             if constraint == "motor":
-                a = theano_convert_model_to_world_coordinate_no_bias(parameters['axis_in_model1_coordinates'], rot_matrices[idx1,:,:])
+                a = theano_convert_model_to_world_coordinate_no_bias(parameters['axis_in_model1_coordinates'], rot_matrices[:,idx1,:,:])
 
-                rot_current = T.dot(rot_matrices[idx2,:,:], rot_matrices[idx1,:,:].T)
-                rot_diff = T.dot(rot_current, parameters['rot_init'].T)
-                theta2 = T.arccos(T.clip(0.5*(T.nlinalg.trace(rot_diff)-1),-1,1))
+                rot_current = theano_dot_last_dimension_vectors(rot_matrices[:,idx2,:,:], rot_matrices[:,idx1,:,:].dimshuffle(0,2,1))
+                rot_diff = theano_dot_last_dimension_vectors(rot_current, parameters['rot_init'].dimshuffle(0,2,1))
+
+                traces =  theano.scan(lambda y: T.nlinalg.trace(y), sequences=rot_diff)[0]
+
+                theta2 = T.arccos(T.clip(0.5*(traces-1),-1,1))
                 cross = rot_diff.T - rot_diff
                 dot2 = cross[1,2] * a[0] + cross[2,0] * a[1] + cross[0,1] * a[2]
 
