@@ -50,6 +50,13 @@ def theano_dot_last_dimension_matrices(A, B):
 def theano_dot_last_dimension_vectors(A, B):
     return T.batched_tensordot(A, B, axes=[(-1,), (-1,)])
 
+def theano_dot_last_dimension_vector_matrix(A, B):
+    return T.batched_tensordot(A, B, axes=[(-1,), (-2,)])
+
+def theano_dot_last_dimension_matrix_vector(A, B):
+    return T.batched_tensordot(A, B, axes=[(-1,), (-1,)])
+
+
 def theano_stack_integers_mixed_numpy(L):
     r = []
     last_numpy = np.array([])
@@ -516,21 +523,22 @@ class TheanoRigid3DBodyEngine(object):
                 c1x = theano_convert_model_to_world_coordinate_no_bias(parameters['axis2_in_model1_coordinates'], rot_matrices[:,idx1,:,:])
                 ss_a2x = single_skew_symmetric(a2x)
 
-                J[2*(c_idx+0)+0] = T.concatenate([np.zeros((3,), dtype='float32')[None,:,:],-theano_dot_last_dimension_matrices(b1x,ss_a2x)],axis=1)
-                J[2*(c_idx+0)+1] = T.concatenate([np.zeros((3,), dtype='float32')[None,:,:], theano_dot_last_dimension_matrices(b1x,ss_a2x)],axis=1)
-                J[2*(c_idx+1)+0] = T.concatenate([np.zeros((3,), dtype='float32')[None,:,:],-theano_dot_last_dimension_matrices(c1x,ss_a2x)],axis=1)
-                J[2*(c_idx+1)+1] = T.concatenate([np.zeros((3,), dtype='float32')[None,:,:], theano_dot_last_dimension_matrices(c1x,ss_a2x)],axis=1)
+                J[2*(c_idx+0)+0] = T.concatenate([np.zeros((3,), dtype='float32')[None,:],-theano_dot_last_dimension_vector_matrix(b1x,ss_a2x)],axis=1)
+                J[2*(c_idx+0)+1] = T.concatenate([np.zeros((3,), dtype='float32')[None,:], theano_dot_last_dimension_vector_matrix(b1x,ss_a2x)],axis=1)
+                J[2*(c_idx+1)+0] = T.concatenate([np.zeros((3,), dtype='float32')[None,:],-theano_dot_last_dimension_vector_matrix(c1x,ss_a2x)],axis=1)
+                J[2*(c_idx+1)+1] = T.concatenate([np.zeros((3,), dtype='float32')[None,:], theano_dot_last_dimension_vector_matrix(c1x,ss_a2x)],axis=1)
 
                 b_error[c_idx+0] = theano_dot_last_dimension_vectors(a2x,b1x)
                 b_error[c_idx+1] = theano_dot_last_dimension_vectors(a2x,c1x)
                 c_idx += 2
 
+            """
             if constraint == "limit":
                 #TODO: move to Theano...
                 angle = parameters["angle"]/180. * np.pi
                 a = theano_convert_model_to_world_coordinate_no_bias(parameters['axis_in_model1_coordinates'], rot_matrices[:,idx1,:,:])
-                rot_current = theano_dot_last_dimension_vectors(rot_matrices[:,idx2,:,:], rot_matrices[idx1,:,:].dimshuffle(0,2,1))
-                rot_diff = theano_dot_last_dimension_vectors(rot_current, quat_to_rot_matrix(parameters['rot_init']).dimshuffle(0,2,1))
+                rot_current = theano_dot_last_dimension_matrices(rot_matrices[:,idx2,:,:], rot_matrices[idx1,:,:].dimshuffle(0,2,1))
+                rot_diff = theano_dot_last_dimension_matrices(rot_current, quat_to_rot_matrix(parameters['rot_init']).dimshuffle(0,2,1))
                 theta2 = np.arccos(0.5*(np.trace(rot_diff)-1))
                 cross = rot_diff.T - rot_diff
                 dot2 = cross[1,2] * a[0] + cross[2,0] * a[1] + cross[0,1] * a[2]
@@ -552,25 +560,26 @@ class TheanoRigid3DBodyEngine(object):
                     C[c_idx] = (theta < angle)
 
                 c_idx += 1
-
+            """
             if constraint == "motor":
                 a = theano_convert_model_to_world_coordinate_no_bias(parameters['axis_in_model1_coordinates'], rot_matrices[:,idx1,:,:])
 
-                rot_current = theano_dot_last_dimension_vectors(rot_matrices[:,idx2,:,:], rot_matrices[:,idx1,:,:].dimshuffle(0,2,1))
-                rot_diff = theano_dot_last_dimension_vectors(rot_current, parameters['rot_init'].dimshuffle(0,2,1))
+                rot_current = theano_dot_last_dimension_matrices(rot_matrices[:,idx2,:,:], rot_matrices[:,idx1,:,:].dimshuffle(0,2,1))
+                rot_diff = theano_dot_last_dimension_matrices(rot_current, parameters['rot_init'].dimshuffle(0,2,1))
 
-                traces =  theano.scan(lambda y: T.nlinalg.trace(y), sequences=rot_diff)[0]
+                traces = rot_diff[:,0,0] + rot_diff[:,1,1] + rot_diff[:,2,2]
+                #traces =  theano.scan(lambda y: T.nlinalg.trace(y), sequences=rot_diff)[0]
 
                 theta2 = T.arccos(T.clip(0.5*(traces-1),-1,1))
-                cross = rot_diff.T - rot_diff
-                dot2 = cross[1,2] * a[0] + cross[2,0] * a[1] + cross[0,1] * a[2]
+                cross = rot_diff.dimshuffle(0,2,1) - rot_diff
+                dot2 = cross[:,1,2] * a[:,0] + cross[:,2,0] * a[:,1] + cross[:,0,1] * a[:,2]
 
                 theta = ((dot2>0) * 2 - 1) * theta2
 
-                J[2*c_idx+0] = T.concatenate([np.zeros((3,), dtype='float32'),-a])
-                J[2*c_idx+1] = T.concatenate([np.zeros((3,), dtype='float32'), a])
+                J[2*c_idx+0] = T.concatenate([np.zeros((3,), dtype='float32')[None,:],-a])
+                J[2*c_idx+1] = T.concatenate([np.zeros((3,), dtype='float32')[None,:], a])
 
-                motor_signal = motor_signals[parameters["motor_id"]]
+                motor_signal = motor_signals[:,parameters["motor_id"]]
 
                 motor_min = (parameters["min"]/180. * np.pi)
                 motor_max = (parameters["max"]/180. * np.pi)
@@ -579,41 +588,41 @@ class TheanoRigid3DBodyEngine(object):
                 if parameters["type"] == "velocity":
                     b_error[c_idx] = motor_signal
                 elif parameters["type"] == "position":
+
+                    # TODO: rename parameter motor_velocity -> motor_gain
                     if "delta" in parameters:
                         b_error[c_idx] = dt * (abs(theta-motor_signal) > parameters["delta"]) * (2*(theta>motor_signal)-1) * parameters["motor_velocity"]
                     else:
                         b_error[c_idx] = dt * (theta-motor_signal) * parameters["motor_velocity"]
 
-                #print c_idx
-
                 c_idx += 1
 
             if constraint == "ground":
                 r = self.radii[idx1].astype('float32')
-                J[2*c_idx+0] = np.array([0,0,1,0,0,0], dtype='float32')
-                J[2*c_idx+1] = np.array([0,0,0,0,0,0], dtype='float32')
+                J[2*c_idx+0] = np.array([0,0,1,0,0,0], dtype='float32')[None,:]
+                J[2*c_idx+1] = np.array([0,0,0,0,0,0], dtype='float32')[None,:]
 
-                b_error[c_idx] = T.clip(positions[idx1,Z] - r + parameters["delta"], np.finfo('float32').min, 0)
-                b_res[c_idx] = parameters["alpha"] * newv[idx1,Z]
-                C[c_idx] = positions[idx1,Z] - r
+                b_error[c_idx] = T.clip(positions[:,idx1,Z] - r + parameters["delta"], np.finfo('float32').min, 0)
+                b_res[c_idx] = parameters["alpha"] * newv[:,idx1,Z]
+                C[c_idx] = positions[:,idx1,Z] - r
                 c_idx += 1
 
             if constraint == "ground" and parameters["mu"]!=0:
                 r = self.radii[idx1].astype('float32')
                 for i in xrange(2):
                     if i==0:
-                        J[2*(c_idx+i)+0] = np.array([0,1,0,-r,0,0], dtype='float32')
+                        J[2*(c_idx+i)+0] = np.array([0,1,0,-r,0,0], dtype='float32')[None,:]
                     else:
-                        J[2*(c_idx+i)+0] = np.array([1,0,0,0,r,0], dtype='float32')
-                    J[2*(c_idx+i)+1] = np.array([0,0,0,0,0,0], dtype='float32')
-                    C[c_idx+i] = positions[idx1,Z] - r
+                        J[2*(c_idx+i)+0] = np.array([1,0,0,0,r,0], dtype='float32')[None,:]
+                    J[2*(c_idx+i)+1] = np.array([0,0,0,0,0,0], dtype='float32')[None,:]
+                    C[c_idx+i] = positions[:,idx1,Z] - r
                 c_idx += 2
 
             if constraint == "ground" and parameters["torsional_friction"] and parameters["mu"]!=0:
                 r = self.radii[idx1].astype('float32')
-                J[2*c_idx+0] = np.array([0,0,0,0,0,r], dtype='float32')
-                J[2*c_idx+1] = np.array([0,0,0,0,0,0], dtype='float32')
-                C[c_idx] = positions[idx1,Z] - r
+                J[2*c_idx+0] = np.array([0,0,0,0,0,r], dtype='float32')[None,:]
+                J[2*c_idx+1] = np.array([0,0,0,0,0,0], dtype='float32')[None,:]
+                C[c_idx] = positions[:,idx1,Z] - r
                 c_idx += 1
 
 
