@@ -7,6 +7,7 @@ import theano
 import theano.tensor as T
 
 np.seterr(all='raise')
+eps=1e-4
 theano_to_print = list()
 
 X = 0
@@ -547,7 +548,7 @@ class TheanoRigid3DBodyEngine(object):
 
                 rot_current = T.dot(rot_matrices[idx2,:,:], rot_matrices[idx1,:,:].T)
                 rot_diff = T.dot(rot_current, parameters['rot_init'].T)
-                theta2 = T.arccos(T.clip(0.5*(T.nlinalg.trace(rot_diff)-1),-1,1))
+                theta2 = T.arccos(T.clip(0.5*(T.nlinalg.trace(rot_diff)-1),-1+eps,1-eps))
                 cross = rot_diff.T - rot_diff
                 dot2 = cross[1,2] * a[0] + cross[2,0] * a[1] + cross[0,1] * a[2]
 

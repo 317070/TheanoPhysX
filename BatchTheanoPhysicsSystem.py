@@ -8,6 +8,7 @@ import theano
 import theano.tensor as T
 
 np.seterr(all='raise')
+eps=1e-4
 
 X = 0
 Y = 1
@@ -607,7 +608,7 @@ class BatchedTheanoRigid3DBodyEngine(object):
                 #traces =  theano.scan(lambda y: T.nlinalg.trace(y), sequences=rot_diff)[0]
 
                 # TODO: you can't derive arccos(x=0)
-                theta2 = T.arccos(T.clip(0.5*(traces-1),-1,1))
+                theta2 = T.arccos(T.clip(0.5*(traces-1),-1+eps,1-eps))
                 cross = rot_diff.dimshuffle(0,2,1) - rot_diff
                 dot2 = cross[:,1,2] * a[:,0] + cross[:,2,0] * a[:,1] + cross[:,0,1] * a[:,2]
 
