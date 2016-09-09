@@ -79,7 +79,7 @@ iter_train = theano.function([],
                              + theano_to_print
                              #+ [T.grad(theano_to_print[2],all_parameters[1],return_disconnected='None')]
                              ,
-                             #updates=updates,
+                             updates=updates,
                              )
 #print "Running since %s..." % strftime("%H:%M:%S", localtime())
 #import theano.printing

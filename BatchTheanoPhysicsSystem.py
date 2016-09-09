@@ -606,6 +606,7 @@ class BatchedTheanoRigid3DBodyEngine(object):
                 traces = rot_diff[:,0,0] + rot_diff[:,1,1] + rot_diff[:,2,2]
                 #traces =  theano.scan(lambda y: T.nlinalg.trace(y), sequences=rot_diff)[0]
 
+                # TODO: you can't derive arccos(x=0)
                 theta2 = T.arccos(T.clip(0.5*(traces-1),-1,1))
                 cross = rot_diff.dimshuffle(0,2,1) - rot_diff
                 dot2 = cross[:,1,2] * a[:,0] + cross[:,2,0] * a[:,1] + cross[:,0,1] * a[:,2]
