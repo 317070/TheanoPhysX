@@ -2,18 +2,24 @@ import math
 from lasagne.updates import get_or_compute_grads
 import theano
 import theano.tensor as T
+from BatchTheanoPhysicsSystem import BatchedTheanoRigid3DBodyEngine
 from TheanoPhysicsSystem import TheanoRigid3DBodyEngine, theano_to_print
 import lasagne
 import sys
 import numpy as np
+from time import strftime, localtime
+import datetime
 sys.setrecursionlimit(10**6)
 
+print "Started on %s..." % strftime("%H:%M:%S", localtime())
+
+
 # step 1: load the physics model
-engine = TheanoRigid3DBodyEngine(num_iterations=1)
+engine = BatchedTheanoRigid3DBodyEngine(num_iterations=1)
 engine.load_robot_model("robotmodel/predator.json")
 spine_id = engine.getObjectIndex("spine")
-
-engine.compile()
+BATCH_SIZE = 1
+engine.compile(batch_size=BATCH_SIZE)
 
 
 # step 2: build the model, controller and engine for simulation
@@ -22,22 +28,21 @@ total_time = 0.002
 
 def build_objectives(states_list):
     positions, velocities, rotations = states_list
-    #theano_to_print.extend([rotations[-1,6,:,:]])
-    return (rotations[-1,spine_id,:,:] - engine.getInitialState()[2][spine_id,:,:]).norm(L=1,axis=(0,1))
+    #theano_to_print.extend([rotations[-1,:,6,:,:]])
+    return (rotations[-1,:,spine_id,:,:] - engine.getInitialState()[2][:,spine_id,:,:]).norm(L=1,axis=(1,2))
 
 def build_model():
     controller_parameters = []
 
     def build_controller(sensor_values):
-        l_input = lasagne.layers.InputLayer((1,81), input_var=np.ones(shape=(1,81), dtype='float32'), name="sensor_values")
-        #l_input = lasagne.layers.InputLayer((1,81), input_var=sensor_values[None,:], name="sensor_values")
+        l_input = lasagne.layers.InputLayer((BATCH_SIZE,81), input_var=sensor_values, name="sensor_values")
         l_result = lasagne.layers.DenseLayer(l_input, 16,
                                              nonlinearity=lasagne.nonlinearities.identity,
                                              W=lasagne.init.Constant(0.0),
                                              b=lasagne.init.Constant(0.01),
                                              )
-        l_out = lasagne.layers.ReshapeLayer(l_result,shape=(-1,))
-        return l_out
+
+        return l_result
 
     def control_loop(state):
         positions, velocities, rot_matrices = state
@@ -60,9 +65,11 @@ def build_model():
 states, all_parameters, updates = build_model()
 fitness = build_objectives(states)
 
-updates.update(lasagne.updates.sgd(fitness, all_parameters, 0.0))  # we maximize fitness
-from time import strftime, localtime
-import datetime
+#import theano.printing
+#theano.printing.debugprint(T.mean(fitness), print_type=True)
+
+updates.update(lasagne.updates.sgd(-T.mean(fitness), all_parameters, 0.0))  # we maximize fitness
+
 
 print "Compiling since %s..." % strftime("%H:%M:%S", localtime())
 iter_train = theano.function([],
@@ -72,7 +79,7 @@ iter_train = theano.function([],
                              + theano_to_print
                              #+ [T.grad(theano_to_print[2],all_parameters[1],return_disconnected='None')]
                              ,
-                             updates=updates,
+                             #updates=updates,
                              )
 #print "Running since %s..." % strftime("%H:%M:%S", localtime())
 #import theano.printing

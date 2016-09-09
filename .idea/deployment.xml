@@ -1,8 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
-  <component name="PublishConfigData" autoUpload="Always" serverName="hond">
+  <component name="PublishConfigData" autoUpload="Always" serverName="schaap">
     <serverData>
       <paths name="hond">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/home/jdgrave/TheanoPhysX" local="$PROJECT_DIR$" web="/" />
+          </mappings>
+        </serverdata>
+      </paths>
+      <paths name="kat">
         <serverdata>
           <mappings>
             <mapping deploy="/home/jdgrave/TheanoPhysX" local="$PROJECT_DIR$" web="/" />

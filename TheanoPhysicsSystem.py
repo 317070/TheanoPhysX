@@ -566,7 +566,7 @@ class TheanoRigid3DBodyEngine(object):
                     b_error[c_idx] = motor_signal
                 elif parameters["type"] == "position":
                     if "delta" in parameters and parameters["delta"]>0:
-                        b_error[c_idx] = dt * (abs(theta-motor_signal) > parameters["delta"]) * (2*(theta>motor_signal)-1) * parameters["motor_velocity"]
+                        b_error[c_idx] = dt * (abs(theta-motor_signal) > parameters["delta"]) * (theta-motor_signal) * parameters["motor_velocity"]
                     else:
                         b_error[c_idx] = dt * (theta-motor_signal) * parameters["motor_velocity"]
 
@@ -618,7 +618,7 @@ class TheanoRigid3DBodyEngine(object):
             # changes every iteration
             v = T.concatenate((
                 T.stack([newv[i,None,:] for i in self.zero_index], axis=0),
-                T.stack([newv[i,None,:] for i in self.one_index], axis=0)
+                T.stack([newv[j,None,:] for j in self.one_index], axis=0)
             ),axis=1)
 
             m_eff = 1./T.sum(T.sum(J[:,:,None,:]*mass_matrix, axis=3)*J, axis=(1,2))
@@ -678,6 +678,7 @@ class TheanoRigid3DBodyEngine(object):
         positions = positions + velocities[:,:3] * dt
         #theano_to_print.extend([T.sum(abs(positions[i,3:]),axis=(-1)) for i in [4,3,5,11]])
         rot_matrices = normalize_matrix(rot_matrices[:,:,:] + T.sum(rot_matrices[:,:,:,None] * skew_symmetric(dt * velocities[:,3:])[:,None,:,:],axis=2) )
+
         #theano_to_print.extend([T.sum(abs(rot_matrices[i]),axis=(-1,-2)) for i in [4,3,5,11]])
         #theano_to_print.extend([rot_matrices[4]])
         return (positions, velocities, rot_matrices)
