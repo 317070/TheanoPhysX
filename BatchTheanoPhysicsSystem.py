@@ -152,27 +152,41 @@ class BatchedTheanoRigid3DBodyEngine(object):
         self.batch_size = None
         self.num_bodies = None
 
+        self.DT = None
+        self.projected_gauss_seidel_iterations = None
+        self.rotation_reorthogonalization_iterations = None
+        self.warm_start = None
 
-    def addCube(self, reference, dimensions, position, rotation, velocity, **kwargs):
+    def set_integration_parameters(self,
+                                   time_step=0.001,
+                                   projected_gauss_seidel_iterations=1,
+                                   rotation_reorthogonalization_iterations=1,
+                                   warm_start=0):
+        self.DT = time_step
+        self.projected_gauss_seidel_iterations = projected_gauss_seidel_iterations
+        self.rotation_reorthogonalization_iterations = rotation_reorthogonalization_iterations
+        self.warm_start = warm_start
+
+    def addCube(self, reference, dimensions, mass_density, position, rotation, velocity, **kwargs):
         self.objects[reference] = self.positionVectors.shape[0]
         self.radii = np.append(self.radii, -1)
         self.positionVectors = np.append(self.positionVectors, np.array([position], dtype='float32'), axis=0)
         self.rot_matrices = np.append(self.rot_matrices, np.array([quat_to_rot_matrix(rotation)], dtype='float32'), axis=0)
         self.velocityVectors = np.append(self.velocityVectors, np.array([velocity], dtype='float32'), axis=0)
-        mass = 1*np.prod(dimensions)
+        mass = mass_density*np.prod(dimensions)
         I1 = 1./12. * (dimensions[1]**2 + dimensions[2]**2)
         I2 = 1./12. * (dimensions[0]**2 + dimensions[2]**2)
         I3 = 1./12. * (dimensions[0]**2 + dimensions[1]**2)
         self.massMatrices = np.append(self.massMatrices, mass*np.diag([1,1,1,I1,I2,I3])[None,:,:], axis=0)
 
 
-    def addSphere(self, reference, radius, position, rotation, velocity, **kwargs):
+    def addSphere(self, reference, radius, mass_density, position, rotation, velocity, **kwargs):
         self.objects[reference] = self.positionVectors.shape[0]
         self.radii = np.append(self.radii, radius)
         self.positionVectors = np.append(self.positionVectors, np.array([position], dtype='float32'), axis=0)
         self.rot_matrices = np.append(self.rot_matrices, np.array([quat_to_rot_matrix(rotation)], dtype='float32'), axis=0)
         self.velocityVectors = np.append(self.velocityVectors, np.array([velocity], dtype='float32'), axis=0)
-        mass = 1*radius**3
+        mass = mass_density*radius**3
 
         self.massMatrices = np.append(self.massMatrices, mass*np.diag([1,1,1,0.4,0.4,0.4])[None,:,:], axis=0)
 
@@ -270,6 +284,9 @@ class BatchedTheanoRigid3DBodyEngine(object):
 
     def load_robot_model(self, filename):
         robot_dict = json.load(open(filename,"rb"))
+
+        self.set_integration_parameters(**robot_dict["integration_parameters"])
+
         for elementname, element in robot_dict["model"].iteritems():
             primitive = element[0]
             parameters = dict(robot_dict["default_model_parameters"]["default"])  # copy
@@ -305,7 +322,6 @@ class BatchedTheanoRigid3DBodyEngine(object):
                         limitparameters.update(robot_dict["default_constraint_parameters"]["limit"])
                     limitparameters.update(limit)
                     self.addLimitConstraint(joint["object1"], joint["object2"], **limitparameters)
-
 
             if "motors" in parameters:
                 for motor in parameters["motors"]:
@@ -497,7 +513,6 @@ class BatchedTheanoRigid3DBodyEngine(object):
         M1 = T.concatenate([M10,M11],axis=3)
         M = T.concatenate([M0,M1],axis=2)
 
-        #self.P = np.zeros((self.num_constraints,))# constant
         # changes every timestep
 
         # constraints are first dimension! We will need to stack them afterwards!
@@ -546,9 +561,9 @@ class BatchedTheanoRigid3DBodyEngine(object):
                 rot_diff = np.dot(rot_current, parameters['rot_init'].T)
                 cross = rot_diff.T - rot_diff
                 # TODO: add stabilization of this constraint
-                b_error[c_idx] = T.zeros(shape=(self.batch_size,))#cross[1,2]
-                b_error[c_idx+1] = T.zeros(shape=(self.batch_size,))#cross[2,0]
-                b_error[c_idx+2] = T.zeros(shape=(self.batch_size,))#cross[0,1]
+                b_error[c_idx] = np.zeros(shape=(self.batch_size,))#cross[1,2]
+                b_error[c_idx+1] = np.zeros(shape=(self.batch_size,))#cross[2,0]
+                b_error[c_idx+2] = np.zeros(shape=(self.batch_size,))#cross[0,1]
                 c_idx += 3
 
             if constraint == "hinge":
@@ -627,12 +642,10 @@ class BatchedTheanoRigid3DBodyEngine(object):
                 if parameters["type"] == "velocity":
                     b_error[c_idx] = motor_signal
                 elif parameters["type"] == "position":
-
-                    # TODO: rename parameter motor_velocity -> motor_gain
                     if "delta" in parameters and parameters["delta"]>0:
-                        b_error[c_idx] = dt * (abs(theta-motor_signal) > parameters["delta"]) * (theta-motor_signal) * parameters["motor_velocity"]
+                        b_error[c_idx] = dt * (abs(theta-motor_signal) > parameters["delta"]) * (theta-motor_signal) * parameters["motor_gain"]
                     else:
-                        b_error[c_idx] = dt * (theta-motor_signal) * parameters["motor_velocity"]
+                        b_error[c_idx] = dt * (theta-motor_signal) * parameters["motor_gain"]
 
                 c_idx += 1
 
@@ -679,7 +692,9 @@ class BatchedTheanoRigid3DBodyEngine(object):
 
         #v = np.zeros((self.num_constraints,2,6))  # 0 constraints x 2 objects x 6 states
 
-        for iteration in xrange(self.num_iterations):
+        self.P = self.warm_start * self.P
+
+        for iteration in xrange(self.projected_gauss_seidel_iterations):
             # changes every iteration
             #v = T.concatenate((newv[self.zero_index,None,:],newv[self.one_index,None,:]),axis=1)
             v = T.concatenate((
@@ -687,7 +702,7 @@ class BatchedTheanoRigid3DBodyEngine(object):
                 T.stack([newv[:,j,None,:] for j in self.one_index], axis=1)
             ),axis=2)
 
-
+            # TODO: batch-dot-product
             m_eff = 1./T.sum(T.sum(J[:,:,:,None,:]*mass_matrix, axis=4)*J, axis=(2,3))
             #m_eff = 1./T.sum(T.sum(J[:,:,None,:]*mass_matrix, axis=-1)*J, axis=(-1,-2))
 
@@ -700,6 +715,7 @@ class BatchedTheanoRigid3DBodyEngine(object):
             m_c = 1./(1./m_eff + CFM)
 
             b = ERP/dt * b_error + b_res
+            # TODO: batch-dot-product
             lamb = - m_c * (T.sum(J*v, axis=(2,3)) + CFM * self.P + b)
 
             self.P += lamb
@@ -711,6 +727,7 @@ class BatchedTheanoRigid3DBodyEngine(object):
             self.P = T.clip(self.P,-clipping_limit, clipping_limit)
             applicable = (1-(self.only_when_positive*( 1-(self.P>=0)) )) * (C<=0)
 
+            # TODO: batch-dot-product
             result = T.sum(mass_matrix*J[:,:,:,None,:], axis=4) * self.P[:,:,None,None] * applicable[:,:,None,None]
             result = result.reshape((self.batch_size, 2*self.num_constraints, 6))
 
@@ -724,7 +741,10 @@ class BatchedTheanoRigid3DBodyEngine(object):
         return newv
 
 
-    def step_from_this_state(self, state, dt=1e-3, motor_signals=list()):
+    def step_from_this_state(self, state, dt=None, motor_signals=list()):
+        if dt is None:
+            dt = self.DT
+
         positions, velocities, rot_matrices = state
         ##################
         # --- Step 3 --- #
@@ -733,10 +753,17 @@ class BatchedTheanoRigid3DBodyEngine(object):
         velocities = self.evaluate(dt, positions, velocities, rot_matrices, motor_signals=motor_signals)
 
         positions = positions + velocities[:,:,:3] * dt
-        rot_matrices = normalize_matrix(rot_matrices[:,:,:,:] + T.sum(rot_matrices[:,:,:,:,None] * batch_skew_symmetric(dt * velocities[:,:,3:])[:,:,None,:,:],axis=3) )
-
+        # TODO: batch-dot-product
+        rot_matrices = self.normalize_matrix(rot_matrices[:,:,:,:] + T.sum(rot_matrices[:,:,:,:,None] * batch_skew_symmetric(dt * velocities[:,:,3:])[:,:,None,:,:],axis=3) )
 
         return (positions, velocities, rot_matrices)
+
+
+    def normalize_matrix(self, A):
+        for i in xrange(self.rotation_reorthogonalization_iterations):
+            # TODO: batch-dot-product
+            A = (3*A - T.sum(A[:,:,:,None,:,None] * A[:,:,None,:,:,None] * A[:,:,None,:,None,:], axis=(3,4))) / 2
+        return A
 
 
 
@@ -835,9 +862,3 @@ def q_div(q1, q2):
 
 def normalize(q):
     return q/np.linalg.norm(q, axis=-1, keepdims=True)
-
-
-def normalize_matrix(A):
-    for i in xrange(1):
-        A = (3*A - T.sum(A[:,:,:,None,:,None] * A[:,:,None,:,:,None] * A[:,:,None,:,None,:], axis=(3,4))) / 2
-    return A

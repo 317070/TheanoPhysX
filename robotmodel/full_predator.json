@@ -1,15 +1,20 @@
 {
   "name": "Predator",
-  "mass density": 1.0,
+  "integration_parameters": {
+    "time_step": 0.01,
+    "projected_gauss_seidel_iterations": 8,
+    "rotation_reorthogonalization_iterations": 1,
+    "warm_start": 0.85
+  },
   "default_constraint_parameters": {
     "default": {
-      "f": 1,
+      "f": 2.0,
       "zeta": 0.2
     },
     "motor": {
       "type": "position",
-      "motor_velocity": 100.00000000000000,
-      "motor_torque": 1e20,
+      "motor_gain": 50.00000000000000,
+      "motor_torque": 5,
       "min": -45,
       "max": 45,
       "delta": 0.0,
@@ -57,7 +62,8 @@
         0,
         0,
         0
-      ]
+      ],
+      "mass_density": 1000.0
     },
     "sphere": {
       "radius": 0.5

@@ -57,7 +57,6 @@ class Rigid3DBodyEngine(object):
         self.massMatrices = np.zeros(shape=(0,6,6))
         self.objects = dict()
         self.constraints = []
-        self.num_iterations = 10
         self.sensors = []
 
         self.P = None
@@ -71,31 +70,41 @@ class Rigid3DBodyEngine(object):
         self.C = None
         self.zero_index = None
         self.one_index = None
-
-
-
         self.rot_matrices = None
 
+        self.DT = None
+        self.projected_gauss_seidel_iterations = None
+        self.rotation_reorthogonalization_iterations = None
+        self.warm_start = None
 
-    def addCube(self, reference, dimensions, position, velocity):
+    def set_integration_parameters(self,
+                                   time_step=0.001,
+                                   projected_gauss_seidel_iterations=1,
+                                   rotation_reorthogonalization_iterations=1,
+                                   warm_start=0):
+        self.DT = time_step
+        self.projected_gauss_seidel_iterations = projected_gauss_seidel_iterations
+        self.rotation_reorthogonalization_iterations = rotation_reorthogonalization_iterations
+        self.warm_start = warm_start
+
+    def addCube(self, reference, dimensions, mass_density, position, velocity):
         self.objects[reference] = self.positionVectors.shape[0]
         self.radii = np.append(self.radii, -1)
         self.positionVectors = np.append(self.positionVectors, np.array([position]), axis=0)
         self.velocityVectors = np.append(self.velocityVectors, np.array([velocity]), axis=0)
-        mass = 1000*np.prod(dimensions)
-        print mass
+        mass = mass_density*np.prod(dimensions)
         I1 = 1./12. * (dimensions[1]**2 + dimensions[2]**2)
         I2 = 1./12. * (dimensions[0]**2 + dimensions[2]**2)
         I3 = 1./12. * (dimensions[0]**2 + dimensions[1]**2)
         self.massMatrices = np.append(self.massMatrices, mass*np.diag([1,1,1,I1,I2,I3])[None,:,:], axis=0)
 
 
-    def addSphere(self, reference, radius, position, velocity):
+    def addSphere(self, reference, radius, mass_density, position, velocity):
         self.objects[reference] = self.positionVectors.shape[0]
         self.radii = np.append(self.radii, radius)
         self.positionVectors = np.append(self.positionVectors, np.array([position]), axis=0)
         self.velocityVectors = np.append(self.velocityVectors, np.array([velocity]), axis=0)
-        mass = 1000*radius**3
+        mass = mass_density*radius**3
         print mass
         self.massMatrices = np.append(self.massMatrices, mass*np.diag([1,1,1,0.4,0.4,0.4])[None,:,:], axis=0)
 
@@ -380,7 +389,6 @@ class Rigid3DBodyEngine(object):
         M[:,3:,3:] = np.sum(self.rot_matrices[:,:,None,:,None] * self.inertia_inv[:,3:,3:,None,None] * self.rot_matrices[:,None,:,None,:], axis=(1,2))
 
         #"""
-        self.P = np.zeros((self.num_constraints,))# constant
         # changes every timestep
         J = np.zeros((self.num_constraints,2,6))  # 0 constraints x 2 objects x 6 states
         b_res = np.zeros((self.num_constraints,))  # 0 constraints
@@ -484,7 +492,6 @@ class Rigid3DBodyEngine(object):
                 J[c_idx,1,:] = np.concatenate([np.zeros((3,)), a])
 
                 motor_signal = motor_signals[parameters["motor_id"]]
-                print theta,motor_signal
 
                 motor_signal = np.clip(motor_signal, parameters["min"]/180. * np.pi, parameters["max"]/180. * np.pi)
 
@@ -493,9 +500,9 @@ class Rigid3DBodyEngine(object):
                     b_error[c_idx] = motor_signal
                 elif parameters["type"] == "position":
                     if "delta" in parameters:
-                        b_error[c_idx] = dt * (abs(theta-motor_signal) > parameters["delta"]) * (2*(theta>motor_signal)-1) * parameters["motor_velocity"]
+                        b_error[c_idx] = dt * (abs(theta-motor_signal) > parameters["delta"]) * (theta-motor_signal) * parameters["motor_gain"]
                     else:
-                        b_error[c_idx] = dt * (theta-motor_signal) * parameters["motor_velocity"]
+                        b_error[c_idx] = dt * (theta-motor_signal) * parameters["motor_gain"]
 
                 #print c_idx
 
@@ -533,9 +540,13 @@ class Rigid3DBodyEngine(object):
         mass_matrix = np.concatenate((M[self.zero_index,None,:,:], M[self.one_index,None,:,:]), axis=1)
 
         #v = np.zeros((self.num_constraints,2,6))  # 0 constraints x 2 objects x 6 states
-        self.P = np.zeros((self.num_constraints,))# constant
+        #self.P = np.zeros((self.num_constraints,))# constant
+        # warm start
+        self.P = self.warm_start * self.P
 
-        for iteration in xrange(self.num_iterations):
+
+        # http://myselph.de/gamePhysics/equalityConstraints.html
+        for iteration in xrange(self.projected_gauss_seidel_iterations):
             v = np.concatenate((newv[self.zero_index,None,:],newv[self.one_index,None,:]),axis=1)
 
             m_eff = 1./np.sum(np.sum(J[:,:,None,:]*mass_matrix, axis=-1)*J, axis=(-1,-2))
@@ -553,7 +564,6 @@ class Rigid3DBodyEngine(object):
             lamb = - m_c[:] * (np.sum(J[:,:,:]*v[:,:,:], axis=(1,2)) + CFM * self.P[:] + b)
 
             self.P += lamb
-            print np.min(CFM), np.max(self.P)
 
             clipping_limit = np.abs(self.clipping_a * self.P[self.clipping_idx] + self.clipping_b * dt)
             self.P = np.clip(self.P,-clipping_limit, clipping_limit)
@@ -571,7 +581,10 @@ class Rigid3DBodyEngine(object):
         return newv
 
 
-    def do_time_step(self, dt=1e-3, motor_signals=list()):
+    def do_time_step(self, dt=None, motor_signals=list()):
+        if dt is None:
+            dt = self.DT
+
         ##################
         # --- Step 3 --- #
         ##################
@@ -579,14 +592,16 @@ class Rigid3DBodyEngine(object):
         # v2 computed in the second step with : x2 = x1 + dt * v2.
 
         # semi-implicit Euler integration
-        I = 2
         self.velocityVectors = self.evaluate(dt, self.positionVectors, self.velocityVectors, motor_signals=motor_signals)
         self.velocityVectors[:,1] = 0
-        print self.positionVectors[I,:3]
         self.positionVectors[:,:3] = self.positionVectors[:,:3] + self.velocityVectors[:,:3] * dt
-        print self.positionVectors[I,:3], self.velocityVectors[I,:3], dt
 
-        self.rot_matrices[:,:,:] = normalize_matrix(self.rot_matrices[:,:,:] + np.sum(self.rot_matrices[:,:,:,None] * skew_symmetric(dt * self.velocityVectors[:,3:])[:,None,:,:],axis=2) )
+        self.rot_matrices[:,:,:] = self.normalize_matrix(self.rot_matrices[:,:,:] + np.sum(self.rot_matrices[:,:,:,None] * skew_symmetric(dt * self.velocityVectors[:,3:])[:,None,:,:],axis=2) )
+
+    def normalize_matrix(self, A):
+        for i in xrange(self.rotation_reorthogonalization_iterations):
+            A = (3*A - np.sum(A[...,:,None,:,None] * A[...,None,:,:,None] * A[...,None,:,None,:], axis=(-3,-2))) / 2
+        return A
 
     def getState(self):
         return self.positionVectors[:,:3], self.velocityVectors, self.rot_matrices
@@ -619,7 +634,6 @@ class Rigid3DBodyEngine(object):
         return result
 
 
-
 def q_mult(q1, q2):
     w1, x1, y1, z1 = q1
     w2, x2, y2, z2 = q2
@@ -643,7 +657,3 @@ def normalize(q):
     return q/np.linalg.norm(q, axis=-1, keepdims=True)
 
 
-def normalize_matrix(A):
-    for i in xrange(1):
-        A = (3*A - np.sum(A[...,:,None,:,None] * A[...,None,:,:,None] * A[...,None,:,None,:], axis=(-3,-2))) / 2
-    return A

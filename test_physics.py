@@ -69,7 +69,7 @@ class MyApp(ShowBase):
 
         #self.load_robot_model("robotmodel/test.json")
         #self.load_robot_model("robotmodel/predator.json")
-        self.load_robot_model("robotmodel/simple_predator.json")
+        self.load_robot_model("robotmodel/full_predator.json")
         self.physics.compile()
 
     def run_no_gui(self):
@@ -88,7 +88,7 @@ class MyApp(ShowBase):
         self.userExit()
 
 
-    def addSphere(self, name, radius, position, rotation, velocity, **parameters):
+    def addSphere(self, name, radius, mass_density, position, rotation, velocity, **parameters):
         #smiley = self.loader.loadModel("zup-axis")
         smiley = self.loader.loadModel("smiley")
         smiley.setScale(radius,radius,radius)
@@ -101,10 +101,10 @@ class MyApp(ShowBase):
         smiley.setQuat(self.render, fixQuat(rotation))
 
         self.objects[name] = smiley
-        self.physics.addSphere(name, radius, position+rotation, velocity)
+        self.physics.addSphere(name, radius, mass_density, position+rotation, velocity)
 
 
-    def addCube(self, name, dimensions, position, rotation, velocity, **parameters):
+    def addCube(self, name, dimensions, mass_density, position, rotation, velocity, **parameters):
         #smiley = self.loader.loadModel("zup-axis")
         cube = self.loader.loadModel("textures/box.egg")
         cube.setScale(*dimensions)
@@ -124,11 +124,14 @@ class MyApp(ShowBase):
         cube.setQuat(self.render, fixQuat(rotation))
 
         self.objects[name] = cube
-        self.physics.addCube(name, dimensions, position + rotation, velocity)
+        self.physics.addCube(name, dimensions, mass_density, position + rotation, velocity)
 
 
     def load_robot_model(self, filename):
         robot_dict = json.load(open(filename,"rb"))
+
+        self.physics.set_integration_parameters(**robot_dict["integration_parameters"])
+
         for elementname, element in robot_dict["model"].iteritems():
             primitive = element[0]
             parameters = dict(robot_dict["default_model_parameters"]["default"])  # copy
@@ -165,7 +168,7 @@ class MyApp(ShowBase):
                     limitparameters.update(limit)
                     self.physics.addLimitConstraint(joint["object1"], joint["object2"], **limitparameters)
 
-            """
+            #"""
             if "motors" in parameters:
                 for motor in parameters["motors"]:
                     motorparameters = dict(robot_dict["default_constraint_parameters"]["default"])
@@ -179,12 +182,11 @@ class MyApp(ShowBase):
 
     # Define a procedure to move the camera.
     def spinCameraTask(self, task):
-        DT = 1./1000.
-        self.t += DT
+        self.t += self.physics.DT
         ph = self.t*2*np.pi
         sensors = self.physics.getSensorValues("spine").flatten()
         #print sensors.shape
-        self.physics.do_time_step(dt=DT, motor_signals=[-1,1,-1,1,0,0,0,0,0,0,0,0,0,0,0,0])
+        self.physics.do_time_step(motor_signals=[-sin(ph),sin(ph),-1,1,0,0,0,0,0,0,0,0,0,0,0,0])
 
 
         for obj_name, obj in self.objects.iteritems():
