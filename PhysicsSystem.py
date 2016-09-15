@@ -10,6 +10,8 @@ X = 0
 Y = 1
 Z = 2
 
+DTYPE = 'float32'
+
 def quat_to_rot_matrix(quat):
     w,x,y,z = quat
     wx = w * x * 2.0
@@ -51,10 +53,10 @@ def skew_symmetric(x):
 
 class Rigid3DBodyEngine(object):
     def __init__(self):
-        self.radii = np.zeros(shape=(0,))
-        self.positionVectors = np.zeros(shape=(0,7))
-        self.velocityVectors = np.zeros(shape=(0,6))
-        self.massMatrices = np.zeros(shape=(0,6,6))
+        self.radii = np.zeros(shape=(0,), dtype=DTYPE)
+        self.positionVectors = np.zeros(shape=(0,7), dtype=DTYPE)
+        self.velocityVectors = np.zeros(shape=(0,6), dtype=DTYPE)
+        self.massMatrices = np.zeros(shape=(0,6,6), dtype=DTYPE)
         self.objects = dict()
         self.constraints = []
         self.sensors = []
@@ -90,8 +92,8 @@ class Rigid3DBodyEngine(object):
     def addCube(self, reference, dimensions, mass_density, position, velocity):
         self.objects[reference] = self.positionVectors.shape[0]
         self.radii = np.append(self.radii, -1)
-        self.positionVectors = np.append(self.positionVectors, np.array([position]), axis=0)
-        self.velocityVectors = np.append(self.velocityVectors, np.array([velocity]), axis=0)
+        self.positionVectors = np.append(self.positionVectors, np.array([position], dtype=DTYPE), axis=0)
+        self.velocityVectors = np.append(self.velocityVectors, np.array([velocity], dtype=DTYPE), axis=0)
         mass = mass_density*np.prod(dimensions)
         I1 = 1./12. * (dimensions[1]**2 + dimensions[2]**2)
         I2 = 1./12. * (dimensions[0]**2 + dimensions[2]**2)
@@ -102,8 +104,8 @@ class Rigid3DBodyEngine(object):
     def addSphere(self, reference, radius, mass_density, position, velocity):
         self.objects[reference] = self.positionVectors.shape[0]
         self.radii = np.append(self.radii, radius)
-        self.positionVectors = np.append(self.positionVectors, np.array([position]), axis=0)
-        self.velocityVectors = np.append(self.velocityVectors, np.array([velocity]), axis=0)
+        self.positionVectors = np.append(self.positionVectors, np.array([position], dtype=DTYPE), axis=0)
+        self.velocityVectors = np.append(self.velocityVectors, np.array([velocity], dtype=DTYPE), axis=0)
         mass = mass_density*radius**3
         print mass
         self.massMatrices = np.append(self.massMatrices, mass*np.diag([1,1,1,0.4,0.4,0.4])[None,:,:], axis=0)
@@ -142,8 +144,8 @@ class Rigid3DBodyEngine(object):
         axis = np.array(axis)
         axis = axis / np.linalg.norm(axis)
         if (axis == np.array([1,0,0])).all():
-            forbidden_axis_1 = np.array([0,1,0])
-            forbidden_axis_2 = np.array([0,0,1])
+            forbidden_axis_1 = np.array([0,1,0], dtype=DTYPE)
+            forbidden_axis_2 = np.array([0,0,1], dtype=DTYPE)
         else:
             forbidden_axis_1 = np.array([0,-axis[2],axis[1]])
             forbidden_axis_2 = np.cross(axis, forbidden_axis_1)
@@ -212,7 +214,7 @@ class Rigid3DBodyEngine(object):
 
     def compile(self):
 
-        self.rot_matrices = np.zeros((len(self.objects),3,3))
+        self.rot_matrices = np.zeros((len(self.objects),3,3), dtype=DTYPE)
         for i in xrange(len(self.objects)):
             self.rot_matrices[i,:,:] = quat_to_rot_matrix(self.positionVectors[i,3:])
 
@@ -242,15 +244,15 @@ class Rigid3DBodyEngine(object):
             if constraint == "motor":
                 self.num_constraints += 1
 
-        self.P = np.zeros((self.num_constraints,))# constant
-        self.w = np.zeros((self.num_constraints,))  # 0 constraints
-        self.zeta = np.zeros((self.num_constraints,))  # 0 constraints
+        self.P = np.zeros((self.num_constraints,), dtype=DTYPE)# constant
+        self.w = np.zeros((self.num_constraints,), dtype=DTYPE)  # 0 constraints
+        self.zeta = np.zeros((self.num_constraints,), dtype=DTYPE)  # 0 constraints
 
-        self.only_when_positive = np.zeros((self.num_constraints,))  # 0 constraints
+        self.only_when_positive = np.zeros((self.num_constraints,), dtype=DTYPE)  # 0 constraints
         self.map_object_to_constraint = [[] for _ in xrange(len(self.objects))]
-        self.clipping_a   = np.ones((self.num_constraints,))
+        self.clipping_a   = np.ones((self.num_constraints,), dtype=DTYPE)
         self.clipping_idx = range(self.num_constraints)
-        self.clipping_b   = np.zeros((self.num_constraints,))
+        self.clipping_b   = np.zeros((self.num_constraints,), dtype=DTYPE)
 
         self.zero_index = []
         self.one_index = []
@@ -371,8 +373,8 @@ class Rigid3DBodyEngine(object):
         # First, we integrate the applied force F_a acting of each rigid body (like gravity, ...) and
         # we obtain some new velocities v2' that tends to violate the constraints.
 
-        totalforce = np.array([0,0,0,0,0,0])  # total force acting on body outside of constraints
-        acceleration = np.array([0,0,-9.81,0,0,0])  # acceleration of the default frame
+        totalforce = np.array([0,0,0,0,0,0], dtype=DTYPE)  # total force acting on body outside of constraints
+        acceleration = np.array([0,0,-9.81,0,0,0], dtype=DTYPE)  # acceleration of the default frame
         newv = velocities + dt * (np.dot(self.massMatrices, totalforce) + acceleration[None,:])
         originalv = newv.copy()
 
@@ -383,17 +385,17 @@ class Rigid3DBodyEngine(object):
         ##################
         # now enforce the constraints by having corrective impulses
         # convert mass matrices to world coordinates
-        M = np.zeros_like(self.inertia_inv)
+        M = np.zeros_like(self.inertia_inv, dtype=DTYPE)
 
         M[:,:3,:3] = self.inertia_inv[:,:3,:3]
         M[:,3:,3:] = np.sum(self.rot_matrices[:,:,None,:,None] * self.inertia_inv[:,3:,3:,None,None] * self.rot_matrices[:,None,:,None,:], axis=(1,2))
 
         #"""
         # changes every timestep
-        J = np.zeros((self.num_constraints,2,6))  # 0 constraints x 2 objects x 6 states
-        b_res = np.zeros((self.num_constraints,))  # 0 constraints
-        b_error = np.zeros((self.num_constraints,))  # 0 constraints
-        self.C = np.ones((self.num_constraints,))  # 0 constraints
+        J = np.zeros((self.num_constraints,2,6), dtype=DTYPE)  # 0 constraints x 2 objects x 6 states
+        b_res = np.zeros((self.num_constraints,), dtype=DTYPE)  # 0 constraints
+        b_error = np.zeros((self.num_constraints,), dtype=DTYPE)  # 0 constraints
+        self.C = np.ones((self.num_constraints,), dtype=DTYPE)  # 0 constraints
 
         c_idx = 0
         for constraint,references,parameters in self.constraints:
@@ -417,8 +419,8 @@ class Rigid3DBodyEngine(object):
 
             if constraint == "slider" or constraint == "fixed":
                 for i in xrange(3):
-                    J[c_idx+i,0,:] = np.concatenate([np.zeros((3,3)),-np.eye(3)])[:,i]
-                    J[c_idx+i,1,:] = np.concatenate([np.zeros((3,3)), np.eye(3)])[:,i]
+                    J[c_idx+i,0,:] = np.concatenate([np.zeros((3,3), dtype=DTYPE),-np.eye(3)])[:,i]
+                    J[c_idx+i,1,:] = np.concatenate([np.zeros((3,3), dtype=DTYPE), np.eye(3)])[:,i]
 
                 rot_current = np.dot(self.rot_matrices[idx2,:,:], self.rot_matrices[idx1,:,:].T)
                 rot_diff = np.dot(rot_current, parameters['rot_init'].T)
@@ -440,10 +442,10 @@ class Rigid3DBodyEngine(object):
                 c1x = convert_model_to_world_coordinate_no_bias(parameters['axis2_in_model1_coordinates'], self.rot_matrices[idx1,:,:])
                 ss_a2x = skew_symmetric(a2x)
 
-                J[c_idx+0,0,:] = np.concatenate([np.zeros((3,)),-np.dot(b1x,ss_a2x)])
-                J[c_idx+0,1,:] = np.concatenate([np.zeros((3,)), np.dot(b1x,ss_a2x)])
-                J[c_idx+1,0,:] = np.concatenate([np.zeros((3,)),-np.dot(c1x,ss_a2x)])
-                J[c_idx+1,1,:] = np.concatenate([np.zeros((3,)), np.dot(c1x,ss_a2x)])
+                J[c_idx+0,0,:] = np.concatenate([np.zeros((3,), dtype=DTYPE),-np.dot(b1x,ss_a2x)])
+                J[c_idx+0,1,:] = np.concatenate([np.zeros((3,), dtype=DTYPE), np.dot(b1x,ss_a2x)])
+                J[c_idx+1,0,:] = np.concatenate([np.zeros((3,), dtype=DTYPE),-np.dot(c1x,ss_a2x)])
+                J[c_idx+1,1,:] = np.concatenate([np.zeros((3,), dtype=DTYPE), np.dot(c1x,ss_a2x)])
 
                 b_error[c_idx:c_idx+2] = np.array([np.sum(a2x*b1x),np.sum(a2x*c1x)])
                 c_idx += 2
@@ -459,11 +461,11 @@ class Rigid3DBodyEngine(object):
                 theta = ((dot2>0) * 2 - 1) * theta2
 
                 if parameters["angle"] < 0:
-                    J[c_idx,0,:] = np.concatenate([np.zeros((3,)),-a])
-                    J[c_idx,1,:] = np.concatenate([np.zeros((3,)), a])
+                    J[c_idx,0,:] = np.concatenate([np.zeros((3,), dtype=DTYPE),-a])
+                    J[c_idx,1,:] = np.concatenate([np.zeros((3,), dtype=DTYPE), a])
                 else:
-                    J[c_idx,0,:] = np.concatenate([np.zeros((3,)), a])
-                    J[c_idx,1,:] = np.concatenate([np.zeros((3,)),-a])
+                    J[c_idx,0,:] = np.concatenate([np.zeros((3,), dtype=DTYPE), a])
+                    J[c_idx,1,:] = np.concatenate([np.zeros((3,), dtype=DTYPE),-a])
 
                 b_error[c_idx] = np.abs(angle - theta)
                 if parameters["angle"] > 0:
@@ -488,8 +490,8 @@ class Rigid3DBodyEngine(object):
                 theta = ((dot2>0) * 2 - 1) * theta2
 
 
-                J[c_idx,0,:] = np.concatenate([np.zeros((3,)),-a])
-                J[c_idx,1,:] = np.concatenate([np.zeros((3,)), a])
+                J[c_idx,0,:] = np.concatenate([np.zeros((3,), dtype=DTYPE),-a])
+                J[c_idx,1,:] = np.concatenate([np.zeros((3,), dtype=DTYPE), a])
 
                 motor_signal = motor_signals[parameters["motor_id"]]
 
@@ -510,8 +512,8 @@ class Rigid3DBodyEngine(object):
 
             if constraint == "ground":
                 r = self.radii[idx1]
-                J[c_idx,0,:] = np.array([0,0,1,0,0,0])
-                J[c_idx,1,:] = np.array([0,0,0,0,0,0])
+                J[c_idx,0,:] = np.array([0,0,1,0,0,0], dtype=DTYPE)
+                J[c_idx,1,:] = np.array([0,0,0,0,0,0], dtype=DTYPE)
 
                 b_error[c_idx] = np.min([positions[idx1,Z] - r + parameters["delta"],0])
                 b_res[c_idx] = parameters["alpha"] * newv[idx1,Z]
@@ -522,17 +524,17 @@ class Rigid3DBodyEngine(object):
                 r = self.radii[idx1]
                 for i in xrange(2):
                     if i==0:
-                        J[c_idx+i,0,:] = np.array([0,1,0,-r,0,0])
+                        J[c_idx+i,0,:] = np.array([0,1,0,-r,0,0], dtype=DTYPE)
                     else:
-                        J[c_idx+i,0,:] = np.array([1,0,0,0,r,0])
-                    J[c_idx+i,1,:] = np.array([0,0,0,0,0,0])
+                        J[c_idx+i,0,:] = np.array([1,0,0,0,r,0], dtype=DTYPE)
+                    J[c_idx+i,1,:] = np.array([0,0,0,0,0,0], dtype=DTYPE)
                     self.C[c_idx+i] = (positions[idx1,Z] - r < 0.0)
                 c_idx += 2
 
             if constraint == "ground" and parameters["torsional_friction"] and parameters["mu"]!=0:
                 r = self.radii[idx1]
-                J[c_idx,0,:] = np.array([0,0,0,0,0,r])
-                J[c_idx,1,:] = np.array([0,0,0,0,0,0])
+                J[c_idx,0,:] = np.array([0,0,0,0,0,r], dtype=DTYPE)
+                J[c_idx,1,:] = np.array([0,0,0,0,0,0], dtype=DTYPE)
                 self.C[c_idx] = (positions[idx1,Z] - r < 0.0)
                 b_res[c_idx] = 0
                 c_idx += 1

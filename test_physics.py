@@ -71,6 +71,7 @@ class MyApp(ShowBase):
         #self.load_robot_model("robotmodel/predator.json")
         self.load_robot_model("robotmodel/full_predator.json")
         self.physics.compile()
+        self.step = np.zeros(shape=(16,))
 
     def run_no_gui(self):
         while True:
@@ -186,7 +187,10 @@ class MyApp(ShowBase):
         ph = self.t*2*np.pi
         sensors = self.physics.getSensorValues("spine").flatten()
         #print sensors.shape
-        self.physics.do_time_step(motor_signals=[-sin(ph),sin(ph),-1,1,0,0,0,0,0,0,0,0,0,0,0,0])
+        #self.physics.do_time_step(motor_signals=[-sin(ph),sin(ph),-1,1,0,0,0,0,0,0,0,0,0,0,0,0])
+        ALPHA = 1.00
+        self.step = (1-ALPHA) * self.step + ALPHA*np.random.randn(16)*30
+        self.physics.do_time_step(motor_signals=self.step)
 
 
         for obj_name, obj in self.objects.iteritems():

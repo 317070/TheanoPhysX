@@ -7,6 +7,21 @@ from operator import mul
 
 
 
+
+def test_matrix_matrix_el():
+    x = T.tensor4("x",dtype='float32')
+    y = T.tensor4("y",dtype='float32')
+
+    vars = [x,y]
+    f0 = theano.function(vars, T.sum(x * y, axis=(2,3)))
+    f1 = theano.function(vars, T.batched_dot(x.reshape(shape=(40*50, 60*70)),
+                                             y.reshape(shape=(40*50, 60*70))
+                                             ).reshape(shape=(40,50)))
+
+    fs = [f0,f1]
+    test(vars,fs)
+
+
 def test_vector_matrix():
     x = T.matrix("x",dtype='float32')
     y = T.tensor3("y",dtype='float32')
@@ -29,7 +44,7 @@ def test_matrix_matrix():
 
     f0 = theano.function(vars, T.sum(x[:,:,:,None] * y[:,None,:,:], axis=-2))
     f1 = theano.function(vars, T.batched_dot(x, y))
-    f2 = theano.function(vars, T.batched_tensordot(x, y, axes=[(x.ndim-1,),(x.ndim-2,)]))
+    f2 = theano.function(vars, T.batched_tensordot(x, y, axes=[(x.ndim-1,),(y.ndim-2,)]))
 
     fs = [f0,f1,f2]
     test(vars,fs)
@@ -39,13 +54,13 @@ def test(vars,fs):
         shapes = []
         for var in vars:
             while True:
-                s = [random.randint(1,500) for i in xrange(var.ndim)]
+                #s = [random.randint(1,500) for i in xrange(var.ndim)]
+                s = [40,50,60,70]
                 if np.prod(s)<1e7: #limit tensor size
                     break
             shapes.append(s)
 
-        shapes[1][0] = shapes[0][0]
-        shapes[1][1] = shapes[0][1]
+        shapes[1] = shapes[0]
 
         print shapes
         arguments = []
@@ -66,5 +81,5 @@ def test(vars,fs):
         print
 
 
-test_vector_matrix()
+test_matrix_matrix_el()
 #test_matrix_matrix()

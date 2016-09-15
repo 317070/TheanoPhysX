@@ -14,7 +14,9 @@ import cPickle as pickle
 sys.setrecursionlimit(10**6)
 
 print "Started on %s..." % strftime("%H:%M:%S", localtime())
-
+import random
+random.seed(0)
+np.random.seed(0)
 
 # step 1: load the physics model
 engine = BatchedTheanoRigid3DBodyEngine(num_iterations=1)
@@ -25,69 +27,77 @@ engine.compile(batch_size=BATCH_SIZE)
 
 
 # step 2: build the model, controller and engine for simulation
-total_time = 10
+total_time = 5
 
 def build_objectives(states_list):
     positions, velocities, rotations = states_list
     #theano_to_print.extend([rotations[-1,:,6,:,:]])
-    return (rotations[-1,:,spine_id,:,:] - engine.getInitialState()[2][:,spine_id,:,:]).norm(L=1,axis=(1,2))
+    return (rotations[-1,:,spine_id,:,:] - engine.getInitialState()[2][:,spine_id,:,:]).norm(L=2,axis=(1,2))
+
+
+def build_controller():
+    l_input = lasagne.layers.InputLayer((BATCH_SIZE,81), name="sensor_values")
+    l_1 = lasagne.layers.DenseLayer(l_input, 256,
+                                         nonlinearity=lasagne.nonlinearities.rectify,
+                                         W=lasagne.init.Orthogonal("relu"),
+                                         b=lasagne.init.Constant(0.0),
+                                         )
+    l_2 = lasagne.layers.DenseLayer(l_1, 128,
+                                         nonlinearity=lasagne.nonlinearities.rectify,
+                                         W=lasagne.init.Orthogonal("relu"),
+                                         b=lasagne.init.Constant(0.0),
+                                         )
+    l_result = lasagne.layers.DenseLayer(l_2, 16,
+                                         nonlinearity=lasagne.nonlinearities.identity,
+                                         W=lasagne.init.Orthogonal(),
+                                         b=lasagne.init.Constant(0.0),
+                                         )
+    return {
+        "input":l_input,
+        "output":l_result
+    }
+
 
 def build_model():
-    controller_parameters = []
-    controller = [None]
 
-    def build_controller(sensor_values):
-        l_input = lasagne.layers.InputLayer((BATCH_SIZE,81), input_var=sensor_values, name="sensor_values")
-        l_1 = lasagne.layers.DenseLayer(l_input, 256,
-                                             nonlinearity=lasagne.nonlinearities.rectify,
-                                             W=lasagne.init.Orthogonal("relu"),
-                                             b=lasagne.init.Constant(0.0),
-                                             )
-        l_2 = lasagne.layers.DenseLayer(l_1, 128,
-                                             nonlinearity=lasagne.nonlinearities.rectify,
-                                             W=lasagne.init.Orthogonal("relu"),
-                                             b=lasagne.init.Constant(0.0),
-                                             )
-        l_result = lasagne.layers.DenseLayer(l_2, 16,
-                                             nonlinearity=lasagne.nonlinearities.identity,
-                                             W=lasagne.init.Orthogonal(),
-                                             b=lasagne.init.Constant(0.0),
-                                             )
-        return l_result
+    def get_shared_variables():
+        return controller_parameters + engine.getSharedVariables()
 
-    def control_loop(state):
+    def control_loop(state, non_sequences):
         positions, velocities, rot_matrices = state
         sensor_values = engine.getSensorValues(state=(positions, velocities, rot_matrices))
-        controller[0] = build_controller(sensor_values)
-        motor_signals = lasagne.layers.helper.get_output(controller[0])
-        controller_parameters[:] = lasagne.layers.helper.get_all_params(controller)
+        controller["input"].input_var = sensor_values
+        motor_signals = lasagne.layers.helper.get_output(controller["output"])
         return engine.step_from_this_state(state=(positions, velocities, rot_matrices), motor_signals=motor_signals)
 
-
     outputs, updates = theano.scan(
-        fn=lambda a,b,c: control_loop(state=(a,b,c)),
+        fn=lambda a,b,c,*ns: control_loop(state=(a,b,c),non_sequences=ns),
         outputs_info=engine.getInitialState(),
-        n_steps=int(math.ceil(total_time/engine.DT))
+        n_steps=int(math.ceil(total_time/engine.DT)),
+        non_sequences=get_shared_variables(),
+        strict=True
     )
-
     assert len(updates)==0
-    return outputs, controller_parameters, updates, controller[0]
+    return outputs, controller_parameters, updates
 
 
-states, all_parameters, updates, top_layer = build_model()
+controller = build_controller()
+controller_parameters = lasagne.layers.helper.get_all_params(controller["output"])
+
+states, all_parameters, updates = build_model()
 fitness = build_objectives(states)
 
 #import theano.printing
 #theano.printing.debugprint(T.mean(fitness), print_type=True)
-
+print "Finding gradient since %s..." % strftime("%H:%M:%S", localtime())
 updates.update(lasagne.updates.sgd(-T.mean(fitness), all_parameters, 0.1))  # we maximize fitness
 
 def dump_parameters():
     with open("optimized-parameters.pkl", 'w') as f:
         pickle.dump({
-            'param_values': lasagne.layers.get_all_param_values(top_layer)
+            'param_values': lasagne.layers.get_all_param_values(controller["output"])
         }, f, pickle.HIGHEST_PROTOCOL)
-dump_parameters()
+#dump_parameters()
 
 print "Compiling since %s..." % strftime("%H:%M:%S", localtime())
 iter_train = theano.function([],
@@ -101,7 +111,8 @@ iter_train = theano.function([],
                              )
 #print "Running since %s..." % strftime("%H:%M:%S", localtime())
 #import theano.printing
-#theano.printing.debugprint(iter_train.maker.fgraph.outputs[0])
+theano.printing.debugprint(iter_train.maker.fgraph.outputs[0])
+
 print "Running since %s..." % strftime("%H:%M:%S", localtime())
 for i in xrange(100000):
     print iter_train(),datetime.datetime.now().strftime("%H:%M:%S.%f")

@@ -70,11 +70,11 @@ def theano_dot_last_dimension_vector_matrix(x, y):
     else:
         return T.batched_tensordot(x, y, axes=[(x.ndim-1,),(y.ndim-2,)])
 
-def theano_dot_last_dimension_matrix_vector(A, B):
-    return T.batched_tensordot(A, B, axes=[(-1,), (-1,)])
+def theano_dot_last_dimension_matrix_vector(x, y):
+    return T.batched_tensordot(x, y, axes=[(x.ndim-1,), (y.ndim-1,)])
 
 
-def theano_stack_batched_integers_mixed_numpy(L):
+def theano_stack_batched_integers_mixed_numpy(L, expected_shape=None):
     """
     It is more efficient to stack in numpy than in theano. So stack numpy's first, than stack them all at once with Theano.
     """
@@ -85,14 +85,24 @@ def theano_stack_batched_integers_mixed_numpy(L):
             if last_numpy is not None:
                 r.append(last_numpy.astype('float32'))
                 last_numpy = None
-            r.append(l.dimshuffle(0,'x'))
-        elif last_numpy is None:
-            last_numpy = l[:,None]
+            if expected_shape is None:
+                l = l.dimshuffle(0,'x')
+            r.append(l)
         else:
-            last_numpy = np.concatenate([last_numpy, l[:,None]], axis=1)
+            if expected_shape is None:
+                l = l[:,None]
+            if last_numpy is None:
+                last_numpy = l
+            else:
+                last_numpy = np.concatenate([last_numpy, l], axis=(1 if expected_shape is None else 0))
     if last_numpy is not None:
         r.append(last_numpy.astype('float32'))
-    return T.concatenate(r, axis=1)
+
+    if expected_shape is None:
+        result = T.concatenate(r, axis=1)
+    else:
+        result = T.concatenate(r, axis=0).reshape(expected_shape)
+    return result
 
 def numpy_skew_symmetric(x):
     a,b,c = x[...,0,None,None],x[...,1,None,None],x[...,2,None,None]
@@ -148,7 +158,8 @@ class BatchedTheanoRigid3DBodyEngine(object):
         self.clipping_b   = None
         self.zero_index = None
         self.one_index = None
-        self.inertia_inv = None
+        self.lower_inertia_inv = None
+        self.upper_inertia_inv = None
         self.batch_size = None
         self.num_bodies = None
 
@@ -482,6 +493,16 @@ class BatchedTheanoRigid3DBodyEngine(object):
         self.upper_inertia_inv = theano.shared(numpy_repeat_new_axis(np.linalg.inv(self.massMatrices[:,3:,3:]), self.batch_size).astype('float32'), name="upper_inertia_inv", )
 
 
+    def getSharedVariables(self):
+        return [
+            self.positionVectors,
+            self.velocityVectors,
+            self.rot_matrices,
+            self.lower_inertia_inv,
+            self.upper_inertia_inv,
+        ]
+
+
     def evaluate(self, dt, positions, velocities, rot_matrices, motor_signals):
 
         # ALL CONSTRAINTS CAN BE TRANSFORMED TO VELOCITY CONSTRAINTS!
@@ -516,10 +537,10 @@ class BatchedTheanoRigid3DBodyEngine(object):
         # changes every timestep
 
         # constraints are first dimension! We will need to stack them afterwards!
-        J = [np.zeros((self.batch_size,6)) for _ in xrange(2 * self.num_constraints)]  # 0 constraints x 0 bodies x 2 objects x 6 states
-        b_res =   [np.zeros((self.batch_size,)) for _ in xrange(self.num_constraints)]  # 0 constraints x 0 bodies
-        b_error = [np.zeros((self.batch_size,)) for _ in xrange(self.num_constraints)]  # 0 constraints x 0 bodies
-        C =       [np.zeros((self.batch_size,)) for _ in xrange(self.num_constraints)]  # 0 constraints x 0 bodies
+        J = [np.zeros((self.batch_size,6), dtype="float32") for _ in xrange(2 * self.num_constraints)]   # 0 constraints x 0 bodies x 2 objects x 6 states
+        b_res =   [np.zeros((self.batch_size,), dtype="float32") for _ in xrange(self.num_constraints)]  # 0 constraints x 0 bodies
+        b_error = [np.zeros((self.batch_size,), dtype="float32") for _ in xrange(self.num_constraints)]  # 0 constraints x 0 bodies
+        C =       [np.zeros((self.batch_size,), dtype="float32") for _ in xrange(self.num_constraints)]  # 0 constraints x 0 bodies
 
         c_idx = 0
         for constraint,references,parameters in self.constraints:
@@ -615,6 +636,7 @@ class BatchedTheanoRigid3DBodyEngine(object):
             if constraint == "motor":
                 a = theano_convert_model_to_world_coordinate_no_bias(parameters['axis_in_model1_coordinates'][None,:], rot_matrices[:,idx1,:,:])
 
+                # TODO: remove dimshuffle(0,2,1) by using batched_dot
                 rot_current = theano_dot_last_dimension_matrices(rot_matrices[:,idx2,:,:], rot_matrices[:,idx1,:,:].dimshuffle(0,2,1))
                 rot_init = numpy_repeat_new_axis(parameters['rot_init'].T, self.batch_size)
                 rot_diff = theano_dot_last_dimension_matrices(rot_current, rot_init)
@@ -622,7 +644,6 @@ class BatchedTheanoRigid3DBodyEngine(object):
                 traces = rot_diff[:,0,0] + rot_diff[:,1,1] + rot_diff[:,2,2]
                 #traces =  theano.scan(lambda y: T.nlinalg.trace(y), sequences=rot_diff)[0]
 
-                # TODO: you can't derive arccos(x=0)
                 theta2 = T.arccos(T.clip(0.5*(traces-1),-1+eps,1-eps))
                 cross = rot_diff.dimshuffle(0,2,1) - rot_diff
                 dot2 = cross[:,1,2] * a[:,0] + cross[:,2,0] * a[:,1] + cross[:,0,1] * a[:,2]
@@ -678,17 +699,22 @@ class BatchedTheanoRigid3DBodyEngine(object):
                 c_idx += 1
 
 
-        #mass_matrix = T.concatenate((M[self.zero_index,None,:,:], M[self.one_index,None,:,:]), axis=1)
-        mass_matrix = T.concatenate((
-                                    T.stack([M[:,i,None,:,:] for i in self.zero_index], axis=1),
-                                    T.stack([M[:,j,None,:,:] for j in self.one_index], axis=1)
-                                    ), axis=2)
+        zipped_indices = [j for i in zip(self.zero_index,self.one_index) for j in i]
+        mass_matrix = M[:,zipped_indices,:,:].reshape(shape=(self.batch_size, self.num_constraints, 2, 6, 6))
 
-        J = T.stack(J, axis=0).reshape(shape=(self.num_constraints,2,self.batch_size,6)).dimshuffle(2,0,1,3)
+        #mass_matrix = T.concatenate((M[:,self.zero_index,None,:,:], M[:,self.one_index,None,:,:]), axis=2)
+        #mass_matrix = T.concatenate((
+        #                            T.stack([M[:,i,None,:,:] for i in self.zero_index], axis=1),
+        #                            T.stack([M[:,j,None,:,:] for j in self.one_index], axis=1)
+        #                            ), axis=2)
 
-        C = theano_stack_batched_integers_mixed_numpy(C)
-        b_res = theano_stack_batched_integers_mixed_numpy(b_res)
-        b_error = theano_stack_batched_integers_mixed_numpy(b_error)
+        #J = T.stack(J, axis=0).reshape(shape=(self.num_constraints,2,self.batch_size,6)).dimshuffle(2,0,1,3)
+
+        J = theano_stack_batched_integers_mixed_numpy(J, expected_shape=(self.num_constraints,2,self.batch_size,6)).dimshuffle(2,0,1,3)
+
+        C = theano_stack_batched_integers_mixed_numpy(C, expected_shape=(self.num_constraints,self.batch_size)).dimshuffle(1,0)
+        b_res = theano_stack_batched_integers_mixed_numpy(b_res, expected_shape=(self.num_constraints,self.batch_size)).dimshuffle(1,0)
+        b_error = theano_stack_batched_integers_mixed_numpy(b_error, expected_shape=(self.num_constraints,self.batch_size)).dimshuffle(1,0)
 
         #v = np.zeros((self.num_constraints,2,6))  # 0 constraints x 2 objects x 6 states
 
@@ -696,10 +722,65 @@ class BatchedTheanoRigid3DBodyEngine(object):
 
         for iteration in xrange(self.projected_gauss_seidel_iterations):
             # changes every iteration
+            v = newv[:,zipped_indices,:].reshape(shape=(self.batch_size, self.num_constraints, 2, 6))
+            #v = T.concatenate((newv[self.zero_index,None,:],newv[self.one_index,None,:]),axis=1)
+            #v = T.concatenate((
+            #    T.stack([newv[:,i,None,:] for i in self.zero_index], axis=1),
+            #    T.stack([newv[:,j,None,:] for j in self.one_index], axis=1)
+            #),axis=2)
+
+            # TODO: batch-dot-product
+            m_eff = 1./T.sum(T.sum(J[:,:,:,None,:]*mass_matrix, axis=4)*J, axis=(2,3))
+            #m_eff = 1./T.sum(T.sum(J[:,:,None,:]*mass_matrix, axis=-1)*J, axis=(-1,-2))
+
+            k = m_eff * (self.w**2)
+            c = m_eff * 2*self.zeta*self.w
+
+            CFM = 1./(c+dt*k)
+            ERP = dt*k/(c+dt*k)
+
+            m_c = 1./(1./m_eff + CFM)
+
+            b = ERP/dt * b_error + b_res
+
+            lamb = - m_c * (T.sum(J*v, axis=(2,3)) + CFM * self.P + b)
+
+            self.P += lamb
+            #print J[[39,61,65,69],:]
+            #print np.sum(lamb**2), np.sum(self.P**2)
+
+            #clipping_force = T.concatenate([self.P[:,j].dimshuffle(0,'x') for j in self.clipping_idx],axis=1)
+            clipping_force = self.P[:,self.clipping_idx]
+
+            clipping_limit = abs(self.clipping_a * clipping_force + self.clipping_b * dt)
+            self.P = T.clip(self.P,-clipping_limit, clipping_limit)
+            applicable = (1.0*(C<=0)) * (1-(self.only_when_positive*(self.P<=0)))
+
+            # TODO: batch-dot-product
+            result = T.sum(mass_matrix*J[:,:,:,None,:], axis=4) * (self.P * applicable)[:,:,None,None]
+            #result = theano_dot_last_dimension_matrix_vector(mass_matrix,J) * (self.P * applicable)[:,:,None,None]
+
+            result = result.reshape((self.batch_size, 2*self.num_constraints, 6))
+
+            r = []
+            for i in xrange(len(self.map_object_to_constraint)):
+                delta_v = T.sum(result[:,self.map_object_to_constraint[i],:], axis=1)
+                r.append(delta_v)
+            newv = newv + T.stack(r, axis=1)
+        #print
+        return newv
+
+
+    def temp(self):
+
+        #for iteration in xrange(self.projected_gauss_seidel_iterations):
+        """
+        def projected_gauss_seidel(loopv, P):
+            # changes every iteration
             #v = T.concatenate((newv[self.zero_index,None,:],newv[self.one_index,None,:]),axis=1)
             v = T.concatenate((
-                T.stack([newv[:,i,None,:] for i in self.zero_index], axis=1),
-                T.stack([newv[:,j,None,:] for j in self.one_index], axis=1)
+                T.stack([loopv[:,i,None,:] for i in self.zero_index], axis=1),
+                T.stack([loopv[:,j,None,:] for j in self.one_index], axis=1)
             ),axis=2)
 
             # TODO: batch-dot-product
@@ -716,19 +797,17 @@ class BatchedTheanoRigid3DBodyEngine(object):
 
             b = ERP/dt * b_error + b_res
             # TODO: batch-dot-product
-            lamb = - m_c * (T.sum(J*v, axis=(2,3)) + CFM * self.P + b)
+            lamb = - m_c * (T.sum(J*v, axis=(2,3)) + CFM * P + b)
 
-            self.P += lamb
-            #print J[[39,61,65,69],:]
-            #print np.sum(lamb**2), np.sum(self.P**2)
+            P += lamb
 
-            clipping_force = T.concatenate([self.P[:,j].dimshuffle(0,'x') for j in self.clipping_idx],axis=1)
+            clipping_force = T.concatenate([P[:,j].dimshuffle(0,'x') for j in self.clipping_idx],axis=1)
             clipping_limit = abs(self.clipping_a * clipping_force + self.clipping_b * dt)
-            self.P = T.clip(self.P,-clipping_limit, clipping_limit)
-            applicable = (1-(self.only_when_positive*( 1-(self.P>=0)) )) * (C<=0)
+            P = T.clip(P,-clipping_limit, clipping_limit)
+            applicable = (1-(self.only_when_positive*( 1-(P>=0)) )) * (C<=0)
 
             # TODO: batch-dot-product
-            result = T.sum(mass_matrix*J[:,:,:,None,:], axis=4) * self.P[:,:,None,None] * applicable[:,:,None,None]
+            result = T.sum(mass_matrix*J[:,:,:,None,:], axis=4) * P[:,:,None,None] * applicable[:,:,None,None]
             result = result.reshape((self.batch_size, 2*self.num_constraints, 6))
 
             r = []
@@ -736,10 +815,23 @@ class BatchedTheanoRigid3DBodyEngine(object):
                 # TODO: remove the stacking?
                 delta_v = T.sum(T.stack([result[:,j,:] for j in self.map_object_to_constraint[i]],axis=1), axis=1)
                 r.append(delta_v)
-            newv = newv + T.stack(r, axis=1)
+            loopv = loopv + T.stack(r, axis=1)
+
+            return loopv, P
+
+        print "ELLO", newv.ndim, self.P.ndim
+        outputs, updates = theano.scan(
+            fn=lambda nv, pp: projected_gauss_seidel(nv, pp),
+            outputs_info=(newv,self.P),
+            n_steps=self.projected_gauss_seidel_iterations
+        )
+        assert len(updates)==0
+        newv = outputs[0][-1]
+        self.P = outputs[1][-1]
+        print "ELLO", newv.ndim, self.P.ndim
         #print
         return newv
-
+        """
 
     def step_from_this_state(self, state, dt=None, motor_signals=list()):
         if dt is None:

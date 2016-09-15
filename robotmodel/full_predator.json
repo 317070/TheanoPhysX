@@ -13,8 +13,8 @@
     },
     "motor": {
       "type": "position",
-      "motor_gain": 50.00000000000000,
-      "motor_torque": 5,
+      "motor_gain": 10.00000000000000,
+      "motor_torque": 2,
       "min": -45,
       "max": 45,
       "delta": 0.0,
