@@ -63,7 +63,7 @@ def build_model():
     def get_shared_variables():
         return controller_parameters + engine.getSharedVariables()
 
-    def control_loop(state, non_sequences):
+    def control_loop(state):
         positions, velocities, rot_matrices = state
         sensor_values = engine.getSensorValues(state=(positions, velocities, rot_matrices))
         controller["input"].input_var = sensor_values
@@ -71,11 +71,11 @@ def build_model():
         return engine.step_from_this_state(state=(positions, velocities, rot_matrices), motor_signals=motor_signals)
 
     outputs, updates = theano.scan(
-        fn=lambda a,b,c,*ns: control_loop(state=(a,b,c),non_sequences=ns),
+        fn=lambda a,b,c,*ns: control_loop(state=(a,b,c)),
         outputs_info=engine.getInitialState(),
         n_steps=int(math.ceil(total_time/engine.DT)),
+        strict=True,
         non_sequences=get_shared_variables(),
-        strict=True
     )
     assert len(updates)==0
     return outputs, controller_parameters, updates
@@ -90,7 +90,20 @@ fitness = build_objectives(states)
 #import theano.printing
 #theano.printing.debugprint(T.mean(fitness), print_type=True)
 print "Finding gradient since %s..." % strftime("%H:%M:%S", localtime())
-updates.update(lasagne.updates.sgd(-T.mean(fitness), all_parameters, 0.1))  # we maximize fitness
+loss = -T.mean(fitness)
+
+grads = theano.grad(loss, all_parameters)
+grads = lasagne.updates.total_norm_constraint(grads, 1.0)
+
+#grad_norm = T.sqrt(T.sum([(g**2).sum() for g in theano.grad(loss, all_parameters)])+1e-9)
+#theano_to_print.append(grad_norm)
+updates.update(lasagne.updates.adam(grads, all_parameters, 0.001))  # we maximize fitness
+
+
+def load_parameters():
+    with open("optimized-parameters.pkl", 'r') as f:
+        resume_metadata = pickle.load(f)
+        lasagne.layers.set_all_param_values(controller["output"], resume_metadata['param_values'])
 
 def dump_parameters():
     with open("optimized-parameters.pkl", 'w') as f:
@@ -105,17 +118,22 @@ iter_train = theano.function([],
                              + [fitness]
                              #+ [T.max(abs(T.grad(fitness,param,return_disconnected='None'))) for param in all_parameters]
                              + theano_to_print
-                             #+ [T.grad(theano_to_print[2],all_parameters[1],return_disconnected='None')]
+                             #+ [T.grad(theano_to_print[2], all_parameters[1], return_disconnected='None')]
                              ,
                              updates=updates,
                              )
 #print "Running since %s..." % strftime("%H:%M:%S", localtime())
 #import theano.printing
-theano.printing.debugprint(iter_train.maker.fgraph.outputs[0])
+#theano.printing.debugprint(iter_train.maker.fgraph.outputs[0])
+
+
+#print "Loading parameters...", load_parameters()
 
 print "Running since %s..." % strftime("%H:%M:%S", localtime())
 for i in xrange(100000):
-    print iter_train(),datetime.datetime.now().strftime("%H:%M:%S.%f")
-    dump_parameters()
+    results = iter_train()
+    print results, datetime.datetime.now().strftime("%H:%M:%S.%f")
+    if np.isfinite(results[0]):
+        dump_parameters()
 
 print "Finished on %s..." % strftime("%H:%M:%S", localtime())

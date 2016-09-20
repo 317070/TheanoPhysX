@@ -862,6 +862,13 @@ class BatchedTheanoRigid3DBodyEngine(object):
     def getInitialState(self):
         return self.positionVectors, self.velocityVectors, self.rot_matrices
 
+    def randomizedInitialState(self):
+        # step 1, move the robots in the batch to a random location
+
+        # step 2, rotate the robots slightly. 360 degrees around z-axis. 5 degrees x- and y-axis.
+
+        pass
+
     def getPosition(self, reference):
         idx = self.getObjectIndex(reference)
         return self.positionVectors[:,idx,:]
