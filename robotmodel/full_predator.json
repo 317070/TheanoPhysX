@@ -659,15 +659,6 @@
         0
       ],
       "object": "spine",
-      "type": "position"
-    },
-    {
-      "axis": [
-        1,
-        0,
-        0
-      ],
-      "object": "spine",
       "type": "orientation"
     },
     {
@@ -678,15 +669,6 @@
       ],
       "object": "spine",
       "type": "velocity"
-    },
-    {
-      "axis": [
-        0,
-        1,
-        0
-      ],
-      "object": "spine",
-      "type": "position"
     },
     {
       "axis": [

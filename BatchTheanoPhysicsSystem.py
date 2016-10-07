@@ -6,6 +6,7 @@ __author__ = 'jonas'
 import numpy as np
 import theano
 import theano.tensor as T
+from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
 
 np.seterr(all='raise')
 eps=1e-4
@@ -137,7 +138,7 @@ def numpy_repeat_new_axis(x, times):
 
 
 class BatchedTheanoRigid3DBodyEngine(object):
-    def __init__(self, num_iterations=1):
+    def __init__(self):
         self.radii = np.zeros(shape=(0,), dtype='float32')
         self.positionVectors = np.zeros(shape=(0,3), dtype='float32')
         self.rot_matrices = np.zeros(shape=(0,3,3), dtype='float32')
@@ -145,7 +146,6 @@ class BatchedTheanoRigid3DBodyEngine(object):
         self.massMatrices = np.zeros(shape=(0,6,6), dtype='float32')
         self.objects = dict()
         self.constraints = []
-        self.num_iterations = num_iterations
         self.sensors = []
 
         self.P = None
@@ -162,6 +162,7 @@ class BatchedTheanoRigid3DBodyEngine(object):
         self.upper_inertia_inv = None
         self.batch_size = None
         self.num_bodies = None
+        self.num_sensors = None
 
         self.DT = None
         self.projected_gauss_seidel_iterations = None
@@ -348,6 +349,7 @@ class BatchedTheanoRigid3DBodyEngine(object):
     def compile(self, batch_size=1):
         self.batch_size = batch_size
         self.num_bodies = self.positionVectors.shape[0]
+        self.num_sensors = len(self.sensors)
 
         self.num_constraints = 0
 
@@ -862,11 +864,47 @@ class BatchedTheanoRigid3DBodyEngine(object):
     def getInitialState(self):
         return self.positionVectors, self.velocityVectors, self.rot_matrices
 
-    def randomizedInitialState(self):
-        # step 1, move the robots in the batch to a random location
+    def randomizeInitialState(self, rotate_around):
+        srng = RandomStreams(seed=317070)
+        # step 1, rotate the robots slightly. 360 degrees around z-axis. 5 degrees x- and y-axis.
+        # rotate around
+        # TODO: rotate velocities
+        """
+        rot_index = self.getObjectIndex(rotate_around)
+        rot_point = self.positionVectors[:,rot_index,:]
+        r_x = srng.uniform(size=(self.batch_size,1), low=-0.05, high=0.05)
+        r_y = srng.uniform(size=(self.batch_size,1), low=-0.05, high=0.05)
+        r_z = srng.uniform(size=(self.batch_size,1), low=0, high=2*pi)
+        status = T.concatenate([self.rot_matrices, self.positionVectors[:,:,:,None]], axis=3) # (3,4) matrices
+        rot_x_matrix = T.concatenate([
+                    T.concatenate(( 1, 0, 0),axis=-1),
+                    T.concatenate(( 0, T.cos(r_x),-T.sin(r_x)),axis=-1),
+                    T.concatenate(( 0, T.sin(r_x), T.cos(r_x)),axis=-1)
+                            ],axis=-2)
 
-        # step 2, rotate the robots slightly. 360 degrees around z-axis. 5 degrees x- and y-axis.
+        rot_y_matrix = T.concatenate([
+                    T.concatenate(( T.cos(r_y), 0, T.sin(r_y)),axis=-1),
+                    T.concatenate(( 0, 1, 0),axis=-1),
+                    T.concatenate(( -T.sin(r_y), 0, T.cos(r_y)),axis=-1)
+                            ],axis=-2)
 
+        rot_z_matrix = T.concatenate([
+                    T.concatenate(( T.cos(r_z),-T.sin(r_z), 0),axis=-1),
+                    T.concatenate(( T.sin(r_z), T.cos(r_z), 0),axis=-1),
+                    T.concatenate(( 0, 0, 1),axis=-1)
+                            ],axis=-2)
+
+        total_rot_matrix = theano_dot_last_dimension_matrices(rot_z_matrix, theano_dot_last_dimension_matrices(rot_y_matrix, rot_x_matrix))
+        """
+
+        # this is fucking complex shit
+
+
+        # step 2, move the robots in the batch to a random location
+        d_x = srng.uniform(size=(self.batch_size,1), low=-1., high=1.)
+        d_y = srng.uniform(size=(self.batch_size,1), low=-1, high=1.)
+        d_z = srng.uniform(size=(self.batch_size,1), low=0.05, high=0.1)
+        self.positionVectors = self.positionVectors + T.concatenate([d_x, d_y, d_z],axis=1)[:,None,:]
         pass
 
     def getPosition(self, reference):
