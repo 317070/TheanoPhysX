@@ -9,8 +9,8 @@ import numpy as np
 sys.setrecursionlimit(10**6)
 
 # step 1: load the physics model
-engine = TheanoRigid3DBodyEngine(num_iterations=1)
-engine.load_robot_model("robotmodel/predator.json")
+engine = TheanoRigid3DBodyEngine()
+engine.load_robot_model("robotmodel/full_predator.json")
 spine_id = engine.getObjectIndex("spine")
 
 engine.compile()
@@ -30,7 +30,11 @@ def build_model():
 
     def build_controller(sensor_values):
         l_input = lasagne.layers.InputLayer((1,81), input_var=np.ones(shape=(1,81), dtype='float32'), name="sensor_values")
-        #l_input = lasagne.layers.InputLayer((1,81), input_var=sensor_values[None,:], name="sensor_values")
+        l_1 = lasagne.layers.DenseLayer(l_input, 16,
+                                             nonlinearity=lasagne.nonlinearities.identity,
+                                             W=lasagne.init.Constant(0.0),
+                                             b=lasagne.init.Constant(0.01),
+                                             )
         l_result = lasagne.layers.DenseLayer(l_input, 16,
                                              nonlinearity=lasagne.nonlinearities.identity,
                                              W=lasagne.init.Constant(0.0),
@@ -51,7 +55,7 @@ def build_model():
     outputs, updates = theano.scan(
         fn=lambda a,b,c: control_loop(state=(a,b,c)),
         outputs_info=engine.getInitialState(),
-        n_steps=int(math.ceil(total_time/DT))
+        n_steps=int(total_time/engine.DT)
     )
     assert len(updates)==0
     return outputs, controller_parameters, updates
@@ -74,11 +78,26 @@ iter_train = theano.function([],
                              ,
                              updates=updates,
                              )
+
+iter_test = theano.function([],
+                             []
+                             + [fitness]
+                             #+ [T.max(abs(T.grad(fitness,param,return_disconnected='None'))) for param in all_parameters]
+                             #+ [T.grad(theano_to_print[2],all_parameters[1],return_disconnected='None')]
+                             )
 #print "Running since %s..." % strftime("%H:%M:%S", localtime())
 #import theano.printing
 #theano.printing.debugprint(iter_train.maker.fgraph.outputs[0])
 print "Running since %s..." % strftime("%H:%M:%S", localtime())
-for i in xrange(2):
+import time
+for i in xrange(100):
+    t = time.time()
     print iter_train(),datetime.datetime.now().strftime("%H:%M:%S.%f")
+    print "train:", time.time()-t
+
+    t = time.time()
+    print iter_test(),datetime.datetime.now().strftime("%H:%M:%S.%f")
+    print "test:", time.time()-t
+
 
 print "Finished on %s..." % strftime("%H:%M:%S", localtime())

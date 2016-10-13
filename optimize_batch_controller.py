@@ -31,13 +31,13 @@ np.random.seed(0)
 engine = BatchedTheanoRigid3DBodyEngine()
 engine.load_robot_model("robotmodel/full_predator.json")
 spine_id = engine.getObjectIndex("spine")
-BATCH_SIZE = 4
+BATCH_SIZE = 128
 engine.compile(batch_size=BATCH_SIZE)
 engine.randomizeInitialState(rotate_around="spine")
 
 
 # step 2: build the model, controller and engine for simulation
-total_time = 5
+total_time = 10
 
 def build_objectives(states_list):
     positions, velocities, rotations = states_list
@@ -47,17 +47,17 @@ def build_objectives(states_list):
 
 def build_controller():
     l_input = lasagne.layers.InputLayer((BATCH_SIZE,engine.num_sensors), name="sensor_values")
-    l_1 = lasagne.layers.DenseLayer(l_input, 256,
-                                         nonlinearity=lasagne.nonlinearities.rectify,
-                                         W=lasagne.init.Orthogonal("relu"),
-                                         b=lasagne.init.Constant(0.0),
-                                         )
-    l_2 = lasagne.layers.DenseLayer(l_1, 128,
-                                         nonlinearity=lasagne.nonlinearities.rectify,
-                                         W=lasagne.init.Orthogonal("relu"),
-                                         b=lasagne.init.Constant(0.0),
-                                         )
-    l_result = lasagne.layers.DenseLayer(l_2, 16,
+    #l_1 = lasagne.layers.DenseLayer(l_input, 1024,
+    #                                     nonlinearity=lasagne.nonlinearities.rectify,
+    #                                     W=lasagne.init.Orthogonal("relu"),
+    #                                     b=lasagne.init.Constant(0.0),
+    #                                     )
+    #l_2 = lasagne.layers.DenseLayer(l_1, 1024,
+    #                                     nonlinearity=lasagne.nonlinearities.rectify,
+    #                                     W=lasagne.init.Orthogonal("relu"),
+    #                                     b=lasagne.init.Constant(0.0),
+    #                                     )
+    l_result = lasagne.layers.DenseLayer(l_input, 16,
                                          nonlinearity=lasagne.nonlinearities.identity,
                                          W=lasagne.init.Orthogonal(),
                                          b=lasagne.init.Constant(0.0),
@@ -121,6 +121,7 @@ if args.compile:
                                  ,
                                  updates=updates,
                                  )
+    iter_test = theano.function([],[fitness])
     with open("theano-function.pkl", 'wb') as f:
         pickle.dump(iter_train, f, pickle.HIGHEST_PROTOCOL)
 else:
@@ -155,14 +156,16 @@ else:
     dump_parameters()
 
 print "Running since %s..." % strftime("%H:%M:%S", localtime())
-for i in xrange(100000):
-    results = iter_train()
-    print results, datetime.datetime.now().strftime("%H:%M:%S.%f")
-    if np.isfinite(results).all():
-        dump_parameters()
-    else:
-        print "reloading parameters"
-        load_parameters()
+import time
+for i in xrange(100):
+    t = time.time()
+    print iter_train(),datetime.datetime.now().strftime("%H:%M:%S.%f")
+    print "train:", time.time()-t
+
+    t = time.time()
+    print iter_test(),datetime.datetime.now().strftime("%H:%M:%S.%f")
+    print "test:", time.time()-t
+
 
 
 print "Finished on %s..." % strftime("%H:%M:%S", localtime())

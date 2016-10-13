@@ -1,0 +1,84 @@
+{
+  "name": "ball launch",
+  "integration_parameters": {
+    "time_step": 0.01,
+    "projected_gauss_seidel_iterations": 1,
+    "rotation_reorthogonalization_iterations": 1,
+    "warm_start": 0.85
+  },
+  "default_constraint_parameters": {
+    "default": {
+      "f": 1.0,
+      "zeta": 0.0
+    },
+    "ground": {
+      "mu": 1.0,
+      "torsional_friction": false,
+      "delta": 0.0,
+      "alpha": 0.5
+    }
+  },
+  "default_model_parameters": {
+    "default": {
+      "velocity": [
+        8.14,
+        0,
+        4.62,
+        0,
+        10.177,
+        0
+      ],
+      "velocity2": [
+        3.74,
+        0,
+        12.00,
+        0,
+        4.686,
+        0
+      ],
+      "rotation": [
+        1,
+        0,
+        0,
+        0
+      ],
+      "mass_density": 1000.0
+    },
+    "sphere": {
+      "radius": 0.5
+    },
+    "cube": {
+      "dimensions": [
+        1,
+        1,
+        1
+      ]
+    }
+  },
+  "model": {
+    "ball": [
+      {
+        "shape": "sphere",
+        "position": [
+          0.0,
+          0.0,
+          1.5
+        ],
+        "radius": 0.5,
+        "rotation": [
+          1,
+          0,
+          0,
+          0
+        ]
+      }
+    ]
+  },
+  "joints": {
+    "floor4": {
+      "type": "ground",
+      "object1": "ball"
+    }
+  },
+  "sensors": []
+}

@@ -3,7 +3,7 @@ from direct.showbase.ShowBase import ShowBase
 from math import pi, sin, cos
 from direct.task import Task
 from panda3d.core import Point2, Texture, CardMaker, AmbientLight, Vec4, DirectionalLight, Spotlight, Quat, LMatrix4f, \
-    LMatrix3f, TextureStage
+    LMatrix3f, TextureStage, WindowProperties
 from PhysicsSystem import Rigid3DBodyEngine
 import time
 import json
@@ -17,12 +17,14 @@ class MyApp(ShowBase):
 
     def __init__(self):
         ShowBase.__init__(self)
-
+        props = WindowProperties( )
+        props.setTitle( 'Differentiable Physics Engine' )
+        self.win.requestProperties( props )
         self.t = 0
         self.starttime = time.time()
-        self.setFrameRateMeter(True)
+        #self.setFrameRateMeter(True)
         cour = self.loader.loadFont('cmtt12.egg')
-        self.textObject = OnscreenText(font= cour, text = 'abcdefghijklmnopqrstuvwxyz', pos=(0, -0.045), parent = self.a2dTopCenter, bg=(0,0,0,0.5), fg =(1,1,1,1), scale = 0.07, mayChange=True)
+        self.textObject = None#OnscreenText(font= cour, text = 'abcdefghijklmnopqrstuvwxyz', pos=(0, -0.045), parent = self.a2dTopCenter, bg=(0,0,0,0.5), fg =(1,1,1,1), scale = 0.07, mayChange=True)
         cm = CardMaker("ground")
         cm.setFrame(-2000, 2000, -2000, 2000)
         cm.setUvRange(Point2(-2000/5,-2000/5),Point2(2000/5,2000/5))
@@ -69,7 +71,8 @@ class MyApp(ShowBase):
 
         #self.load_robot_model("robotmodel/test.json")
         #self.load_robot_model("robotmodel/predator.json")
-        self.load_robot_model("robotmodel/full_predator.json")
+        #self.load_robot_model("robotmodel/full_predator.json")
+        self.load_robot_model("robotmodel/ball.json")
         self.physics.compile()
         self.step = np.zeros(shape=(16,))
 
@@ -94,6 +97,7 @@ class MyApp(ShowBase):
         smiley = self.loader.loadModel("smiley")
         smiley.setScale(radius,radius,radius)
         smiley.setTexture(self.loader.loadTexture('textures/soccer.png'), 1)
+        #smiley.setColor(0,0,0.1)
 
         # Reparent the model to render.
         smiley.reparentTo(self.render)
@@ -185,12 +189,12 @@ class MyApp(ShowBase):
     def spinCameraTask(self, task):
         self.t += self.physics.DT
         ph = self.t*2*np.pi
-        sensors = self.physics.getSensorValues("spine").flatten()
+        #sensors = self.physics.getSensorValues("spine").flatten()
         #print sensors.shape
         #self.physics.do_time_step(motor_signals=[-sin(ph),sin(ph),-1,1,0,0,0,0,0,0,0,0,0,0,0,0])
         ALPHA = 1.00
         self.step = (1-ALPHA) * self.step + ALPHA*np.random.randn(16)*30
-        self.physics.do_time_step(motor_signals=self.step)
+        self.physics.do_time_step(motor_signals=[-0.1,0.1,-0.1,0.1,0,0,0,0,0,0,0,0,0,0,0,0])
 
 
         for obj_name, obj in self.objects.iteritems():
@@ -205,15 +209,15 @@ class MyApp(ShowBase):
             obj.setScale(sc)
 
         # change camera movement
-        self.camera.setPos(0,2,0.3)
+        self.camera.setPos(10.5,10.5,10.5)
         #self.camera.lookAt(0,0,3)
-        self.camera.lookAt(*self.physics.getPosition("spine")[:3])
-
+        self.camera.lookAt(*self.physics.getPosition("ball")[:3])
+        print self.t, self.physics.getPosition("ball")
         real_time = time.time() - self.starttime
 
-        self.textObject.setText('Time: %3.3f s\n%3.3fx real time\n%s' % ( self.t, self.t/real_time , ""))
-        #time.sleep(0.001)
-        if real_time>100:
+        #self.textObject.setText('Time: %3.3f s\n%3.3fx real time\n%s' % ( self.t, self.t/real_time , ""))
+        time.sleep(0.01)
+        if self.t>5:
             self.userExit()
         return Task.cont
 
