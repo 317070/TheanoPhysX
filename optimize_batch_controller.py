@@ -13,6 +13,8 @@ import cPickle as pickle
 import argparse
 from custom_ops import mulgrad
 
+EXP_NAME = "exp2"
+
 parser = argparse.ArgumentParser(description='Process some integers.')
 parser.add_argument('--restart', dest='restart',
                      help='have new random parameters',
@@ -30,34 +32,24 @@ engine = BatchedTheanoRigid3DBodyEngine()
 jsonfile = "robotmodel/full_predator.json"
 engine.load_robot_model(jsonfile)
 spine_id = engine.getObjectIndex("spine")
-BATCH_SIZE = 128
+BATCH_SIZE = 1
 engine.compile(batch_size=BATCH_SIZE)
 engine.randomizeInitialState(rotate_around="spine")
 
 
 # step 2: build the model, controller and engine for simulation
-total_time = 8
+total_time = 4
 
 def build_objectives(states_list):
-    positions, velocities, rotations = states_list
+    t, positions, velocities, rotations = states_list
     #theano_to_print.extend([rotations[-1,:,6,:,:]])
     return T.mean(velocities[:,:,spine_id,0],axis=0)
     #return (positions[-1,:,spine_id,:2] - engine.getInitialState()[0][:,spine_id,:2]).norm(L=2,axis=1)
 
 
 def build_controller():
-    l_input = lasagne.layers.InputLayer((BATCH_SIZE,engine.num_sensors), name="sensor_values")
-    l_1 = lasagne.layers.DenseLayer(l_input, 1024,
-                                         nonlinearity=lasagne.nonlinearities.rectify,
-                                         W=lasagne.init.Orthogonal("relu"),
-                                         b=lasagne.init.Constant(0.0),
-                                         )
-    l_2 = lasagne.layers.DenseLayer(l_1, 1024,
-                                         nonlinearity=lasagne.nonlinearities.rectify,
-                                         W=lasagne.init.Orthogonal("relu"),
-                                         b=lasagne.init.Constant(0.0),
-                                         )
-    l_result = lasagne.layers.DenseLayer(l_2, 16,
+    l_input = lasagne.layers.InputLayer((BATCH_SIZE,engine.num_sensors+2), name="sensor_values")
+    l_result = lasagne.layers.DenseLayer(l_input, 16,
                                          nonlinearity=lasagne.nonlinearities.identity,
                                          W=lasagne.init.Constant(0.0),
                                          b=lasagne.init.Constant(0.0),
@@ -73,17 +65,21 @@ def build_model():
     def get_shared_variables():
         return controller_parameters + engine.getSharedVariables()
 
-    def control_loop(state):
+    def control_loop(state, t):
         positions, velocities, rot_matrices = state
         sensor_values = engine.getSensorValues(state=(positions, velocities, rot_matrices))
+        t = t + engine.DT
+        sine = T.sin(np.float32(2*np.pi*1.5) * t)
+        cosine = T.cos(np.float32(2*np.pi*1.5) * t)
+        sensor_values = T.concatenate([sensor_values,sine[None,None],cosine[None,None]],axis=1)
         controller["input"].input_var = sensor_values
         motor_signals = lasagne.layers.helper.get_output(controller["output"])
         positions, velocities, rot_matrices = mulgrad(positions, 0.95), mulgrad(velocities, 0.95), mulgrad(rot_matrices, 0.95)
-        return engine.step_from_this_state(state=(positions, velocities, rot_matrices), motor_signals=motor_signals)
+        return (t,) + engine.step_from_this_state(state=(positions, velocities, rot_matrices), motor_signals=motor_signals)
 
     outputs, updates = theano.scan(
-        fn=lambda a,b,c,*ns: control_loop(state=(a,b,c)),
-        outputs_info=engine.getInitialState(),
+        fn=lambda t,a,b,c,*ns: control_loop(state=(a,b,c), t=t),
+        outputs_info=(np.float32(0),)+engine.getInitialState(),
         n_steps=int(math.ceil(total_time/engine.DT)),
         strict=True,
         non_sequences=get_shared_variables(),
@@ -130,7 +126,7 @@ iter_test = theano.function([],[states[0], states[1], states[2]])
 #import theano.printing
 #theano.printing.debugprint(iter_train.maker.fgraph.outputs[0])
 
-PARAMETERS_FILE = "optimized-parameters.pkl"
+PARAMETERS_FILE = "optimized-parameters-%s.pkl" % EXP_NAME
 def load_parameters():
     with open(PARAMETERS_FILE, 'rb') as f:
         resume_metadata = pickle.load(f)
@@ -153,17 +149,17 @@ if not args.restart:
 print "Running since %s..." % strftime("%H:%M:%S", localtime())
 import time
 for i in xrange(100000):
-    t = time.time()
+    st = time.time()
     fitnesses = iter_train()
     print fitnesses, np.mean(fitnesses), datetime.datetime.now().strftime("%H:%M:%S.%f")
-    print "train:", time.time()-t, i
+    print "train:", time.time()-st, i
     if np.isfinite(fitnesses).all():
         dump_parameters()
     if i%10==0:
-        t = time.time()
+        st = time.time()
         states = iter_test()
-        print "test:", time.time()-t
-        with open("state-dump.pkl", 'wb') as f:
+        print "test:", time.time()-st
+        with open("state-dump-%s.pkl"%EXP_NAME, 'wb') as f:
             pickle.dump({
                 "states": states,
                 "json": open(jsonfile,"rb").read()

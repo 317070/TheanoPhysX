@@ -25,7 +25,7 @@ class MyApp(ShowBase):
         self.starttime = time.time()
         #self.setFrameRateMeter(True)
         cour = self.loader.loadFont('cmtt12.egg')
-        self.textObject = None#OnscreenText(font= cour, text = 'abcdefghijklmnopqrstuvwxyz', pos=(0, -0.045), parent = self.a2dTopCenter, bg=(0,0,0,0.5), fg =(1,1,1,1), scale = 0.07, mayChange=True)
+        self.textObject = OnscreenText(font= cour, text = 'abcdefghijklmnopqrstuvwxyz', pos=(0, -0.045), parent = self.a2dTopCenter, bg=(0,0,0,0.5), fg =(1,1,1,1), scale = 0.07, mayChange=True)
         cm = CardMaker("ground")
         cm.setFrame(-2000, 2000, -2000, 2000)
         cm.setUvRange(Point2(-2000/5,-2000/5),Point2(2000/5,2000/5))
@@ -54,7 +54,7 @@ class MyApp(ShowBase):
         directionalLight.setColor(Vec4(0.8, 0.8, 0.8, 1))
         directionalLightNP = self.render.attachNewNode(directionalLight)
         # This light is facing backwards, towards the camera.
-        directionalLightNP.setHpr(-120, -50, 0)
+        directionalLightNP.setHpr(-60, -50, 0)
         directionalLightNP.node().setScene(self.render)
         directionalLightNP.node().setShadowCaster(True)
         directionalLightNP.node().getLens().setFov(40)
@@ -68,7 +68,7 @@ class MyApp(ShowBase):
         # Load the environment model.
         self.objects = dict()
         self.names = []
-        data = pickle.load(open("state-dump2.pkl","rb"))
+        data = pickle.load(open("state-dump.pkl","rb"))
 
         self.json = json.loads(open("robotmodel/full_predator.json","rb").read()) # json.loads(data["json"])
         self.states = data["states"]
@@ -84,10 +84,10 @@ class MyApp(ShowBase):
         self.parentnode.setP(0)
         self.parentnode.setR(0)
         rotnode = self.parentnode.attachNewNode('rotnode')
-        rotnode.setH(180)
+        rotnode.setH(0)
         rotnode.setP(0)
         rotnode.setR(0)
-        rotnode.setPos(0,2,0)
+        rotnode.setPos(0,-2,0)
         self.camera.lookAt(self.objects["spine"])
         self.camera.wrtReparentTo(rotnode)
         self.camLens.setNear(0.1)
@@ -114,7 +114,6 @@ class MyApp(ShowBase):
 
         def cameraMovement(task):
             self.disableMouse()
-            print keyMap
             if keyMap["arrow_left"]!=0:
                 rotnode.setH(rotnode.getH()+80 * 0.01)
             if keyMap["arrow_right"]!=0:
@@ -236,6 +235,8 @@ class MyApp(ShowBase):
 
         self.parentnode.setX(positions[step,robot_id,self.names.index("spine"),0])
         self.parentnode.setY(positions[step,robot_id,self.names.index("spine"),1])
+        print
+
         #print self.names
         # change camera movement
         #self.camera.setPos(1.5,1.5,1.5)
@@ -244,7 +245,7 @@ class MyApp(ShowBase):
         #print self.t, self.physics.getPosition("ball")
         #real_time = time.time() - self.starttime
 
-        #self.textObject.setText('Time: %3.3f s\n%3.3fx real time\n%s' % ( self.t, self.t/real_time , ""))
+        self.textObject.setText('Time: %3.3f s\nVx: %3.3f' % ( self.t, velocities[step,robot_id,self.names.index("spine"),0]))
         time.sleep(0.01)
         #if self.t>5:
         #    self.userExit()
