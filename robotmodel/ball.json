@@ -21,11 +21,11 @@
   "default_model_parameters": {
     "default": {
       "velocity": [
-        8.14,
         0,
-        4.62,
         0,
-        10.177,
+        0,
+        0,
+        0,
         0
       ],
       "velocity2": [

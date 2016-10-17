@@ -116,7 +116,9 @@ def iter_test_safe(param):
     print iters, res, param
     return res
 
+import time
+t = time.time()
 print cma.fmin(iter_test_safe, parameters[0].get_value()[0][0], sigma0=1.0, options=options)
-
+print time.time() - t
 
 print "Finished on %s..." % strftime("%H:%M:%S", localtime())

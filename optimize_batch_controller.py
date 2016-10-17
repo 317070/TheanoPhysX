@@ -11,11 +11,9 @@ from time import strftime, localtime
 import datetime
 import cPickle as pickle
 import argparse
+from custom_ops import mulgrad
 
 parser = argparse.ArgumentParser(description='Process some integers.')
-parser.add_argument('--compile', dest='compile',
-                     help='re-compile the theano function',
-                     action='store_const', const=True, default=False)
 parser.add_argument('--restart', dest='restart',
                      help='have new random parameters',
                      action='store_const', const=True, default=False)
@@ -29,7 +27,8 @@ np.random.seed(0)
 
 # step 1: load the physics model
 engine = BatchedTheanoRigid3DBodyEngine()
-engine.load_robot_model("robotmodel/full_predator.json")
+jsonfile = "robotmodel/full_predator.json"
+engine.load_robot_model(jsonfile)
 spine_id = engine.getObjectIndex("spine")
 BATCH_SIZE = 128
 engine.compile(batch_size=BATCH_SIZE)
@@ -37,29 +36,30 @@ engine.randomizeInitialState(rotate_around="spine")
 
 
 # step 2: build the model, controller and engine for simulation
-total_time = 10
+total_time = 8
 
 def build_objectives(states_list):
     positions, velocities, rotations = states_list
     #theano_to_print.extend([rotations[-1,:,6,:,:]])
-    return (positions[-1,:,spine_id,:2] - engine.getInitialState()[0][:,spine_id,:2]).norm(L=2,axis=1)
+    return T.mean(velocities[:,:,spine_id,0],axis=0)
+    #return (positions[-1,:,spine_id,:2] - engine.getInitialState()[0][:,spine_id,:2]).norm(L=2,axis=1)
 
 
 def build_controller():
     l_input = lasagne.layers.InputLayer((BATCH_SIZE,engine.num_sensors), name="sensor_values")
-    #l_1 = lasagne.layers.DenseLayer(l_input, 1024,
-    #                                     nonlinearity=lasagne.nonlinearities.rectify,
-    #                                     W=lasagne.init.Orthogonal("relu"),
-    #                                     b=lasagne.init.Constant(0.0),
-    #                                     )
-    #l_2 = lasagne.layers.DenseLayer(l_1, 1024,
-    #                                     nonlinearity=lasagne.nonlinearities.rectify,
-    #                                     W=lasagne.init.Orthogonal("relu"),
-    #                                     b=lasagne.init.Constant(0.0),
-    #                                     )
-    l_result = lasagne.layers.DenseLayer(l_input, 16,
+    l_1 = lasagne.layers.DenseLayer(l_input, 1024,
+                                         nonlinearity=lasagne.nonlinearities.rectify,
+                                         W=lasagne.init.Orthogonal("relu"),
+                                         b=lasagne.init.Constant(0.0),
+                                         )
+    l_2 = lasagne.layers.DenseLayer(l_1, 1024,
+                                         nonlinearity=lasagne.nonlinearities.rectify,
+                                         W=lasagne.init.Orthogonal("relu"),
+                                         b=lasagne.init.Constant(0.0),
+                                         )
+    l_result = lasagne.layers.DenseLayer(l_2, 16,
                                          nonlinearity=lasagne.nonlinearities.identity,
-                                         W=lasagne.init.Orthogonal(),
+                                         W=lasagne.init.Constant(0.0),
                                          b=lasagne.init.Constant(0.0),
                                          )
     return {
@@ -78,6 +78,7 @@ def build_model():
         sensor_values = engine.getSensorValues(state=(positions, velocities, rot_matrices))
         controller["input"].input_var = sensor_values
         motor_signals = lasagne.layers.helper.get_output(controller["output"])
+        positions, velocities, rot_matrices = mulgrad(positions, 0.95), mulgrad(velocities, 0.95), mulgrad(rot_matrices, 0.95)
         return engine.step_from_this_state(state=(positions, velocities, rot_matrices), motor_signals=motor_signals)
 
     outputs, updates = theano.scan(
@@ -94,40 +95,36 @@ def build_model():
 
 controller = build_controller()
 
-if args.compile:
-    controller_parameters = lasagne.layers.helper.get_all_params(controller["output"])
+controller_parameters = lasagne.layers.helper.get_all_params(controller["output"])
 
-    states, all_parameters, updates = build_model()
-    fitness = build_objectives(states)
+states, all_parameters, updates = build_model()
+fitness = build_objectives(states)
+fitness = T.switch(T.isnan(fitness) + T.isinf(fitness), np.float32(0), fitness)
 
-    #import theano.printing
-    #theano.printing.debugprint(T.mean(fitness), print_type=True)
-    print "Finding gradient since %s..." % strftime("%H:%M:%S", localtime())
-    loss = -T.mean(T.switch(T.eq(fitness,np.NaN), 0, fitness))
+#import theano.printing
+#theano.printing.debugprint(T.mean(fitness), print_type=True)
+print "Finding gradient since %s..." % strftime("%H:%M:%S", localtime())
+loss = -T.mean(fitness)
 
-    grads = theano.grad(loss, all_parameters)
-    grads = lasagne.updates.total_norm_constraint(grads, 1.0)
+grads = theano.grad(loss, all_parameters)
+grads = lasagne.updates.total_norm_constraint(grads, 1.0)
 
-    #grad_norm = T.sqrt(T.sum([(g**2).sum() for g in theano.grad(loss, all_parameters)])+1e-9)
-    #theano_to_print.append(grad_norm)
-    updates.update(lasagne.updates.adam(grads, all_parameters, 0.00001))  # we maximize fitness
-    print "Compiling since %s..." % strftime("%H:%M:%S", localtime())
-    iter_train = theano.function([],
-                                 []
-                                 + [fitness]
-                                 #+ [T.max(abs(T.grad(fitness,param,return_disconnected='None'))) for param in all_parameters]
-                                 + theano_to_print
-                                 #+ [T.grad(theano_to_print[2], all_parameters[1], return_disconnected='None')]
-                                 ,
-                                 updates=updates,
-                                 )
-    iter_test = theano.function([],[fitness])
-    with open("theano-function.pkl", 'wb') as f:
-        pickle.dump(iter_train, f, pickle.HIGHEST_PROTOCOL)
-else:
-    print "Loading theano function since %s..." % strftime("%H:%M:%S", localtime())
-    with open("theano-function.pkl", 'rb') as f:
-        iter_train = pickle.load(f)
+grads = [T.switch(T.isnan(g) + T.isinf(g), np.float32(0), g) for g in grads]
+
+#grad_norm = T.sqrt(T.sum([(g**2).sum() for g in theano.grad(loss, all_parameters)])+1e-9)
+#theano_to_print.append(grad_norm)
+updates.update(lasagne.updates.adam(grads, all_parameters, 0.00001))  # we maximize fitness
+print "Compiling since %s..." % strftime("%H:%M:%S", localtime())
+iter_train = theano.function([],
+                             []
+                             + [fitness]
+                             #+ [T.max(abs(T.grad(fitness,param,return_disconnected='None'))) for param in all_parameters]
+                             + theano_to_print
+                             #+ [T.grad(theano_to_print[2], all_parameters[1], return_disconnected='None')]
+                             ,
+                             updates=updates,
+                             )
+iter_test = theano.function([],[states[0], states[1], states[2]])
 
 #print "Running since %s..." % strftime("%H:%M:%S", localtime())
 #import theano.printing
@@ -152,19 +149,25 @@ def are_there_NaNs(result):
 
 if not args.restart:
     print "Loading parameters... ", load_parameters()
-else:
-    dump_parameters()
 
 print "Running since %s..." % strftime("%H:%M:%S", localtime())
 import time
-for i in xrange(100):
+for i in xrange(100000):
     t = time.time()
-    print iter_train(),datetime.datetime.now().strftime("%H:%M:%S.%f")
-    print "train:", time.time()-t
-
-    t = time.time()
-    print iter_test(),datetime.datetime.now().strftime("%H:%M:%S.%f")
-    print "test:", time.time()-t
+    fitnesses = iter_train()
+    print fitnesses, np.mean(fitnesses), datetime.datetime.now().strftime("%H:%M:%S.%f")
+    print "train:", time.time()-t, i
+    if np.isfinite(fitnesses).all():
+        dump_parameters()
+    if i%10==0:
+        t = time.time()
+        states = iter_test()
+        print "test:", time.time()-t
+        with open("state-dump.pkl", 'wb') as f:
+            pickle.dump({
+                "states": states,
+                "json": open(jsonfile,"rb").read()
+            }, f, pickle.HIGHEST_PROTOCOL)
 
 
 

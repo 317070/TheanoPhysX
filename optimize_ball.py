@@ -138,6 +138,8 @@ learning_schedule = {
     75:0.05,
     100:0.01
 }
+import time
+t = time.time()
 while results[0][0]>0.02:
     if iters in learning_schedule:
         learning_rate.set_value(learning_schedule[iters])
@@ -145,6 +147,7 @@ while results[0][0]>0.02:
     iters += 1
     print iters, results, parameters[0].get_value()
 
+print time.time() - t
 # 1135
 
 #tries: 1492: learning_rate=0.01, beta1=0.9, beta2=0.99
