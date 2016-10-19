@@ -71,8 +71,8 @@ class MyApp(ShowBase):
 
         #self.load_robot_model("robotmodel/test.json")
         #self.load_robot_model("robotmodel/predator.json")
-        #self.load_robot_model("robotmodel/full_predator.json")
-        self.load_robot_model("robotmodel/ball.json")
+        self.load_robot_model("robotmodel/full_predator.json")
+        #self.load_robot_model("robotmodel/ball.json")
         self.physics.compile()
         self.step = np.zeros(shape=(16,))
 
@@ -194,7 +194,7 @@ class MyApp(ShowBase):
         #self.physics.do_time_step(motor_signals=[-sin(ph),sin(ph),-1,1,0,0,0,0,0,0,0,0,0,0,0,0])
         ALPHA = 1.00
         self.step = (1-ALPHA) * self.step + ALPHA*np.random.randn(16)*30
-        self.physics.do_time_step(motor_signals=[-0.1,0.1,-0.1,0.1,0,0,0,0,0,0,0,0,0,0,0,0])
+        self.physics.do_time_step(motor_signals=self.step)
 
 
         for obj_name, obj in self.objects.iteritems():
@@ -209,15 +209,15 @@ class MyApp(ShowBase):
             obj.setScale(sc)
 
         # change camera movement
-        self.camera.setPos(10.5,10.5,10.5)
+        self.camera.setPos(1.5,1.5,1.5)
         #self.camera.lookAt(0,0,3)
-        self.camera.lookAt(*self.physics.getPosition("ball")[:3])
-        print self.t, self.physics.getPosition("ball")
+        self.camera.lookAt(*self.physics.getPosition("spine")[:3])
+        print self.t, self.physics.getPosition("spine")
         real_time = time.time() - self.starttime
 
         #self.textObject.setText('Time: %3.3f s\n%3.3fx real time\n%s' % ( self.t, self.t/real_time , ""))
         time.sleep(0.01)
-        if self.t>5:
+        if self.t>8:
             self.userExit()
         return Task.cont
 

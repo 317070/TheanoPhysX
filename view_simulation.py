@@ -68,7 +68,7 @@ class MyApp(ShowBase):
         # Load the environment model.
         self.objects = dict()
         self.names = []
-        data = pickle.load(open("state-dump.pkl","rb"))
+        data = pickle.load(open("state-dump-exp5.pkl","rb"))
 
         self.json = json.loads(open("robotmodel/full_predator.json","rb").read()) # json.loads(data["json"])
         self.states = data["states"]
@@ -218,12 +218,15 @@ class MyApp(ShowBase):
     # Define a procedure to move the camera.
     def spinCameraTask(self, task):
 
-        self.frame_step = 0.01
-        self.t += self.frame_step
+        frame_step = 0.01
+        self.t += frame_step
+
+
         positions, velocities, rotations = self.states[0], self.states[1], self.states[2]
 
         step = int(self.t / self.dt)
         step = step % positions.shape[0]
+        self.t = self.t % (self.dt*positions.shape[0])
         robot_id = self.robot_id % positions.shape[1]
         for idx, name in enumerate(self.names):
             obj = self.objects[name]
@@ -246,7 +249,7 @@ class MyApp(ShowBase):
         #real_time = time.time() - self.starttime
 
         self.textObject.setText('Time: %3.3f s\nVx: %3.3f' % ( self.t, velocities[step,robot_id,self.names.index("spine"),0]))
-        time.sleep(0.01)
+        time.sleep(frame_step)
         #if self.t>5:
         #    self.userExit()
         return Task.cont

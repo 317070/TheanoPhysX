@@ -4,7 +4,7 @@ __author__ = 'jonas'
 import numpy as np
 import scipy.linalg
 import random
-np.seterr(all='raise')
+#np.seterr(all='raise')
 
 X = 0
 Y = 1
@@ -576,8 +576,8 @@ class Rigid3DBodyEngine(object):
             result = result.reshape(result.shape[:-3] + (2*self.num_constraints,6))
 
             for i in xrange(newv.shape[0]):
-                #newv[i,:] = newv[i,:] + np.sum(result[self.map_object_to_constraint[i],:], axis=0)
-                newv[i,:] = originalv[i,:] + np.sum(result[self.map_object_to_constraint[i],:], axis=0)
+                newv[i,:] = newv[i,:] + np.sum(result[self.map_object_to_constraint[i],:], axis=0)
+                #newv[i,:] = originalv[i,:] + np.sum(result[self.map_object_to_constraint[i],:], axis=0)
 
         #print
         return newv

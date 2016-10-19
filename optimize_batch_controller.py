@@ -13,7 +13,7 @@ import cPickle as pickle
 import argparse
 from custom_ops import mulgrad
 
-EXP_NAME = "exp2"
+EXP_NAME = "exp5"
 
 parser = argparse.ArgumentParser(description='Process some integers.')
 parser.add_argument('--restart', dest='restart',
@@ -34,11 +34,11 @@ engine.load_robot_model(jsonfile)
 spine_id = engine.getObjectIndex("spine")
 BATCH_SIZE = 1
 engine.compile(batch_size=BATCH_SIZE)
-engine.randomizeInitialState(rotate_around="spine")
+#engine.randomizeInitialState(rotate_around="spine")
 
 
 # step 2: build the model, controller and engine for simulation
-total_time = 4
+total_time = 8
 
 def build_objectives(states_list):
     t, positions, velocities, rotations = states_list
@@ -48,10 +48,15 @@ def build_objectives(states_list):
 
 
 def build_controller():
-    l_input = lasagne.layers.InputLayer((BATCH_SIZE,engine.num_sensors+2), name="sensor_values")
-    l_result = lasagne.layers.DenseLayer(l_input, 16,
+    l_input = lasagne.layers.InputLayer((BATCH_SIZE,2), name="sensor_values")
+    l_1 = lasagne.layers.DenseLayer(l_input, 128,
+                                         nonlinearity=lasagne.nonlinearities.rectify,
+                                         W=lasagne.init.Orthogonal("relu"),
+                                         b=lasagne.init.Constant(0.0),
+                                         )
+    l_result = lasagne.layers.DenseLayer(l_1, 16,
                                          nonlinearity=lasagne.nonlinearities.identity,
-                                         W=lasagne.init.Constant(0.0),
+                                         W=lasagne.init.Orthogonal(gain=10),#lasagne.init.Constant(0.0),
                                          b=lasagne.init.Constant(0.0),
                                          )
     return {
@@ -71,7 +76,7 @@ def build_model():
         t = t + engine.DT
         sine = T.sin(np.float32(2*np.pi*1.5) * t)
         cosine = T.cos(np.float32(2*np.pi*1.5) * t)
-        sensor_values = T.concatenate([sensor_values,sine[None,None],cosine[None,None]],axis=1)
+        sensor_values = T.concatenate([sine[None,None],cosine[None,None]],axis=1)
         controller["input"].input_var = sensor_values
         motor_signals = lasagne.layers.helper.get_output(controller["output"])
         positions, velocities, rot_matrices = mulgrad(positions, 0.95), mulgrad(velocities, 0.95), mulgrad(rot_matrices, 0.95)
@@ -109,7 +114,7 @@ grads = [T.switch(T.isnan(g) + T.isinf(g), np.float32(0), g) for g in grads]
 
 #grad_norm = T.sqrt(T.sum([(g**2).sum() for g in theano.grad(loss, all_parameters)])+1e-9)
 #theano_to_print.append(grad_norm)
-updates.update(lasagne.updates.adam(grads, all_parameters, 0.00001))  # we maximize fitness
+updates.update(lasagne.updates.adam(grads, all_parameters, 0.0001))  # we maximize fitness
 print "Compiling since %s..." % strftime("%H:%M:%S", localtime())
 iter_train = theano.function([],
                              []
@@ -120,7 +125,7 @@ iter_train = theano.function([],
                              ,
                              updates=updates,
                              )
-iter_test = theano.function([],[states[0], states[1], states[2]])
+iter_test = theano.function([],[states[1], states[2], states[3]])
 
 #print "Running since %s..." % strftime("%H:%M:%S", localtime())
 #import theano.printing

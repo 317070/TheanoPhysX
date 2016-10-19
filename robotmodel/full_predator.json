@@ -2,7 +2,7 @@
   "name": "Predator",
   "integration_parameters": {
     "time_step": 0.01,
-    "projected_gauss_seidel_iterations": 8,
+    "projected_gauss_seidel_iterations": 20,
     "rotation_reorthogonalization_iterations": 1,
     "warm_start": 0.85
   },
@@ -14,7 +14,7 @@
     "motor": {
       "type": "position",
       "motor_gain": 10.00000000000000,
-      "motor_torque": 2,
+      "motor_torque": 4,
       "min": -45,
       "max": 45,
       "delta": 0.0,
