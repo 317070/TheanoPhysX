@@ -364,7 +364,6 @@ class Rigid3DBodyEngine(object):
 
 
     def evaluate(self, dt, positions, velocities, motor_signals):
-        # TODO: drop quaternions, use rotation matrices!
 
         # ALL CONSTRAINTS CAN BE TRANSFORMED TO VELOCITY CONSTRAINTS!
         ##################
@@ -478,6 +477,9 @@ class Rigid3DBodyEngine(object):
                 c_idx += 1
 
             if constraint == "motor":
+
+                #TODO: seems to be problematic when robot is upside down?
+
                 interesting.append(c_idx)
                 a = convert_model_to_world_coordinate_no_bias(parameters['axis_in_model1_coordinates'], self.rot_matrices[idx1,:,:])
 
@@ -489,14 +491,12 @@ class Rigid3DBodyEngine(object):
 
                 theta = ((dot2>0) * 2 - 1) * theta2
 
-
                 J[c_idx,0,:] = np.concatenate([np.zeros((3,), dtype=DTYPE),-a])
-                J[c_idx,1,:] = np.concatenate([np.zeros((3,), dtype=DTYPE), a])
+                J[c_idx,1,:] = np.concatenate([np.zeros((3,), dtype=DTYPE),a])
 
                 motor_signal = motor_signals[parameters["motor_id"]]
 
                 motor_signal = np.clip(motor_signal, parameters["min"]/180. * np.pi, parameters["max"]/180. * np.pi)
-
 
                 if parameters["type"] == "velocity":
                     b_error[c_idx] = motor_signal
@@ -506,6 +506,7 @@ class Rigid3DBodyEngine(object):
                     else:
                         b_error[c_idx] = dt * (theta-motor_signal) * parameters["motor_gain"]
 
+                print "%.3f\t%.3f\t%.3f\t%.3f" %(theta, theta2, b_error[c_idx], motor_signal)
                 #print c_idx
 
                 c_idx += 1

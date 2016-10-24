@@ -498,7 +498,7 @@
       ]
     },
     "hip1": {
-      "type": "ball",
+      "type": "hinge",
       "object1": "femur1",
       "object2": "spine",
       "point": [
@@ -508,33 +508,12 @@
       ],
       "motors": [
         {
-          "motor_id": 4,
-          "axis": [
-            0,
-            1,
-            0
-          ]
-        },
-        {
-          "motor_id": 5,
-          "axis": [
-            1,
-            0,
-            0
-          ]
-        },
-        {
-          "motor_id": 6,
-          "axis": [
-            0,
-            0,
-            1
-          ]
+          "motor_id": 4
         }
       ]
     },
     "hip2": {
-      "type": "ball",
+      "type": "hinge",
       "object1": "femur2",
       "object2": "spine",
       "point": [
@@ -544,33 +523,12 @@
       ],
       "motors": [
         {
-          "motor_id": 7,
-          "axis": [
-            0,
-            1,
-            0
-          ]
-        },
-        {
-          "motor_id": 8,
-          "axis": [
-            1,
-            0,
-            0
-          ]
-        },
-        {
-          "motor_id": 9,
-          "axis": [
-            0,
-            0,
-            1
-          ]
+          "motor_id": 5
         }
       ]
     },
     "hip3": {
-      "type": "ball",
+      "type": "hinge",
       "object1": "femur3",
       "object2": "spine",
       "point": [
@@ -580,33 +538,12 @@
       ],
       "motors": [
         {
-          "motor_id": 10,
-          "axis": [
-            0,
-            1,
-            0
-          ]
-        },
-        {
-          "motor_id": 11,
-          "axis": [
-            1,
-            0,
-            0
-          ]
-        },
-        {
-          "motor_id": 12,
-          "axis": [
-            0,
-            0,
-            1
-          ]
+          "motor_id": 6
         }
       ]
     },
     "hip4": {
-      "type": "ball",
+      "type": "hinge",
       "object1": "femur4",
       "object2": "spine",
       "point": [
@@ -616,28 +553,7 @@
       ],
       "motors": [
         {
-          "motor_id": 13,
-          "axis": [
-            0,
-            1,
-            0
-          ]
-        },
-        {
-          "motor_id": 14,
-          "axis": [
-            1,
-            0,
-            0
-          ]
-        },
-        {
-          "motor_id": 15,
-          "axis": [
-            0,
-            0,
-            1
-          ]
+          "motor_id": 7
         }
       ]
     }

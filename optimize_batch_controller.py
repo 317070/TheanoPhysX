@@ -13,7 +13,7 @@ import cPickle as pickle
 import argparse
 from custom_ops import mulgrad
 
-EXP_NAME = "exp5"
+EXP_NAME = "exp6"
 
 parser = argparse.ArgumentParser(description='Process some integers.')
 parser.add_argument('--restart', dest='restart',
@@ -29,7 +29,7 @@ np.random.seed(0)
 
 # step 1: load the physics model
 engine = BatchedTheanoRigid3DBodyEngine()
-jsonfile = "robotmodel/full_predator.json"
+jsonfile = "robotmodel/demi_predator.json"
 engine.load_robot_model(jsonfile)
 spine_id = engine.getObjectIndex("spine")
 BATCH_SIZE = 1
@@ -54,11 +54,18 @@ def build_controller():
                                          W=lasagne.init.Orthogonal("relu"),
                                          b=lasagne.init.Constant(0.0),
                                          )
-    l_result = lasagne.layers.DenseLayer(l_1, 16,
+    l_2 = lasagne.layers.DenseLayer(l_1, 8,
                                          nonlinearity=lasagne.nonlinearities.identity,
-                                         W=lasagne.init.Orthogonal(gain=10),#lasagne.init.Constant(0.0),
+                                         W=lasagne.init.Constant(0.0),
                                          b=lasagne.init.Constant(0.0),
                                          )
+    l_init = lasagne.layers.DenseLayer(l_input, 8,
+                                         nonlinearity=lasagne.nonlinearities.identity,
+                                         W=np.array([ 0.8,-0.8,-0.8, 0.8,   0,   0,   0,   0,
+                                                        0,   0,   0,   0, 0.5,-0.5,-0.5, 0.5],dtype='float32').reshape((2, 8)),
+                                         b=np.array([ 0.5, 0.5, 0.5, 0.5,   0,   0,   0,   0],dtype='float32'),
+                                         )
+    l_result = lasagne.layers.ElemwiseSumLayer([l_2, l_init])
     return {
         "input":l_input,
         "output":l_result
@@ -114,7 +121,7 @@ grads = [T.switch(T.isnan(g) + T.isinf(g), np.float32(0), g) for g in grads]
 
 #grad_norm = T.sqrt(T.sum([(g**2).sum() for g in theano.grad(loss, all_parameters)])+1e-9)
 #theano_to_print.append(grad_norm)
-updates.update(lasagne.updates.adam(grads, all_parameters, 0.0001))  # we maximize fitness
+updates.update(lasagne.updates.adam(grads, all_parameters, 0.001))  # we maximize fitness
 print "Compiling since %s..." % strftime("%H:%M:%S", localtime())
 iter_train = theano.function([],
                              []
