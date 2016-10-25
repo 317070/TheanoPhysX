@@ -106,8 +106,7 @@ class Rigid3DBodyEngine(object):
         self.radii = np.append(self.radii, radius)
         self.positionVectors = np.append(self.positionVectors, np.array([position], dtype=DTYPE), axis=0)
         self.velocityVectors = np.append(self.velocityVectors, np.array([velocity], dtype=DTYPE), axis=0)
-        mass = mass_density*radius**3
-        print mass
+        mass = mass_density*4./3.*np.pi*radius**3
         self.massMatrices = np.append(self.massMatrices, mass*np.diag([1,1,1,0.4,0.4,0.4])[None,:,:], axis=0)
 
     def addConstraint(self, constraint, references, parameters):
@@ -481,7 +480,8 @@ class Rigid3DBodyEngine(object):
                 #TODO: seems to be problematic when robot is upside down?
 
                 interesting.append(c_idx)
-                a = convert_model_to_world_coordinate_no_bias(parameters['axis_in_model1_coordinates'], self.rot_matrices[idx1,:,:])
+                #a = convert_model_to_world_coordinate_no_bias(parameters['axis_in_model1_coordinates'], self.rot_matrices[idx1,:,:])
+                a = convert_model_to_world_coordinate_no_bias(parameters['axis_in_model1_coordinates'], self.rot_matrices[idx1,:,:].T)
 
                 rot_current = np.dot(self.rot_matrices[idx2,:,:], self.rot_matrices[idx1,:,:].T)
                 rot_diff = np.dot(rot_current, parameters['rot_init'].T)

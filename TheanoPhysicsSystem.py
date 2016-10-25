@@ -114,26 +114,26 @@ class TheanoRigid3DBodyEngine(object):
         self.inertia_inv = None
 
 
-    def addCube(self, reference, dimensions, position, rotation, velocity, **kwargs):
+    def addCube(self, reference, dimensions, mass_density, position, rotation, velocity, **kwargs):
         self.objects[reference] = self.positionVectors.shape[0]
         self.radii = np.append(self.radii, -1)
         self.positionVectors = np.append(self.positionVectors, np.array([position], dtype='float32'), axis=0)
         self.rot_matrices = np.append(self.rot_matrices, np.array([quat_to_rot_matrix(rotation)], dtype='float32'), axis=0)
         self.velocityVectors = np.append(self.velocityVectors, np.array([velocity], dtype='float32'), axis=0)
-        mass = 1*np.prod(dimensions)
+        mass = mass_density*np.prod(dimensions)
         I1 = 1./12. * (dimensions[1]**2 + dimensions[2]**2)
         I2 = 1./12. * (dimensions[0]**2 + dimensions[2]**2)
         I3 = 1./12. * (dimensions[0]**2 + dimensions[1]**2)
         self.massMatrices = np.append(self.massMatrices, mass*np.diag([1,1,1,I1,I2,I3])[None,:,:], axis=0)
 
 
-    def addSphere(self, reference, radius, position, rotation, velocity, **kwargs):
+    def addSphere(self, reference, radius, mass_density, position, rotation, velocity, **kwargs):
         self.objects[reference] = self.positionVectors.shape[0]
         self.radii = np.append(self.radii, radius)
         self.positionVectors = np.append(self.positionVectors, np.array([position], dtype='float32'), axis=0)
         self.rot_matrices = np.append(self.rot_matrices, np.array([quat_to_rot_matrix(rotation)], dtype='float32'), axis=0)
         self.velocityVectors = np.append(self.velocityVectors, np.array([velocity], dtype='float32'), axis=0)
-        mass = 1*radius**3
+        mass = mass_density*4./3.*np.pi*radius**3
 
         self.massMatrices = np.append(self.massMatrices, mass*np.diag([1,1,1,0.4,0.4,0.4])[None,:,:], axis=0)
 

@@ -198,7 +198,7 @@ class BatchedTheanoRigid3DBodyEngine(object):
         self.positionVectors = np.append(self.positionVectors, np.array([position], dtype='float32'), axis=0)
         self.rot_matrices = np.append(self.rot_matrices, np.array([quat_to_rot_matrix(rotation)], dtype='float32'), axis=0)
         self.velocityVectors = np.append(self.velocityVectors, np.array([velocity], dtype='float32'), axis=0)
-        mass = mass_density*radius**3
+        mass = mass_density*4./3.*np.pi*radius**3
 
         self.massMatrices = np.append(self.massMatrices, mass*np.diag([1,1,1,0.4,0.4,0.4])[None,:,:], axis=0)
 

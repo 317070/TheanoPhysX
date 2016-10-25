@@ -13,7 +13,7 @@ import cPickle as pickle
 import argparse
 from custom_ops import mulgrad
 
-EXP_NAME = "exp6"
+EXP_NAME = "exp7"
 
 parser = argparse.ArgumentParser(description='Process some integers.')
 parser.add_argument('--restart', dest='restart',
@@ -43,7 +43,7 @@ total_time = 8
 def build_objectives(states_list):
     t, positions, velocities, rotations = states_list
     #theano_to_print.extend([rotations[-1,:,6,:,:]])
-    return T.mean(velocities[:,:,spine_id,0],axis=0)
+    return T.mean(velocities[:,:,spine_id,0] * (positions[:,:,spine_id,0]>0),axis=0)
     #return (positions[-1,:,spine_id,:2] - engine.getInitialState()[0][:,spine_id,:2]).norm(L=2,axis=1)
 
 
@@ -59,13 +59,14 @@ def build_controller():
                                          W=lasagne.init.Constant(0.0),
                                          b=lasagne.init.Constant(0.0),
                                          )
-    l_init = lasagne.layers.DenseLayer(l_input, 8,
+    l_init = lasagne.layers.DenseLayer(l_input, num_units=8,
                                          nonlinearity=lasagne.nonlinearities.identity,
                                          W=np.array([ 0.8,-0.8,-0.8, 0.8,   0,   0,   0,   0,
                                                         0,   0,   0,   0, 0.5,-0.5,-0.5, 0.5],dtype='float32').reshape((2, 8)),
                                          b=np.array([ 0.5, 0.5, 0.5, 0.5,   0,   0,   0,   0],dtype='float32'),
                                          )
     l_result = lasagne.layers.ElemwiseSumLayer([l_2, l_init])
+
     return {
         "input":l_input,
         "output":l_result
@@ -86,7 +87,8 @@ def build_model():
         sensor_values = T.concatenate([sine[None,None],cosine[None,None]],axis=1)
         controller["input"].input_var = sensor_values
         motor_signals = lasagne.layers.helper.get_output(controller["output"])
-        positions, velocities, rot_matrices = mulgrad(positions, 0.95), mulgrad(velocities, 0.95), mulgrad(rot_matrices, 0.95)
+        ALPHA = 0.95
+        positions, velocities, rot_matrices = mulgrad(positions, ALPHA), mulgrad(velocities, ALPHA), mulgrad(rot_matrices, ALPHA)
         return (t,) + engine.step_from_this_state(state=(positions, velocities, rot_matrices), motor_signals=motor_signals)
 
     outputs, updates = theano.scan(
@@ -121,7 +123,16 @@ grads = [T.switch(T.isnan(g) + T.isinf(g), np.float32(0), g) for g in grads]
 
 #grad_norm = T.sqrt(T.sum([(g**2).sum() for g in theano.grad(loss, all_parameters)])+1e-9)
 #theano_to_print.append(grad_norm)
-updates.update(lasagne.updates.adam(grads, all_parameters, 0.001))  # we maximize fitness
+updates.update(lasagne.updates.adam(grads, all_parameters, 0.0001))  # we maximize fitness
+print "Compiling since %s..." % strftime("%H:%M:%S", localtime())
+iter_test = theano.function([],[states[1], states[2], states[3]])
+st = iter_test()
+with open("state-dump-%s.pkl"%EXP_NAME, 'wb') as f:
+    pickle.dump({
+        "states": st,
+        "json": open(jsonfile,"rb").read()
+    }, f, pickle.HIGHEST_PROTOCOL)
+print "Ran test"
 print "Compiling since %s..." % strftime("%H:%M:%S", localtime())
 iter_train = theano.function([],
                              []
@@ -132,7 +143,6 @@ iter_train = theano.function([],
                              ,
                              updates=updates,
                              )
-iter_test = theano.function([],[states[1], states[2], states[3]])
 
 #print "Running since %s..." % strftime("%H:%M:%S", localtime())
 #import theano.printing

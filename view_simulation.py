@@ -68,9 +68,9 @@ class MyApp(ShowBase):
         # Load the environment model.
         self.objects = dict()
         self.names = []
-        data = pickle.load(open("../PhysXVids/state-dump-exp6.pkl","rb"))
+        data = pickle.load(open("../PhysXVids/state-dump-exp7.pkl","rb"))
 
-        self.json = json.loads(open("robotmodel/full_predator.json","rb").read()) # json.loads(data["json"])
+        self.json = json.loads(data["json"]) # json.loads(data["json"])
         self.states = data["states"]
         self.load_robot_model()
         self.dt = self.json["integration_parameters"]["time_step"]
@@ -218,7 +218,7 @@ class MyApp(ShowBase):
     # Define a procedure to move the camera.
     def spinCameraTask(self, task):
 
-        frame_step = 0.001
+        frame_step = 0.01
         self.t += frame_step
 
         positions, velocities, rotations = self.states[0], self.states[1], self.states[2]
