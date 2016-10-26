@@ -247,7 +247,7 @@ class MyApp(ShowBase):
         #print self.t, self.physics.getPosition("ball")
         #real_time = time.time() - self.starttime
 
-        self.textObject.setText('Time: %3.3f s\nVx: %3.3f' % ( self.t, velocities[step,robot_id,self.names.index("spine"),0]))
+        self.textObject.setText('Time: %3.3f s\nVx: %3.3f\nrobot #%d' % ( self.t, velocities[step,robot_id,self.names.index("spine"),0], robot_id))
         time.sleep(frame_step)
         #if self.t>5:
         #    self.userExit()

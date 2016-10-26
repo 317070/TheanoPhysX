@@ -483,6 +483,9 @@ class Rigid3DBodyEngine(object):
                 #a = convert_model_to_world_coordinate_no_bias(parameters['axis_in_model1_coordinates'], self.rot_matrices[idx1,:,:])
                 a = convert_model_to_world_coordinate_no_bias(parameters['axis_in_model1_coordinates'], self.rot_matrices[idx1,:,:].T)
 
+                if c_idx==11:
+                    print a
+
                 rot_current = np.dot(self.rot_matrices[idx2,:,:], self.rot_matrices[idx1,:,:].T)
                 rot_diff = np.dot(rot_current, parameters['rot_init'].T)
                 theta2 = np.arccos(np.clip(0.5*(np.trace(rot_diff)-1),-1,1))
@@ -506,7 +509,7 @@ class Rigid3DBodyEngine(object):
                     else:
                         b_error[c_idx] = dt * (theta-motor_signal) * parameters["motor_gain"]
 
-                print "%.3f\t%.3f\t%.3f\t%.3f" %(theta, theta2, b_error[c_idx], motor_signal)
+                #print "%.3f\t%.3f\t%.3f\t%.3f" %(theta, theta2, b_error[c_idx], motor_signal)
                 #print c_idx
 
                 c_idx += 1

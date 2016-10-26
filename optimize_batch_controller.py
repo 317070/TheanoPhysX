@@ -34,6 +34,7 @@ engine.load_robot_model(jsonfile)
 spine_id = engine.getObjectIndex("spine")
 BATCH_SIZE = 1
 engine.compile(batch_size=BATCH_SIZE)
+print "#sensors:", engine.num_sensors
 #engine.randomizeInitialState(rotate_around="spine")
 
 
@@ -43,12 +44,12 @@ total_time = 8
 def build_objectives(states_list):
     t, positions, velocities, rotations = states_list
     #theano_to_print.extend([rotations[-1,:,6,:,:]])
-    return T.mean(velocities[:,:,spine_id,0] * (positions[:,:,spine_id,0]>0),axis=0)
+    return T.mean(velocities[:,:,spine_id,0] * (positions[:,:,spine_id,2]>0),axis=0)
     #return (positions[-1,:,spine_id,:2] - engine.getInitialState()[0][:,spine_id,:2]).norm(L=2,axis=1)
 
 
 def build_controller():
-    l_input = lasagne.layers.InputLayer((BATCH_SIZE,2), name="sensor_values")
+    l_input = lasagne.layers.InputLayer((BATCH_SIZE,2+engine.num_sensors), name="sensor_values")
     l_1 = lasagne.layers.DenseLayer(l_input, 128,
                                          nonlinearity=lasagne.nonlinearities.rectify,
                                          W=lasagne.init.Orthogonal("relu"),
@@ -62,7 +63,8 @@ def build_controller():
     l_init = lasagne.layers.DenseLayer(l_input, num_units=8,
                                          nonlinearity=lasagne.nonlinearities.identity,
                                          W=np.array([ 0.8,-0.8,-0.8, 0.8,   0,   0,   0,   0,
-                                                        0,   0,   0,   0, 0.5,-0.5,-0.5, 0.5],dtype='float32').reshape((2, 8)),
+                                                        0,   0,   0,   0, 0.5,-0.5,-0.5, 0.5]
+                                                    +[0]*(engine.num_sensors*8),dtype='float32').reshape((2+engine.num_sensors, 8)),
                                          b=np.array([ 0.5, 0.5, 0.5, 0.5,   0,   0,   0,   0],dtype='float32'),
                                          )
     l_result = lasagne.layers.ElemwiseSumLayer([l_2, l_init])
@@ -82,9 +84,9 @@ def build_model():
         positions, velocities, rot_matrices = state
         sensor_values = engine.getSensorValues(state=(positions, velocities, rot_matrices))
         t = t + engine.DT
-        sine = T.sin(np.float32(2*np.pi*1.5) * t)
-        cosine = T.cos(np.float32(2*np.pi*1.5) * t)
-        sensor_values = T.concatenate([sine[None,None],cosine[None,None]],axis=1)
+        sine = T.tile(T.sin(np.float32(2*np.pi*1.5) * t), BATCH_SIZE)
+        cosine = T.tile(T.cos(np.float32(2*np.pi*1.5) * t), BATCH_SIZE)
+        sensor_values = T.concatenate([sine[:,None],cosine[:,None], sensor_values],axis=1)
         controller["input"].input_var = sensor_values
         motor_signals = lasagne.layers.helper.get_output(controller["output"])
         ALPHA = 0.95
@@ -117,16 +119,18 @@ print "Finding gradient since %s..." % strftime("%H:%M:%S", localtime())
 loss = -T.mean(fitness)
 
 grads = theano.grad(loss, all_parameters)
-grads = lasagne.updates.total_norm_constraint(grads, 1.0)
+#grads = lasagne.updates.total_norm_constraint(grads, 1.0)
 
-grads = [T.switch(T.isnan(g) + T.isinf(g), np.float32(0), g) for g in grads]
+#grads = [T.switch(T.isnan(g) + T.isinf(g), np.float32(0), g) for g in grads]
 
 #grad_norm = T.sqrt(T.sum([(g**2).sum() for g in theano.grad(loss, all_parameters)])+1e-9)
 #theano_to_print.append(grad_norm)
-updates.update(lasagne.updates.adam(grads, all_parameters, 0.0001))  # we maximize fitness
+updates.update(lasagne.updates.adam(grads, all_parameters, 0.000001))  # we maximize fitness
 print "Compiling since %s..." % strftime("%H:%M:%S", localtime())
-iter_test = theano.function([],[states[1], states[2], states[3]])
-st = iter_test()
+iter_test = theano.function([],[fitness, states[1], states[2], states[3]])
+r = iter_test()
+st = r[1:]
+print "initial fitness:", r[0]
 with open("state-dump-%s.pkl"%EXP_NAME, 'wb') as f:
     pickle.dump({
         "states": st,
@@ -179,11 +183,11 @@ for i in xrange(100000):
         dump_parameters()
     if i%10==0:
         st = time.time()
-        states = iter_test()
-        print "test:", time.time()-st
+        r = iter_test()
+        print "test fitness:", r[0]
         with open("state-dump-%s.pkl"%EXP_NAME, 'wb') as f:
             pickle.dump({
-                "states": states,
+                "states": r[1:],
                 "json": open(jsonfile,"rb").read()
             }, f, pickle.HIGHEST_PROTOCOL)
 
