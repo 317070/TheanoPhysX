@@ -1,0 +1,1351 @@
+{
+  "name": "Predator",
+  "integration_parameters": {
+    "time_step": 0.01,
+    "projected_gauss_seidel_iterations": 20,
+    "rotation_reorthogonalization_iterations": 1,
+    "warm_start": 0.85
+  },
+  "default_constraint_parameters": {
+    "default": {
+      "f": 2.0,
+      "zeta": 0.2
+    },
+    "motor": {
+      "type": "position",
+      "motor_gain": 50.00000000000000,
+      "motor_torque": 4,
+      "min": -45,
+      "max": 45,
+      "delta": 0.0,
+      "axis": [
+        0,
+        1,
+        0
+      ],
+      "zeta": 0.000
+    },
+    "ground": {
+      "mu": 0.5,
+      "torsional_friction": false,
+      "delta": 0.01,
+      "alpha": 0.01
+    },
+    "hinge": {
+      "axis": [
+        0,
+        1,
+        0
+      ],
+      "limits": [
+      ]
+    },
+    "fixed": {
+    },
+    "ball": {
+    },
+    "limit": {
+    }
+  },
+  "default_model_parameters": {
+    "default": {
+      "velocity": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "rotation": [
+        1,
+        0,
+        0,
+        0
+      ],
+      "mass_density": 1000.0
+    },
+    "sphere": {
+      "radius": 0.5
+    },
+    "cube": {
+      "dimensions": [
+        1,
+        1,
+        1
+      ]
+    }
+  },
+  "model": {
+    "spine": [
+      {
+        "shape": "cube",
+        "position": [
+          0,
+          0,
+          0.4
+        ],
+        "dimensions": [
+          0.7,
+          0.3,
+          0.1
+        ],
+        "rotation": [
+          1,
+          0,
+          0,
+          0
+        ],
+        "color": [
+          0,
+          0.8,
+          0.2
+        ]
+      }
+    ],
+    "femur1": [
+      {
+        "shape": "cube",
+        "position": [
+          0.3,
+          0.2,
+          0.3
+        ],
+        "dimensions": [
+          0.05,
+          0.05,
+          0.2
+        ],
+        "rotation": [
+          1,
+          0,
+          0,
+          0
+        ],
+        "color": [
+          1,
+          0.8,
+          0.0
+        ]
+      }
+    ],
+    "tibia1": [
+      {
+        "shape": "cube",
+        "position": [
+          0.3,
+          0.2,
+          0.125
+        ],
+        "dimensions": [
+          0.05,
+          0.05,
+          0.15
+        ],
+        "rotation": [
+          1,
+          0,
+          0,
+          0
+        ],
+        "color": [
+          1,
+          0.2,
+          0.0
+        ]
+      }
+    ],
+    "foot1": [
+      {
+        "shape": "sphere",
+        "position": [
+          0.3,
+          0.2,
+          0.05
+        ],
+        "radius": 0.05,
+        "rotation": [
+          1,
+          0,
+          0,
+          0
+        ]
+      }
+    ],
+    "femur2": [
+      {
+        "shape": "cube",
+        "position": [
+          0.3,
+          -0.2,
+          0.3
+        ],
+        "dimensions": [
+          0.05,
+          0.05,
+          0.2
+        ],
+        "rotation": [
+          1,
+          0,
+          0,
+          0
+        ],
+        "color": [
+          1,
+          0.8,
+          0.0
+        ]
+      }
+    ],
+    "tibia2": [
+      {
+        "shape": "cube",
+        "position": [
+          0.3,
+          -0.2,
+          0.125
+        ],
+        "dimensions": [
+          0.05,
+          0.05,
+          0.15
+        ],
+        "rotation": [
+          1,
+          0,
+          0,
+          0
+        ],
+        "color": [
+          1,
+          0.2,
+          0.0
+        ]
+      }
+    ],
+    "foot2": [
+      {
+        "shape": "sphere",
+        "position": [
+          0.3,
+          -0.2,
+          0.05
+        ],
+        "radius": 0.05,
+        "rotation": [
+          1,
+          0,
+          0,
+          0
+        ]
+      }
+    ],
+    "femur3": [
+      {
+        "shape": "cube",
+        "position": [
+          -0.3,
+          0.2,
+          0.3
+        ],
+        "dimensions": [
+          0.05,
+          0.05,
+          0.2
+        ],
+        "rotation": [
+          1,
+          0,
+          0,
+          0
+        ],
+        "color": [
+          1,
+          0.8,
+          0.0
+        ]
+      }
+    ],
+    "tibia3": [
+      {
+        "shape": "cube",
+        "position": [
+          -0.3,
+          0.2,
+          0.125
+        ],
+        "dimensions": [
+          0.05,
+          0.05,
+          0.15
+        ],
+        "rotation": [
+          1,
+          0,
+          0,
+          0
+        ],
+        "color": [
+          1,
+          0.2,
+          0.0
+        ]
+      }
+    ],
+    "foot3": [
+      {
+        "shape": "sphere",
+        "position": [
+          -0.3,
+          0.2,
+          0.05
+        ],
+        "radius": 0.05,
+        "rotation": [
+          1,
+          0,
+          0,
+          0
+        ]
+      }
+    ],
+    "femur4": [
+      {
+        "shape": "cube",
+        "position": [
+          -0.3,
+          -0.2,
+          0.3
+        ],
+        "dimensions": [
+          0.05,
+          0.05,
+          0.2
+        ],
+        "rotation": [
+          1,
+          0,
+          0,
+          0
+        ],
+        "color": [
+          1,
+          0.8,
+          0.0
+        ]
+      }
+    ],
+    "tibia4": [
+      {
+        "shape": "cube",
+        "position": [
+          -0.3,
+          -0.2,
+          0.125
+        ],
+        "dimensions": [
+          0.05,
+          0.05,
+          0.15
+        ],
+        "rotation": [
+          1,
+          0,
+          0,
+          0
+        ],
+        "color": [
+          1,
+          0.2,
+          0.0
+        ]
+      }
+    ],
+    "foot4": [
+      {
+        "shape": "sphere",
+        "position": [
+          -0.3,
+          -0.2,
+          0.05
+        ],
+        "radius": 0.05,
+        "rotation": [
+          1,
+          0,
+          0,
+          0
+        ]
+      }
+    ]
+  },
+  "joints": {
+    "stuck": {
+      "type": "fixed",
+      "object1": "foot1",
+      "object2": "universe"
+    },
+    "floor1": {
+      "type": "ground",
+      "object1": "foot1"
+    },
+    "floor2": {
+      "type": "ground",
+      "object1": "foot2"
+    },
+    "floor3": {
+      "type": "ground",
+      "object1": "foot3"
+    },
+    "floor4": {
+      "type": "ground",
+      "object1": "foot4"
+    },
+    "heel1": {
+      "type": "fixed",
+      "object1": "foot1",
+      "object2": "tibia1",
+      "point": [
+        0.3,
+        0.2,
+        0.05
+      ]
+    },
+    "heel2": {
+      "type": "fixed",
+      "object1": "foot2",
+      "object2": "tibia2",
+      "point": [
+        0.3,
+        -0.2,
+        0.05
+      ]
+    },
+    "heel3": {
+      "type": "fixed",
+      "object1": "foot3",
+      "object2": "tibia3",
+      "point": [
+        -0.3,
+        0.2,
+        0.05
+      ]
+    },
+    "heel4": {
+      "type": "fixed",
+      "object1": "foot4",
+      "object2": "tibia4",
+      "point": [
+        -0.3,
+        -0.2,
+        0.05
+      ]
+    },
+    "knee1": {
+      "type": "hinge",
+      "object1": "tibia1",
+      "object2": "femur1",
+      "point": [
+        0.3,
+        0.2,
+        0.2
+      ],
+      "motors": [
+        {
+          "motor_id": 0
+        }
+      ]
+    },
+    "knee2": {
+      "type": "hinge",
+      "object1": "tibia2",
+      "object2": "femur2",
+      "point": [
+        0.3,
+        -0.2,
+        0.2
+      ],
+      "motors": [
+        {
+          "motor_id": 1
+        }
+      ]
+    },
+    "knee3": {
+      "type": "hinge",
+      "object1": "tibia3",
+      "object2": "femur3",
+      "point": [
+        -0.3,
+        0.2,
+        0.2
+      ],
+      "motors": [
+        {
+          "motor_id": 2
+        }
+      ]
+    },
+    "knee4": {
+      "type": "hinge",
+      "object1": "tibia4",
+      "object2": "femur4",
+      "point": [
+        -0.3,
+        -0.2,
+        0.2
+      ],
+      "motors": [
+        {
+          "motor_id": 3
+        }
+      ]
+    },
+    "hip1": {
+      "type": "hinge",
+      "object1": "femur1",
+      "object2": "spine",
+      "point": [
+        0.3,
+        0.2,
+        0.4
+      ],
+      "motors": [
+        {
+          "motor_id": 4
+        }
+      ]
+    },
+    "hip2": {
+      "type": "hinge",
+      "object1": "femur2",
+      "object2": "spine",
+      "point": [
+        0.3,
+        -0.2,
+        0.4
+      ],
+      "motors": [
+        {
+          "motor_id": 5
+        }
+      ]
+    },
+    "hip3": {
+      "type": "hinge",
+      "object1": "femur3",
+      "object2": "spine",
+      "point": [
+        -0.3,
+        0.2,
+        0.4
+      ],
+      "motors": [
+        {
+          "motor_id": 6
+        }
+      ]
+    },
+    "hip4": {
+      "type": "hinge",
+      "object1": "femur4",
+      "object2": "spine",
+      "point": [
+        -0.3,
+        -0.2,
+        0.4
+      ],
+      "motors": [
+        {
+          "motor_id": 7
+        }
+      ]
+    }
+  },
+  "sensors": [
+    {
+      "axis": [
+        1,
+        0,
+        0
+      ],
+      "object": "spine",
+      "type": "velocity"
+    },
+    {
+      "axis": [
+        1,
+        0,
+        0
+      ],
+      "object": "spine",
+      "type": "orientation"
+    },
+    {
+      "axis": [
+        0,
+        1,
+        0
+      ],
+      "object": "spine",
+      "type": "velocity"
+    },
+    {
+      "axis": [
+        0,
+        1,
+        0
+      ],
+      "object": "spine",
+      "type": "orientation"
+    },
+    {
+      "axis": [
+        0,
+        0,
+        1
+      ],
+      "object": "spine",
+      "type": "velocity"
+    },
+    {
+      "axis": [
+        0,
+        0,
+        1
+      ],
+      "object": "spine",
+      "type": "position"
+    },
+    {
+      "axis": [
+        0,
+        0,
+        1
+      ],
+      "object": "spine",
+      "type": "orientation"
+    },
+    {
+      "axis": [
+        1,
+        0,
+        0
+      ],
+      "object": "tibia1",
+      "reference": "spine",
+      "type": "velocity"
+    },
+    {
+      "axis": [
+        1,
+        0,
+        0
+      ],
+      "object": "tibia1",
+      "reference": "spine",
+      "type": "position"
+    },
+    {
+      "axis": [
+        1,
+        0,
+        0
+      ],
+      "object": "tibia1",
+      "reference": "spine",
+      "type": "orientation"
+    },
+    {
+      "axis": [
+        0,
+        1,
+        0
+      ],
+      "object": "tibia1",
+      "reference": "spine",
+      "type": "velocity"
+    },
+    {
+      "axis": [
+        0,
+        1,
+        0
+      ],
+      "object": "tibia1",
+      "reference": "spine",
+      "type": "position"
+    },
+    {
+      "axis": [
+        0,
+        1,
+        0
+      ],
+      "object": "tibia1",
+      "reference": "spine",
+      "type": "orientation"
+    },
+    {
+      "axis": [
+        0,
+        0,
+        1
+      ],
+      "object": "tibia1",
+      "reference": "spine",
+      "type": "velocity"
+    },
+    {
+      "axis": [
+        0,
+        0,
+        1
+      ],
+      "object": "tibia1",
+      "reference": "spine",
+      "type": "position"
+    },
+    {
+      "axis": [
+        0,
+        0,
+        1
+      ],
+      "object": "tibia1",
+      "reference": "spine",
+      "type": "orientation"
+    },
+    {
+      "axis": [
+        1,
+        0,
+        0
+      ],
+      "object": "tibia2",
+      "reference": "spine",
+      "type": "velocity"
+    },
+    {
+      "axis": [
+        1,
+        0,
+        0
+      ],
+      "object": "tibia2",
+      "reference": "spine",
+      "type": "position"
+    },
+    {
+      "axis": [
+        1,
+        0,
+        0
+      ],
+      "object": "tibia2",
+      "reference": "spine",
+      "type": "orientation"
+    },
+    {
+      "axis": [
+        0,
+        1,
+        0
+      ],
+      "object": "tibia2",
+      "reference": "spine",
+      "type": "velocity"
+    },
+    {
+      "axis": [
+        0,
+        1,
+        0
+      ],
+      "object": "tibia2",
+      "reference": "spine",
+      "type": "position"
+    },
+    {
+      "axis": [
+        0,
+        1,
+        0
+      ],
+      "object": "tibia2",
+      "reference": "spine",
+      "type": "orientation"
+    },
+    {
+      "axis": [
+        0,
+        0,
+        1
+      ],
+      "object": "tibia2",
+      "reference": "spine",
+      "type": "velocity"
+    },
+    {
+      "axis": [
+        0,
+        0,
+        1
+      ],
+      "object": "tibia2",
+      "reference": "spine",
+      "type": "position"
+    },
+    {
+      "axis": [
+        0,
+        0,
+        1
+      ],
+      "object": "tibia2",
+      "reference": "spine",
+      "type": "orientation"
+    },
+    {
+      "axis": [
+        1,
+        0,
+        0
+      ],
+      "object": "tibia3",
+      "reference": "spine",
+      "type": "velocity"
+    },
+    {
+      "axis": [
+        1,
+        0,
+        0
+      ],
+      "object": "tibia3",
+      "reference": "spine",
+      "type": "position"
+    },
+    {
+      "axis": [
+        1,
+        0,
+        0
+      ],
+      "object": "tibia3",
+      "reference": "spine",
+      "type": "orientation"
+    },
+    {
+      "axis": [
+        0,
+        1,
+        0
+      ],
+      "object": "tibia3",
+      "reference": "spine",
+      "type": "velocity"
+    },
+    {
+      "axis": [
+        0,
+        1,
+        0
+      ],
+      "object": "tibia3",
+      "reference": "spine",
+      "type": "position"
+    },
+    {
+      "axis": [
+        0,
+        1,
+        0
+      ],
+      "object": "tibia3",
+      "reference": "spine",
+      "type": "orientation"
+    },
+    {
+      "axis": [
+        0,
+        0,
+        1
+      ],
+      "object": "tibia3",
+      "reference": "spine",
+      "type": "velocity"
+    },
+    {
+      "axis": [
+        0,
+        0,
+        1
+      ],
+      "object": "tibia3",
+      "reference": "spine",
+      "type": "position"
+    },
+    {
+      "axis": [
+        0,
+        0,
+        1
+      ],
+      "object": "tibia3",
+      "reference": "spine",
+      "type": "orientation"
+    },
+    {
+      "axis": [
+        1,
+        0,
+        0
+      ],
+      "object": "tibia4",
+      "reference": "spine",
+      "type": "velocity"
+    },
+    {
+      "axis": [
+        1,
+        0,
+        0
+      ],
+      "object": "tibia4",
+      "reference": "spine",
+      "type": "position"
+    },
+    {
+      "axis": [
+        1,
+        0,
+        0
+      ],
+      "object": "tibia4",
+      "reference": "spine",
+      "type": "orientation"
+    },
+    {
+      "axis": [
+        0,
+        1,
+        0
+      ],
+      "object": "tibia4",
+      "reference": "spine",
+      "type": "velocity"
+    },
+    {
+      "axis": [
+        0,
+        1,
+        0
+      ],
+      "object": "tibia4",
+      "reference": "spine",
+      "type": "position"
+    },
+    {
+      "axis": [
+        0,
+        1,
+        0
+      ],
+      "object": "tibia4",
+      "reference": "spine",
+      "type": "orientation"
+    },
+    {
+      "axis": [
+        0,
+        0,
+        1
+      ],
+      "object": "tibia4",
+      "reference": "spine",
+      "type": "velocity"
+    },
+    {
+      "axis": [
+        0,
+        0,
+        1
+      ],
+      "object": "tibia4",
+      "reference": "spine",
+      "type": "position"
+    },
+    {
+      "axis": [
+        0,
+        0,
+        1
+      ],
+      "object": "tibia4",
+      "reference": "spine",
+      "type": "orientation"
+    },
+    {
+      "axis": [
+        1,
+        0,
+        0
+      ],
+      "object": "femur1",
+      "reference": "tibia1",
+      "type": "velocity"
+    },
+    {
+      "axis": [
+        1,
+        0,
+        0
+      ],
+      "object": "femur1",
+      "reference": "tibia1",
+      "type": "position"
+    },
+    {
+      "axis": [
+        1,
+        0,
+        0
+      ],
+      "object": "femur1",
+      "reference": "tibia1",
+      "type": "orientation"
+    },
+    {
+      "axis": [
+        0,
+        1,
+        0
+      ],
+      "object": "femur1",
+      "reference": "tibia1",
+      "type": "velocity"
+    },
+    {
+      "axis": [
+        0,
+        1,
+        0
+      ],
+      "object": "femur1",
+      "reference": "tibia1",
+      "type": "position"
+    },
+    {
+      "axis": [
+        0,
+        1,
+        0
+      ],
+      "object": "femur1",
+      "reference": "tibia1",
+      "type": "orientation"
+    },
+    {
+      "axis": [
+        0,
+        0,
+        1
+      ],
+      "object": "femur1",
+      "reference": "tibia1",
+      "type": "velocity"
+    },
+    {
+      "axis": [
+        0,
+        0,
+        1
+      ],
+      "object": "femur1",
+      "reference": "tibia1",
+      "type": "position"
+    },
+    {
+      "axis": [
+        0,
+        0,
+        1
+      ],
+      "object": "femur1",
+      "reference": "tibia1",
+      "type": "orientation"
+    },
+    {
+      "axis": [
+        1,
+        0,
+        0
+      ],
+      "object": "femur2",
+      "reference": "tibia2",
+      "type": "velocity"
+    },
+    {
+      "axis": [
+        1,
+        0,
+        0
+      ],
+      "object": "femur2",
+      "reference": "tibia2",
+      "type": "position"
+    },
+    {
+      "axis": [
+        1,
+        0,
+        0
+      ],
+      "object": "femur2",
+      "reference": "tibia2",
+      "type": "orientation"
+    },
+    {
+      "axis": [
+        0,
+        1,
+        0
+      ],
+      "object": "femur2",
+      "reference": "tibia2",
+      "type": "velocity"
+    },
+    {
+      "axis": [
+        0,
+        1,
+        0
+      ],
+      "object": "femur2",
+      "reference": "tibia2",
+      "type": "position"
+    },
+    {
+      "axis": [
+        0,
+        1,
+        0
+      ],
+      "object": "femur2",
+      "reference": "tibia2",
+      "type": "orientation"
+    },
+    {
+      "axis": [
+        0,
+        0,
+        1
+      ],
+      "object": "femur2",
+      "reference": "tibia2",
+      "type": "velocity"
+    },
+    {
+      "axis": [
+        0,
+        0,
+        1
+      ],
+      "object": "femur2",
+      "reference": "tibia2",
+      "type": "position"
+    },
+    {
+      "axis": [
+        0,
+        0,
+        1
+      ],
+      "object": "femur2",
+      "reference": "tibia2",
+      "type": "orientation"
+    },
+    {
+      "axis": [
+        1,
+        0,
+        0
+      ],
+      "object": "femur3",
+      "reference": "tibia3",
+      "type": "velocity"
+    },
+    {
+      "axis": [
+        1,
+        0,
+        0
+      ],
+      "object": "femur3",
+      "reference": "tibia3",
+      "type": "position"
+    },
+    {
+      "axis": [
+        1,
+        0,
+        0
+      ],
+      "object": "femur3",
+      "reference": "tibia3",
+      "type": "orientation"
+    },
+    {
+      "axis": [
+        0,
+        1,
+        0
+      ],
+      "object": "femur3",
+      "reference": "tibia3",
+      "type": "velocity"
+    },
+    {
+      "axis": [
+        0,
+        1,
+        0
+      ],
+      "object": "femur3",
+      "reference": "tibia3",
+      "type": "position"
+    },
+    {
+      "axis": [
+        0,
+        1,
+        0
+      ],
+      "object": "femur3",
+      "reference": "tibia3",
+      "type": "orientation"
+    },
+    {
+      "axis": [
+        0,
+        0,
+        1
+      ],
+      "object": "femur3",
+      "reference": "tibia3",
+      "type": "velocity"
+    },
+    {
+      "axis": [
+        0,
+        0,
+        1
+      ],
+      "object": "femur3",
+      "reference": "tibia3",
+      "type": "position"
+    },
+    {
+      "axis": [
+        0,
+        0,
+        1
+      ],
+      "object": "femur3",
+      "reference": "tibia3",
+      "type": "orientation"
+    },
+    {
+      "axis": [
+        1,
+        0,
+        0
+      ],
+      "object": "femur4",
+      "reference": "tibia4",
+      "type": "velocity"
+    },
+    {
+      "axis": [
+        1,
+        0,
+        0
+      ],
+      "object": "femur4",
+      "reference": "tibia4",
+      "type": "position"
+    },
+    {
+      "axis": [
+        1,
+        0,
+        0
+      ],
+      "object": "femur4",
+      "reference": "tibia4",
+      "type": "orientation"
+    },
+    {
+      "axis": [
+        0,
+        1,
+        0
+      ],
+      "object": "femur4",
+      "reference": "tibia4",
+      "type": "velocity"
+    },
+    {
+      "axis": [
+        0,
+        1,
+        0
+      ],
+      "object": "femur4",
+      "reference": "tibia4",
+      "type": "position"
+    },
+    {
+      "axis": [
+        0,
+        1,
+        0
+      ],
+      "object": "femur4",
+      "reference": "tibia4",
+      "type": "orientation"
+    },
+    {
+      "axis": [
+        0,
+        0,
+        1
+      ],
+      "object": "femur4",
+      "reference": "tibia4",
+      "type": "velocity"
+    },
+    {
+      "axis": [
+        0,
+        0,
+        1
+      ],
+      "object": "femur4",
+      "reference": "tibia4",
+      "type": "position"
+    },
+    {
+      "axis": [
+        0,
+        0,
+        1
+      ],
+      "object": "femur4",
+      "reference": "tibia4",
+      "type": "orientation"
+    }
+  ]
+}

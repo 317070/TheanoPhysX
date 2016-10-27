@@ -13,7 +13,7 @@ import cPickle as pickle
 import argparse
 from custom_ops import mulgrad
 
-EXP_NAME = "exp7"
+EXP_NAME = "exp8"
 
 parser = argparse.ArgumentParser(description='Process some integers.')
 parser.add_argument('--restart', dest='restart',
@@ -32,10 +32,10 @@ engine = BatchedTheanoRigid3DBodyEngine()
 jsonfile = "robotmodel/demi_predator.json"
 engine.load_robot_model(jsonfile)
 spine_id = engine.getObjectIndex("spine")
-BATCH_SIZE = 1
+BATCH_SIZE = 4
 engine.compile(batch_size=BATCH_SIZE)
 print "#sensors:", engine.num_sensors
-#engine.randomizeInitialState(rotate_around="spine")
+engine.randomizeInitialState(rotate_around="spine")
 
 
 # step 2: build the model, controller and engine for simulation
@@ -51,6 +51,11 @@ def build_objectives(states_list):
 def build_controller():
     l_input = lasagne.layers.InputLayer((BATCH_SIZE,2+engine.num_sensors), name="sensor_values")
     l_1 = lasagne.layers.DenseLayer(l_input, 128,
+                                         nonlinearity=lasagne.nonlinearities.rectify,
+                                         W=lasagne.init.Orthogonal("relu"),
+                                         b=lasagne.init.Constant(0.0),
+                                         )
+    l_1 = lasagne.layers.DenseLayer(l_1, 128,
                                          nonlinearity=lasagne.nonlinearities.rectify,
                                          W=lasagne.init.Orthogonal("relu"),
                                          b=lasagne.init.Constant(0.0),
@@ -89,7 +94,7 @@ def build_model():
         sensor_values = T.concatenate([sine[:,None],cosine[:,None], sensor_values],axis=1)
         controller["input"].input_var = sensor_values
         motor_signals = lasagne.layers.helper.get_output(controller["output"])
-        ALPHA = 0.95
+        ALPHA = 1.0
         positions, velocities, rot_matrices = mulgrad(positions, ALPHA), mulgrad(velocities, ALPHA), mulgrad(rot_matrices, ALPHA)
         return (t,) + engine.step_from_this_state(state=(positions, velocities, rot_matrices), motor_signals=motor_signals)
 
@@ -109,6 +114,28 @@ controller = build_controller()
 
 controller_parameters = lasagne.layers.helper.get_all_params(controller["output"])
 
+import string
+print string.ljust("  layer output shapes:",26),
+print string.ljust("#params:",10),
+print string.ljust("#data:",10),
+print "output shape:"
+def comma_seperator(v):
+    return '{:,.0f}'.format(v)
+
+all_layers = lasagne.layers.get_all_layers(controller["output"])
+all_params = lasagne.layers.get_all_params(controller["output"], trainable=True)
+num_params = sum([np.prod(p.get_value().shape) for p in all_params])
+
+for layer in all_layers[:-1]:
+    name = string.ljust(layer.__class__.__name__, 22)
+    num_param = sum([np.prod(p.get_value().shape) for p in layer.get_params()])
+    num_param = string.ljust(comma_seperator(num_param), 10)
+    num_size = string.ljust(comma_seperator(np.prod(layer.output_shape[1:])), 10)
+    print "    %s %s %s %s" % (name,  num_param, num_size, layer.output_shape)
+print "  number of parameters:", comma_seperator(num_params)
+
+
+
 states, all_parameters, updates = build_model()
 fitness = build_objectives(states)
 fitness = T.switch(T.isnan(fitness) + T.isinf(fitness), np.float32(0), fitness)
@@ -119,9 +146,9 @@ print "Finding gradient since %s..." % strftime("%H:%M:%S", localtime())
 loss = -T.mean(fitness)
 
 grads = theano.grad(loss, all_parameters)
-#grads = lasagne.updates.total_norm_constraint(grads, 1.0)
+grads = lasagne.updates.total_norm_constraint(grads, 1.0)
 
-#grads = [T.switch(T.isnan(g) + T.isinf(g), np.float32(0), g) for g in grads]
+grads = [T.switch(T.isnan(g) + T.isinf(g), np.float32(0), g) for g in grads]
 
 #grad_norm = T.sqrt(T.sum([(g**2).sum() for g in theano.grad(loss, all_parameters)])+1e-9)
 #theano_to_print.append(grad_norm)
