@@ -384,7 +384,12 @@
     "stuck": {
       "type": "fixed",
       "object1": "foot1",
-      "object2": "universe"
+      "object2": "universe",
+      "point": [
+        0.0,
+        0.0,
+        0.0
+      ]
     },
     "floor1": {
       "type": "ground",

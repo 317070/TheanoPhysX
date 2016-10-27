@@ -87,7 +87,7 @@ class Rigid3DBodyEngine(object):
         self.massMatrices = np.append(self.massMatrices, 1e6*np.diag([1,1,1,1,1,1])[None,:,:], axis=0)
         self.positionVectors = np.append(self.positionVectors, np.array([[0,0,0,1,0,0,0]], dtype=DTYPE), axis=0)
         self.velocityVectors = np.append(self.velocityVectors, np.array([[0,0,0,0,0,0]], dtype=DTYPE), axis=0)
-        self.addConstraint("universe", ["universe", "universe"], parameters={"f":1, "zeta":0})
+        self.addConstraint("universe", ["universe", "universe"], parameters={"f":1, "zeta":1})
 
     def set_integration_parameters(self,
                                    time_step=0.001,
@@ -429,20 +429,20 @@ class Rigid3DBodyEngine(object):
             if constraint == "universe":
                 for i in xrange(3):
                     J[c_idx+i,0,:] = np.concatenate([-np.eye(3), np.zeros((3,3))])[:,i]
-                    J[c_idx+i,1,:] = np.inf * np.ones((6,))
+                    J[c_idx+i,1,:] = np.concatenate([ np.eye(3), np.zeros((3,3))])[:,i]
                 b_error[c_idx:c_idx+3] = positions[idx1,:3]
                 c_idx += 3
 
                 for i in xrange(3):
                     J[c_idx+i,0,:] = np.concatenate([np.zeros((3,3), dtype=DTYPE),-np.eye(3)])[:,i]
-                    J[c_idx+i,1,:] = np.inf * np.ones((6,))
+                    J[c_idx+i,1,:] = np.concatenate([np.zeros((3,3), dtype=DTYPE), np.eye(3)])[:,i]
 
                 b_error[c_idx] = 0#cross[1,2]
                 b_error[c_idx+1] = 0#cross[2,0]
                 b_error[c_idx+2] = 0#cross[0,1]
 
                 c_idx += 3
-                print b_error[c_idx-6:c_idx]
+                print "error:", b_error[c_idx-6:c_idx]
 
             if constraint == "ball-and-socket" or constraint == "hinge" or constraint == "fixed":
                 r1x = convert_model_to_world_coordinate_no_bias(parameters["joint_in_model1_coordinates"], self.rot_matrices[idx1,:,:])

@@ -72,7 +72,7 @@ class MyApp(ShowBase):
         #self.load_robot_model("robotmodel/test.json")
         #self.load_robot_model("robotmodel/predator.json")
         #self.load_robot_model("robotmodel/full_predator.json")
-        self.load_robot_model("robotmodel/demi_predator.json")
+        self.load_robot_model("robotmodel/demi_predator_universe.json")
         #self.load_robot_model("robotmodel/ball.json")
         self.physics.compile()
         self.step = np.zeros(shape=(16,))

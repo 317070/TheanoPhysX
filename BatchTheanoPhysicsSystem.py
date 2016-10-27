@@ -901,8 +901,8 @@ class BatchedTheanoRigid3DBodyEngine(object):
 
 
         # step 2, move the robots in the batch to a random location
-        d_x = srng.uniform(size=(self.batch_size,1), low=-1., high=1.)
-        d_y = srng.uniform(size=(self.batch_size,1), low=-1, high=1.)
+        d_x = srng.uniform(size=(self.batch_size,1), low=0., high=0)
+        d_y = srng.uniform(size=(self.batch_size,1), low=0, high=0)
         d_z = srng.uniform(size=(self.batch_size,1), low=0.0, high=0.0)
         self.positionVectors = self.positionVectors + T.concatenate([d_x, d_y, d_z],axis=1)[:,None,:]
         pass

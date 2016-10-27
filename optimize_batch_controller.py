@@ -32,7 +32,7 @@ engine = BatchedTheanoRigid3DBodyEngine()
 jsonfile = "robotmodel/demi_predator.json"
 engine.load_robot_model(jsonfile)
 spine_id = engine.getObjectIndex("spine")
-BATCH_SIZE = 4
+BATCH_SIZE = 2
 engine.compile(batch_size=BATCH_SIZE)
 print "#sensors:", engine.num_sensors
 engine.randomizeInitialState(rotate_around="spine")
@@ -94,7 +94,7 @@ def build_model():
         sensor_values = T.concatenate([sine[:,None],cosine[:,None], sensor_values],axis=1)
         controller["input"].input_var = sensor_values
         motor_signals = lasagne.layers.helper.get_output(controller["output"])
-        ALPHA = 1.0
+        ALPHA = 0.95
         positions, velocities, rot_matrices = mulgrad(positions, ALPHA), mulgrad(velocities, ALPHA), mulgrad(rot_matrices, ALPHA)
         return (t,) + engine.step_from_this_state(state=(positions, velocities, rot_matrices), motor_signals=motor_signals)
 
