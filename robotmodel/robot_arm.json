@@ -5,7 +5,8 @@
     "time_step": 0.01,
     "projected_gauss_seidel_iterations": 50,
     "rotation_reorthogonalization_iterations": 1,
-    "warm_start": 0.85
+    "warm_start": 0.85,
+    "universe": true
   },
   "default_constraint_parameters": {
     "default": {

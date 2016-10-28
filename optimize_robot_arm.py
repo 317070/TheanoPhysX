@@ -11,6 +11,7 @@ import datetime
 import cPickle as pickle
 import argparse
 from custom_ops import mulgrad
+from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
 
 EXP_NAME = "exp8"
 
@@ -28,10 +29,11 @@ np.random.seed(0)
 
 # step 1: load the physics model
 engine = BatchedTheanoRigid3DBodyEngine()
-jsonfile = "robotmodel/demi_predator.json"
+jsonfile = "robotmodel/robot_arm.json"
 engine.load_robot_model(jsonfile)
-spine_id = engine.getObjectIndex("spine")
+grapper_id = engine.getObjectIndex("sphere2")
 BATCH_SIZE = 4
+MEMORY_SIZE = 16
 engine.compile(batch_size=BATCH_SIZE)
 print "#sensors:", engine.num_sensors
 engine.randomizeInitialState(rotate_around="spine")
@@ -40,15 +42,21 @@ engine.randomizeInitialState(rotate_around="spine")
 # step 2: build the model, controller and engine for simulation
 total_time = 8
 
+def get_target():
+    srng = RandomStreams(seed=317070)
+    d_x = srng.uniform(size=(BATCH_SIZE,1), low=-1.5, high=1.5)
+    d_y = srng.uniform(size=(BATCH_SIZE,1), low=-1.5, high=1.5)
+    d_z = srng.uniform(size=(BATCH_SIZE,1), low=0.0, high=1.5)
+    return T.concatenate([d_x, d_y, d_z],axis=1), [i[0] for i in srng.updates()]
+
+target, shared_target_vars = get_target()
+print shared_target_vars
 def build_objectives(states_list):
     t, positions, velocities, rotations = states_list
-    #theano_to_print.extend([rotations[-1,:,6,:,:]])
-    return T.mean(velocities[:,:,spine_id,0] * (positions[:,:,spine_id,2]>0),axis=0)
-    #return (positions[-1,:,spine_id,:2] - engine.getInitialState()[0][:,spine_id,:2]).norm(L=2,axis=1)
-
+    return T.mean(T.sum((target[None,:,:] - positions[:,:,grapper_id,:])**2,axis=2),axis=0)
 
 def build_controller():
-    l_input = lasagne.layers.InputLayer((BATCH_SIZE,2+engine.num_sensors), name="sensor_values")
+    l_input = lasagne.layers.InputLayer((BATCH_SIZE,1+engine.num_sensors+MEMORY_SIZE), name="sensor_values")
     l_1 = lasagne.layers.DenseLayer(l_input, 128,
                                          nonlinearity=lasagne.nonlinearities.rectify,
                                          W=lasagne.init.Orthogonal("relu"),
@@ -59,59 +67,67 @@ def build_controller():
                                          W=lasagne.init.Orthogonal("relu"),
                                          b=lasagne.init.Constant(0.0),
                                          )
-    l_2 = lasagne.layers.DenseLayer(l_1, 8,
+    l_2 = lasagne.layers.DenseLayer(l_1, 4,
                                          nonlinearity=lasagne.nonlinearities.identity,
                                          W=lasagne.init.Constant(0.0),
                                          b=lasagne.init.Constant(0.0),
                                          )
-    l_init = lasagne.layers.DenseLayer(l_input, num_units=8,
-                                         nonlinearity=lasagne.nonlinearities.identity,
-                                         W=np.array([ 0.8,-0.8,-0.8, 0.8,   0,   0,   0,   0,
-                                                        0,   0,   0,   0, 0.5,-0.5,-0.5, 0.5]
-                                                    +[0]*(engine.num_sensors*8),dtype='float32').reshape((2+engine.num_sensors, 8)),
-                                         b=np.array([ 0.5, 0.5, 0.5, 0.5,   0,   0,   0,   0],dtype='float32'),
+
+    l_recurrent = lasagne.layers.DenseLayer(l_1, MEMORY_SIZE,
+                                         nonlinearity=lasagne.nonlinearities.rectify,
+                                         W=lasagne.init.Constant(0.0),
+                                         b=lasagne.init.Constant(0.0),
                                          )
-    l_result = lasagne.layers.ElemwiseSumLayer([l_2, l_init])
+
+    l_result = l_2
 
     return {
         "input":l_input,
-        "output":l_result
+        "output":l_result,
+        "recurrent":l_recurrent
     }
 
 
 def build_model():
 
     def get_shared_variables():
-        return controller_parameters + engine.getSharedVariables()
+        return controller_parameters + engine.getSharedVariables() + shared_target_vars
 
-    def control_loop(state, t):
+    def control_loop(state, memory):
         positions, velocities, rot_matrices = state
-        sensor_values = engine.getSensorValues(state=(positions, velocities, rot_matrices))
-        t = t + engine.DT
-        sine = T.tile(T.sin(np.float32(2*np.pi*1.5) * t), BATCH_SIZE)
-        cosine = T.tile(T.cos(np.float32(2*np.pi*1.5) * t), BATCH_SIZE)
-        sensor_values = T.concatenate([sine[:,None],cosine[:,None], sensor_values],axis=1)
-        controller["input"].input_var = sensor_values
+        #sensor_values = engine.getSensorValues(state=(positions, velocities, rot_matrices))
+        objective_sensor = T.sum((target - positions[:,grapper_id,:])**2,axis=1)[:,None]
+        network_input = T.concatenate([objective_sensor, memory],axis=1)
+        controller["input"].input_var = network_input
         motor_signals = lasagne.layers.helper.get_output(controller["output"])
+        memory = lasagne.layers.helper.get_output(controller["recurrent"])
+
         ALPHA = 0.95
         positions, velocities, rot_matrices = mulgrad(positions, ALPHA), mulgrad(velocities, ALPHA), mulgrad(rot_matrices, ALPHA)
-        return (t,) + engine.step_from_this_state(state=(positions, velocities, rot_matrices), motor_signals=motor_signals)
+        memory = mulgrad(memory,ALPHA)
+
+        return (memory,) + engine.step_from_this_state(state=(positions, velocities, rot_matrices), motor_signals=motor_signals)
+
+    empty_memory = np.array([0]*(MEMORY_SIZE*BATCH_SIZE), dtype='float32').reshape((BATCH_SIZE, MEMORY_SIZE))
 
     outputs, updates = theano.scan(
-        fn=lambda t,a,b,c,*ns: control_loop(state=(a,b,c), t=t),
-        outputs_info=(np.float32(0),)+engine.getInitialState(),
+        fn=lambda m,a,b,c,*ns: control_loop(state=(a,b,c), memory=m),
+        outputs_info=(empty_memory,)+engine.getInitialState(),
         n_steps=int(math.ceil(total_time/engine.DT)),
         strict=True,
         non_sequences=get_shared_variables(),
     )
+    print updates
     assert len(updates)==0
     return outputs, controller_parameters, updates
 
 
 
 controller = build_controller()
-
-controller_parameters = lasagne.layers.helper.get_all_params(controller["output"])
+top_layer = lasagne.layers.MergeLayer(
+    incomings=[controller["output"], controller["recurrent"]]
+)
+controller_parameters = lasagne.layers.helper.get_all_params(top_layer)
 
 import string
 print string.ljust("  layer output shapes:",26),
@@ -168,7 +184,7 @@ iter_train = theano.function([],
                              []
                              + [fitness]
                              #+ [T.max(abs(T.grad(fitness,param,return_disconnected='None'))) for param in all_parameters]
-                             + theano_to_print
+                             #+ theano_to_print
                              #+ [T.grad(theano_to_print[2], all_parameters[1], return_disconnected='None')]
                              ,
                              updates=updates,

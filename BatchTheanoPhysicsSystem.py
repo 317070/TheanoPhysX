@@ -169,15 +169,30 @@ class BatchedTheanoRigid3DBodyEngine(object):
         self.rotation_reorthogonalization_iterations = None
         self.warm_start = None
 
+
+
     def set_integration_parameters(self,
                                    time_step=0.001,
                                    projected_gauss_seidel_iterations=1,
                                    rotation_reorthogonalization_iterations=1,
-                                   warm_start=0):
+                                   warm_start=0,
+                                   universe=False):
         self.DT = time_step
         self.projected_gauss_seidel_iterations = projected_gauss_seidel_iterations
         self.rotation_reorthogonalization_iterations = rotation_reorthogonalization_iterations
         self.warm_start = warm_start
+        if universe:
+            self.add_universe()
+
+    def add_universe(self, **parameters):
+        self.objects["universe"] = self.positionVectors.shape[0]
+        self.radii = np.append(self.radii, -1)
+
+        self.positionVectors = np.append(self.positionVectors, np.array([[0,0,0]], dtype='float32'), axis=0)
+        self.rot_matrices = np.append(self.rot_matrices, np.array([quat_to_rot_matrix([1,0,0,0])], dtype='float32'), axis=0)
+        self.velocityVectors = np.append(self.velocityVectors, np.array([[0,0,0,0,0,0]], dtype='float32'), axis=0)
+        self.massMatrices = np.append(self.massMatrices, 1e6*np.diag([1,1,1,0.4,0.4,0.4])[None,:,:], axis=0)
+        self.addConstraint("universe", ["universe", "universe"], parameters={"f":1, "zeta":0})
 
     def addCube(self, reference, dimensions, mass_density, position, rotation, velocity, **kwargs):
         self.objects[reference] = self.positionVectors.shape[0]
@@ -354,6 +369,8 @@ class BatchedTheanoRigid3DBodyEngine(object):
         self.num_constraints = 0
 
         for (constraint,references,parameters) in self.constraints:
+            if constraint == "universe":
+                self.num_constraints += 6
             if constraint == "ball-and-socket" or constraint == "hinge" or constraint == "fixed":
                 self.num_constraints += 3
             if constraint == "slider" or constraint == "fixed":
@@ -387,6 +404,15 @@ class BatchedTheanoRigid3DBodyEngine(object):
         for constraint,references,parameters in self.constraints:
             idx1 = references[0]
             idx2 = references[1]
+            if constraint == "universe":
+                for i in xrange(6):
+                    self.map_object_to_constraint[idx1].append(2*(c_idx+i) + 0)
+                    self.zero_index.append(idx1)
+                    self.one_index.append(idx2)
+
+                self.w[c_idx:c_idx+6] = parameters["f"] * 2*np.pi
+                self.zeta[c_idx:c_idx+6] = parameters["zeta"]
+                c_idx += 6
 
             if constraint == "ball-and-socket" or constraint == "hinge" or constraint == "fixed":
                 for i in xrange(3):
@@ -551,6 +577,22 @@ class BatchedTheanoRigid3DBodyEngine(object):
                 idx2 = references[1]
             else:
                 idx2 = None
+
+            if constraint == "universe":
+                batched_J = numpy_repeat_new_axis(np.concatenate([-np.eye(3), np.zeros((3,3))]), self.batch_size).astype('float32')
+
+                for i in xrange(3):
+                    J[2*(c_idx+i)+0] = batched_J[:,:,i]
+                    #J[c_idx+i,1,:] = np.concatenate([ np.eye(3), np.zeros((3,3))])[:,i]
+                    b_error[c_idx+i] = -positions[:,idx1,i]
+                c_idx += 3
+
+                batched_J = numpy_repeat_new_axis(np.concatenate([np.zeros((3,3)),-np.eye(3)]), self.batch_size).astype('float32')
+                for i in xrange(3):
+                    J[2*(c_idx+i)+0] = batched_J[:,:,i]
+                    #J[c_idx+i,1,:] = np.concatenate([np.zeros((3,3), dtype=DTYPE), np.eye(3)])[:,i]
+                    b_error[c_idx+i] = np.zeros(shape=(self.batch_size,))
+                c_idx += 3
 
             if constraint == "ball-and-socket" or constraint == "hinge" or constraint == "fixed":
                 r1x = theano_convert_model_to_world_coordinate_no_bias(parameters["joint_in_model1_coordinates"][None,:], rot_matrices[:,idx1,:,:])
@@ -912,9 +954,9 @@ class BatchedTheanoRigid3DBodyEngine(object):
 
 
         # step 2, move the robots in the batch to a random location
-        d_x = srng.uniform(size=(self.batch_size,1), low=0., high=0)
-        d_y = srng.uniform(size=(self.batch_size,1), low=0, high=0)
-        d_z = srng.uniform(size=(self.batch_size,1), low=0.0, high=0.0)
+        d_x = srng.uniform(size=(self.batch_size,1), low=-0.1, high=0.1)
+        d_y = srng.uniform(size=(self.batch_size,1), low=-0.1, high=0.1)
+        d_z = srng.uniform(size=(self.batch_size,1), low=0.0, high=0.1)
         self.positionVectors = self.positionVectors + T.concatenate([d_x, d_y, d_z],axis=1)[:,None,:]
         pass
 
