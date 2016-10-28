@@ -202,7 +202,7 @@ class Rigid3DBodyEngine(object):
         axis = np.array(axis)
         axis = axis / np.linalg.norm(axis)
         parameters['axis'] = axis
-        parameters['axis_in_model1_coordinates'] = convert_world_to_model_coordinate_no_bias(axis, self.positionVectors[idx1,:])
+        parameters['axis_in_model2_coordinates'] = convert_world_to_model_coordinate_no_bias(axis, self.positionVectors[idx2,:])
 
         self.addConstraint("motor", [object1, object2], parameters)
 
@@ -461,19 +461,24 @@ class Rigid3DBodyEngine(object):
                 c_idx += 3
 
             if constraint == "slider" or constraint == "fixed":
+
+                # something is badly interacting here!
+
                 for i in xrange(3):
                     J[c_idx+i,0,:] = np.concatenate([np.zeros((3,3), dtype=DTYPE),-np.eye(3)])[:,i]
                     J[c_idx+i,1,:] = np.concatenate([np.zeros((3,3), dtype=DTYPE), np.eye(3)])[:,i]
+                    #J[c_idx+i,0,:] = np.concatenate([np.zeros((3,3), dtype=DTYPE),-self.rot_matrices[idx1,:,:].T])[:,i]
+                    #J[c_idx+i,1,:] = np.concatenate([np.zeros((3,3), dtype=DTYPE), self.rot_matrices[idx2,:,:].T])[:,i]
+
 
                 rot_current = np.dot(self.rot_matrices[idx2,:,:], self.rot_matrices[idx1,:,:].T)
                 rot_diff = np.dot(rot_current, parameters['rot_init'].T)
                 cross = rot_diff.T - rot_diff
 
                 # TODO: find b_error for rotational matrices!
-                q_current = q_div(positions[idx2,3:], positions[idx1,3:])
-                q_diff = q_div(q_current, parameters['q_init'])
-                b_error[c_idx:c_idx+3] = 2*q_diff[1:]
-
+                #q_current = q_div(positions[idx2,3:], positions[idx1,3:])
+                #q_diff = q_div(q_current, parameters['q_init'])
+                #b_error[c_idx:c_idx+3] = 2*q_diff[1:]
                 # TODO: THIS ACTUALLY WORKS! (NOT STABLE ENOUGH)
                 b_error[c_idx] = 0#cross[1,2]
                 b_error[c_idx+1] = 0#cross[2,0]
@@ -482,10 +487,19 @@ class Rigid3DBodyEngine(object):
                 c_idx += 3
 
             if constraint == "hinge":
+
                 a2x = convert_model_to_world_coordinate_no_bias(parameters['axis_in_model2_coordinates'], self.rot_matrices[idx2,:,:])
                 b1x = convert_model_to_world_coordinate_no_bias(parameters['axis1_in_model1_coordinates'], self.rot_matrices[idx1,:,:])
                 c1x = convert_model_to_world_coordinate_no_bias(parameters['axis2_in_model1_coordinates'], self.rot_matrices[idx1,:,:])
+
                 ss_a2x = skew_symmetric(a2x)
+
+                if idx1==2:
+                    """print "axis:", a2x
+                    print "forbidden:", b1x
+                    print "forbidden:", c1x
+                    print np.dot(a2x, b1x), np.dot(a2x, c1x), np.dot(b1x, c1x)
+                    print ss_a2x"""
 
                 J[c_idx+0,0,:] = np.concatenate([np.zeros((3,), dtype=DTYPE),-np.dot(b1x,ss_a2x)])
                 J[c_idx+0,1,:] = np.concatenate([np.zeros((3,), dtype=DTYPE), np.dot(b1x,ss_a2x)])
@@ -524,41 +538,42 @@ class Rigid3DBodyEngine(object):
 
             if constraint == "motor":
 
-                #TODO: seems to be problematic when robot is upside down?
-
                 interesting.append(c_idx)
-                #a = convert_model_to_world_coordinate_no_bias(parameters['axis_in_model1_coordinates'], self.rot_matrices[idx1,:,:])
-                a = convert_model_to_world_coordinate_no_bias(parameters['axis_in_model1_coordinates'], self.rot_matrices[idx1,:,:])
-
-                #if c_idx==11:
-                #    print a
+                ac = parameters['axis_in_model2_coordinates']
+                a = convert_model_to_world_coordinate_no_bias(parameters['axis_in_model2_coordinates'], self.rot_matrices[idx2,:,:])
 
                 rot_current = np.dot(self.rot_matrices[idx2,:,:], self.rot_matrices[idx1,:,:].T)
                 rot_diff = np.dot(rot_current, parameters['rot_init'].T)
                 theta2 = np.arccos(np.clip(0.5*(np.trace(rot_diff)-1),-1,1))
                 cross = rot_diff.T - rot_diff
+                dot2 = cross[1,2] * ac[0] + cross[2,0] * ac[1] + cross[0,1] * ac[2]
 
-                dot2 = cross[1,2] * a[0] + cross[2,0] * a[1] + cross[0,1] * a[2]
-
-                theta = ((dot2>0) * 2 - 1) * theta2
-
-                if idx1==1:
-                    print a
+                theta = theta2 * ((dot2>0) * 2 - 1)
 
                 J[c_idx,0,:] = np.concatenate([np.zeros((3,), dtype=DTYPE),-a])
                 J[c_idx,1,:] = np.concatenate([np.zeros((3,), dtype=DTYPE),a])
 
                 motor_signal = motor_signals[parameters["motor_id"]]
 
-                motor_signal = np.clip(motor_signal, parameters["min"]/180. * np.pi, parameters["max"]/180. * np.pi)
+                if "min" in parameters and "max" in parameters:
+                    motor_signal = np.clip(motor_signal, parameters["min"]/180. * np.pi, parameters["max"]/180. * np.pi)
+
+                def smallestSignedAngleBetween(x, y):
+                    a1 = (x - y) % (2*np.pi)
+                    b1 = (y - x) % (2*np.pi)
+                    return min(a1,b1)*((a1>b1)*2-1)
+
+                error_signal = -smallestSignedAngleBetween(theta, motor_signal)
+                print error_signal
 
                 if parameters["type"] == "velocity":
                     b_error[c_idx] = motor_signal
                 elif parameters["type"] == "position":
-                    if "delta" in parameters:
-                        b_error[c_idx] = dt * (abs(theta-motor_signal) > parameters["delta"]) * (theta-motor_signal) * parameters["motor_gain"]
+                    if "delta" in parameters and "motor_velocity" in parameters:
+                        velocity = parameters["motor_velocity"] / 180. * np.pi
+                        b_error[c_idx] = dt * np.clip((abs(error_signal) > parameters["delta"]) * error_signal * parameters["motor_gain"], -velocity, velocity)
                     else:
-                        b_error[c_idx] = dt * (theta-motor_signal) * parameters["motor_gain"]
+                        b_error[c_idx] = dt * error_signal * parameters["motor_gain"]
 
                 #print "%.3f\t%.3f\t%.3f\t%.3f" %(theta, theta2, b_error[c_idx], motor_signal)
                 #print c_idx
@@ -593,7 +608,7 @@ class Rigid3DBodyEngine(object):
                 self.C[c_idx] = (positions[idx1,Z] - r < 0.0)
                 b_res[c_idx] = 0
                 c_idx += 1
-
+        print
         mass_matrix = np.concatenate((M[self.zero_index,None,:,:], M[self.one_index,None,:,:]), axis=1)
 
         #v = np.zeros((self.num_constraints,2,6))  # 0 constraints x 2 objects x 6 states
@@ -650,7 +665,6 @@ class Rigid3DBodyEngine(object):
 
         # semi-implicit Euler integration
         self.velocityVectors = self.evaluate(dt, self.positionVectors, self.velocityVectors, motor_signals=motor_signals)
-        self.velocityVectors[:,1] = 0
         self.positionVectors[:,:3] = self.positionVectors[:,:3] + self.velocityVectors[:,:3] * dt
 
         self.rot_matrices[:,:,:] = self.normalize_matrix(self.rot_matrices[:,:,:] + np.sum(self.rot_matrices[:,:,:,None] * skew_symmetric(dt * self.velocityVectors[:,3:])[:,None,:,:],axis=2) )

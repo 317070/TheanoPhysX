@@ -274,7 +274,7 @@ class BatchedTheanoRigid3DBodyEngine(object):
         axis = np.array(axis, dtype='float32')
         axis = axis / np.linalg.norm(axis)
         parameters['axis'] = axis.astype('float32')
-        parameters['axis_in_model1_coordinates'] = convert_world_to_model_coordinate_no_bias(axis, self.rot_matrices[idx1,:,:]).astype('float32')
+        parameters['axis_in_model2_coordinates'] = convert_world_to_model_coordinate_no_bias(axis, self.rot_matrices[idx2,:,:]).astype('float32')
 
         self.addConstraint("motor", [object1, object2], parameters)
 
@@ -636,7 +636,8 @@ class BatchedTheanoRigid3DBodyEngine(object):
                 c_idx += 1
             """
             if constraint == "motor":
-                a = theano_convert_model_to_world_coordinate_no_bias(parameters['axis_in_model1_coordinates'][None,:], rot_matrices[:,idx1,:,:])
+                ac = parameters['axis_in_model2_coordinates'][None,:]
+                a = theano_convert_model_to_world_coordinate_no_bias(ac, rot_matrices[:,idx2,:,:])
 
                 # TODO: remove dimshuffle(0,2,1) by using batched_dot
                 rot_current = theano_dot_last_dimension_matrices(rot_matrices[:,idx2,:,:], rot_matrices[:,idx1,:,:].dimshuffle(0,2,1))
@@ -646,9 +647,10 @@ class BatchedTheanoRigid3DBodyEngine(object):
                 traces = rot_diff[:,0,0] + rot_diff[:,1,1] + rot_diff[:,2,2]
                 #traces =  theano.scan(lambda y: T.nlinalg.trace(y), sequences=rot_diff)[0]
 
+                # grad when x=-1 or x=1 does not exist for arccos
                 theta2 = T.arccos(T.clip(0.5*(traces-1),-1+eps,1-eps))
                 cross = rot_diff.dimshuffle(0,2,1) - rot_diff
-                dot2 = cross[:,1,2] * a[:,0] + cross[:,2,0] * a[:,1] + cross[:,0,1] * a[:,2]
+                dot2 = cross[:,1,2] * ac[:,0] + cross[:,2,0] * ac[:,1] + cross[:,0,1] * ac[:,2]
 
                 theta = ((dot2>0) * 2 - 1) * theta2
 
@@ -658,17 +660,26 @@ class BatchedTheanoRigid3DBodyEngine(object):
 
                 motor_signal = motor_signals[:,parameters["motor_id"]]
 
-                motor_min = (parameters["min"]/180. * np.pi)
-                motor_max = (parameters["max"]/180. * np.pi)
-                motor_signal = T.clip(motor_signal, motor_min, motor_max).astype('float32')
+                if "min" in parameters and "max" in parameters:
+                    motor_min = (parameters["min"]/180. * np.pi)
+                    motor_max = (parameters["max"]/180. * np.pi)
+                    motor_signal = T.clip(motor_signal, motor_min, motor_max).astype('float32')
+
+                def smallestSignedAngleBetween(x, y):
+                    a1 = (x - y) % np.float32(2*np.pi)
+                    b1 = (y - x) % np.float32(2*np.pi)
+                    return T.minimum(a1,b1)*((a1>b1)*2-1)
+
+                error_signal = -smallestSignedAngleBetween(theta, motor_signal)
 
                 if parameters["type"] == "velocity":
                     b_error[c_idx] = motor_signal
                 elif parameters["type"] == "position":
-                    if "delta" in parameters and parameters["delta"]>0:
-                        b_error[c_idx] = dt * (abs(theta-motor_signal) > parameters["delta"]) * (theta-motor_signal) * parameters["motor_gain"]
+                    if "delta" in parameters  and "motor_velocity" in parameters:
+                        velocity = parameters["motor_velocity"] / 180. * np.pi
+                        b_error[c_idx] = dt * T.clip((abs(error_signal) > parameters["delta"]) * error_signal * parameters["motor_gain"], -velocity, velocity)
                     else:
-                        b_error[c_idx] = dt * (theta-motor_signal) * parameters["motor_gain"]
+                        b_error[c_idx] = dt * error_signal * parameters["motor_gain"]
 
                 c_idx += 1
 

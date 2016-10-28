@@ -1,22 +1,21 @@
 {
   "name": "Robot arm",
-  "camera_focus": "sphere2",
+  "camera_focus": "sphere0",
   "integration_parameters": {
-    "time_step": 0.01,
-    "projected_gauss_seidel_iterations": 50,
-    "rotation_reorthogonalization_iterations": 1,
-    "warm_start": 0.85
+    "time_step": 0.001,
+    "projected_gauss_seidel_iterations": 100,
+    "rotation_reorthogonalization_iterations": 10,
+    "warm_start": 0.0
   },
   "default_constraint_parameters": {
     "default": {
-      "f": 2.0,
-      "zeta": 0.001
+      "f": 10.0,
+      "zeta": 0.01
     },
     "motor": {
       "type": "position",
-      "motor_gain": 20.00000000000000,
-      "motor_torque": 4,
-      "motor_velocity": 45.0,
+      "motor_gain": 25.00000000000000,
+      "motor_torque": 10,
       "delta": 0.01,
       "zeta": 0.0
     },
@@ -73,7 +72,7 @@
         "position": [
           0.0,
           0.0,
-          0.0
+          0.1
         ],
         "radius": 0.1
       }
@@ -84,7 +83,7 @@
         "position": [
           0.00,
           0.00,
-          0.25
+          0.35
         ],
         "dimensions": [
           0.14,
@@ -97,48 +96,6 @@
           0.0
         ]
       }
-    ],
-    "sphere1": [
-      {
-        "shape": "sphere",
-        "position": [
-          0.0,
-          0.0,
-          0.5
-        ],
-        "radius": 0.1
-      }
-    ],
-    "tibia": [
-      {
-        "shape": "cube",
-        "position": [
-          0.00,
-          0.00,
-          0.75
-        ],
-        "dimensions": [
-          0.14,
-          0.14,
-          0.5
-        ],
-        "color": [
-          1,
-          0.2,
-          0.0
-        ]
-      }
-    ],
-    "sphere2": [
-      {
-        "shape": "sphere",
-        "position": [
-          0.0,
-          0.0,
-          1.0
-        ],
-        "radius": 0.1
-      }
     ]
   },
   "joints": {
@@ -149,7 +106,7 @@
       "point": [
         0.0,
         0.0,
-        0.0
+        0.1
       ],
       "axis": [
         0,
@@ -174,7 +131,7 @@
       "point": [
         0.0,
         0.0,
-        0.0
+        0.1
       ],
       "axis": [
         0,
@@ -192,68 +149,6 @@
             0
           ]
         }
-      ]
-    },
-    "joint2":  {
-      "type": "hinge",
-      "object1": "femur",
-      "object2": "sphere1",
-      "point": [
-        0.0,
-        0.0,
-        0.5
-      ],
-      "axis": [
-        0,
-        0,
-        1
-      ],
-      "motors": [
-        {
-          "motor_id": 2,
-          "axis": [
-            0,
-            0,
-            1
-          ]
-        }
-      ]
-    },
-    "joint3":  {
-      "type": "hinge",
-      "object1": "sphere1",
-      "object2": "tibia",
-      "point": [
-        0.0,
-        0.0,
-        0.5
-      ],
-      "axis": [
-        0,
-        1,
-        0
-      ],
-      "motors": [
-        {
-          "motor_id": 3,
-          "min": -90,
-          "max": 90,
-          "axis": [
-            0,
-            1,
-            0
-          ]
-        }
-      ]
-    },
-    "joint4":  {
-      "type": "fixed",
-      "object1": "tibia",
-      "object2": "sphere2",
-      "point": [
-        0.0,
-        0.0,
-        1.0
       ]
     }
   },

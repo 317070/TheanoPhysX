@@ -231,6 +231,7 @@ class MyApp(ShowBase):
             obj = self.objects[name]
             sc = obj.getScale()
             #print obj_name, self.physics.getRotationMatrix(obj_name).flatten()
+            print rotations[step,robot_id,idx].flatten()
             obj.setMat(self.render, LMatrix4f(LMatrix3f(*rotations[step,robot_id,idx].flatten())))
             obj.setPos(*positions[step,robot_id,idx])
             obj.setScale(sc)
