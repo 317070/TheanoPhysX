@@ -72,7 +72,8 @@ class MyApp(ShowBase):
         #self.load_robot_model("robotmodel/test.json")
         #self.load_robot_model("robotmodel/predator.json")
         #self.load_robot_model("robotmodel/full_predator.json")
-        self.load_robot_model("robotmodel/demi_predator_universe.json")
+        #self.load_robot_model("robotmodel/demi_predator_universe.json")
+        self.load_robot_model("robotmodel/robot_arm.json")
         #self.load_robot_model("robotmodel/ball.json")
         self.physics.compile()
         self.step = np.zeros(shape=(16,))
@@ -135,7 +136,7 @@ class MyApp(ShowBase):
 
     def load_robot_model(self, filename):
         robot_dict = json.load(open(filename,"rb"))
-
+        self.physics.camera_focus = robot_dict["camera_focus"]
         self.physics.set_integration_parameters(**robot_dict["integration_parameters"])
 
         for elementname, element in robot_dict["model"].iteritems():
@@ -195,17 +196,11 @@ class MyApp(ShowBase):
         #self.physics.do_time_step(motor_signals=[-sin(ph),sin(ph),-1,1,0,0,0,0,0,0,0,0,0,0,0,0])
         ALPHA = 1.00
         self.step = (1-ALPHA) * self.step + ALPHA*np.random.randn(16)*30
-        A1, A2, A3, A4, B1, B2, B3, B4 = -1.8, 0.8, 0.5, 0.5,  0.5, 0.5, 0, 0
+        A1, A2, A3, A4, B1, B2, B3, B4 = -0.8, 0.8, 0.5, 0.5,  0.5, 0.5, 0, 0
         #self.physics.do_time_step(motor_signals=[A1*sin(ph)+B1,A1*sin(ph)+B1,-A2*sin(ph)-B2,-A2*sin(-ph)-B2,-A3*cos(ph)+B3,0,0,A3*cos(ph)+B3,0,0,A4*cos(ph)+B4,0,0,-A4*cos(ph)+B4,0,0])
-        self.physics.do_time_step(motor_signals=np.array([ A1*sin(ph)+B1,
-                                                 -A1*sin(ph)+B1,
-                                                 -A2*sin(ph)+B2,
-                                                  A2*sin(ph)+B2,
-                                                  A3*cos(ph)+B3+2,
-                                                 -A3*cos(ph)+B3,
-                                                 -A4*cos(ph)+B4,
-                                                  A4*cos(ph)+B4], dtype='float32'))
-        #self.physics.do_time_step(motor_signals=self.step)
+        p4 = np.pi/4
+        self.physics.do_time_step(motor_signals=np.array([ 0,p4,0,p4], dtype='float32'))
+        #self.physics.do_time_step(motor_signals=[0,0,0,0])
 
 
         for obj_name, obj in self.objects.iteritems():
@@ -214,21 +209,20 @@ class MyApp(ShowBase):
             sc = obj.getScale()
 
             #print obj_name, self.physics.getRotationMatrix(obj_name).flatten()
-
             obj.setMat(self.render, LMatrix4f(LMatrix3f(*self.physics.getRotationMatrix(obj_name).flatten())))
             obj.setPos(*self.physics.getPosition(obj_name)[:3])
             obj.setScale(sc)
 
         # change camera movement
-        self.camera.setPos(1.5,1.5,1.5)
+        self.camera.setPos(1.5,5.5,1.5)
         #self.camera.lookAt(0,0,3)
-        self.camera.lookAt(*self.physics.getPosition("spine")[:3])
-        print self.t, self.physics.getPosition("spine")
+        self.camera.lookAt(*self.physics.getPosition(self.physics.camera_focus)[:3])
+        #print self.t, self.physics.getPosition(self.physics.camera_focus)
         real_time = time.time() - self.starttime
 
         #self.textObject.setText('Time: %3.3f s\n%3.3fx real time\n%s' % ( self.t, self.t/real_time , ""))
-        time.sleep(0.01)
-        if self.t>8:
+        time.sleep(0.001)
+        if self.t>80:
             self.userExit()
         return Task.cont
 
