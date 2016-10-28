@@ -81,13 +81,6 @@ class Rigid3DBodyEngine(object):
 
         self.add_universe()
 
-    def add_universe(self, **parameters):
-        self.objects["universe"] = self.positionVectors.shape[0]
-        self.radii = np.append(self.radii, -1)
-        self.massMatrices = np.append(self.massMatrices, 1e6*np.diag([1,1,1,1,1,1])[None,:,:], axis=0)
-        self.positionVectors = np.append(self.positionVectors, np.array([[0,0,0,1,0,0,0]], dtype=DTYPE), axis=0)
-        self.velocityVectors = np.append(self.velocityVectors, np.array([[0,0,0,0,0,0]], dtype=DTYPE), axis=0)
-        self.addConstraint("universe", ["universe", "universe"], parameters={"f":1, "zeta":1})
 
     def set_integration_parameters(self,
                                    time_step=0.001,
@@ -98,6 +91,16 @@ class Rigid3DBodyEngine(object):
         self.projected_gauss_seidel_iterations = projected_gauss_seidel_iterations
         self.rotation_reorthogonalization_iterations = rotation_reorthogonalization_iterations
         self.warm_start = warm_start
+
+    def add_universe(self, **parameters):
+        self.objects["universe"] = self.positionVectors.shape[0]
+        self.radii = np.append(self.radii, -1)
+
+        self.massMatrices = np.append(self.massMatrices, 1e6*np.diag([1,1,1,0.4,0.4,0.4])[None,:,:], axis=0)
+        self.positionVectors = np.append(self.positionVectors, np.array([[0,0,0,1,0,0,0]], dtype=DTYPE), axis=0)
+        self.velocityVectors = np.append(self.velocityVectors, np.array([[0,0,0,0,0,0]], dtype=DTYPE), axis=0)
+        self.addConstraint("universe", ["universe", "universe"], parameters={"f":1, "zeta":0})
+
 
     def addCube(self, reference, dimensions, mass_density, position, velocity):
         self.objects[reference] = self.positionVectors.shape[0]
@@ -275,12 +278,11 @@ class Rigid3DBodyEngine(object):
             if constraint == "universe":
                 for i in xrange(6):
                     self.map_object_to_constraint[idx1].append(2*(c_idx+i) + 0)
-                    self.map_object_to_constraint[idx2].append(2*(c_idx+i) + 1)
                     self.zero_index.append(idx1)
                     self.one_index.append(idx2)
 
-                self.w[c_idx:c_idx+3] = parameters["f"] * 2*np.pi
-                self.zeta[c_idx:c_idx+3] = parameters["zeta"]
+                self.w[c_idx:c_idx+6] = parameters["f"] * 2*np.pi
+                self.zeta[c_idx:c_idx+6] = parameters["zeta"]
                 c_idx += 6
 
             if constraint == "ball-and-socket" or constraint == "hinge" or constraint == "fixed":
@@ -429,20 +431,22 @@ class Rigid3DBodyEngine(object):
             if constraint == "universe":
                 for i in xrange(3):
                     J[c_idx+i,0,:] = np.concatenate([-np.eye(3), np.zeros((3,3))])[:,i]
-                    J[c_idx+i,1,:] = np.concatenate([ np.eye(3), np.zeros((3,3))])[:,i]
-                b_error[c_idx:c_idx+3] = positions[idx1,:3]
+                    #J[c_idx+i,1,:] = np.concatenate([ np.eye(3), np.zeros((3,3))])[:,i]
+                b_error[c_idx:c_idx+3] = -positions[idx1,:3]
                 c_idx += 3
 
                 for i in xrange(3):
                     J[c_idx+i,0,:] = np.concatenate([np.zeros((3,3), dtype=DTYPE),-np.eye(3)])[:,i]
-                    J[c_idx+i,1,:] = np.concatenate([np.zeros((3,3), dtype=DTYPE), np.eye(3)])[:,i]
+                    #J[c_idx+i,1,:] = np.concatenate([np.zeros((3,3), dtype=DTYPE), np.eye(3)])[:,i]
+
+                rot_diff =  self.rot_matrices[idx1,:,:]
+                cross = rot_diff - rot_diff.T
 
                 b_error[c_idx] = 0#cross[1,2]
                 b_error[c_idx+1] = 0#cross[2,0]
                 b_error[c_idx+2] = 0#cross[0,1]
 
                 c_idx += 3
-                print "error:", b_error[c_idx-6:c_idx]
 
             if constraint == "ball-and-socket" or constraint == "hinge" or constraint == "fixed":
                 r1x = convert_model_to_world_coordinate_no_bias(parameters["joint_in_model1_coordinates"], self.rot_matrices[idx1,:,:])
@@ -470,9 +474,11 @@ class Rigid3DBodyEngine(object):
                 q_diff = q_div(q_current, parameters['q_init'])
                 b_error[c_idx:c_idx+3] = 2*q_diff[1:]
 
+                # TODO: THIS ACTUALLY WORKS! (NOT STABLE ENOUGH)
                 b_error[c_idx] = 0#cross[1,2]
                 b_error[c_idx+1] = 0#cross[2,0]
                 b_error[c_idx+2] = 0#cross[0,1]
+                #print b_error[c_idx:c_idx+3]
                 c_idx += 3
 
             if constraint == "hinge":
@@ -522,18 +528,22 @@ class Rigid3DBodyEngine(object):
 
                 interesting.append(c_idx)
                 #a = convert_model_to_world_coordinate_no_bias(parameters['axis_in_model1_coordinates'], self.rot_matrices[idx1,:,:])
-                a = convert_model_to_world_coordinate_no_bias(parameters['axis_in_model1_coordinates'], self.rot_matrices[idx1,:,:].T)
+                a = convert_model_to_world_coordinate_no_bias(parameters['axis_in_model1_coordinates'], self.rot_matrices[idx1,:,:])
 
-                if c_idx==11:
-                    print a
+                #if c_idx==11:
+                #    print a
 
                 rot_current = np.dot(self.rot_matrices[idx2,:,:], self.rot_matrices[idx1,:,:].T)
                 rot_diff = np.dot(rot_current, parameters['rot_init'].T)
                 theta2 = np.arccos(np.clip(0.5*(np.trace(rot_diff)-1),-1,1))
                 cross = rot_diff.T - rot_diff
+
                 dot2 = cross[1,2] * a[0] + cross[2,0] * a[1] + cross[0,1] * a[2]
 
                 theta = ((dot2>0) * 2 - 1) * theta2
+
+                if idx1==1:
+                    print a
 
                 J[c_idx,0,:] = np.concatenate([np.zeros((3,), dtype=DTYPE),-a])
                 J[c_idx,1,:] = np.concatenate([np.zeros((3,), dtype=DTYPE),a])

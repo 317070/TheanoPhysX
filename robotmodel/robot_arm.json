@@ -1,0 +1,259 @@
+{
+  "name": "Robot arm",
+  "camera_focus": "sphere2",
+  "integration_parameters": {
+    "time_step": 0.01,
+    "projected_gauss_seidel_iterations": 100,
+    "rotation_reorthogonalization_iterations": 100,
+    "warm_start": 0.85
+  },
+  "default_constraint_parameters": {
+    "default": {
+      "f": 4.0,
+      "zeta": 1.0
+    },
+    "motor": {
+      "type": "position",
+      "motor_gain": 50.00000000000000,
+      "motor_torque": 10,
+      "min": -45,
+      "max": 45,
+      "delta": 0.0,
+      "zeta": 0.000
+    },
+    "ground": {
+      "mu": 0.5,
+      "torsional_friction": false,
+      "delta": 0.01,
+      "alpha": 0.01
+    },
+    "hinge": {
+      "limits": [
+      ]
+    },
+    "fixed": {
+    },
+    "ball": {
+    },
+    "limit": {
+    }
+  },
+  "default_model_parameters": {
+    "default": {
+      "velocity": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "rotation": [
+        1,
+        0,
+        0,
+        0
+      ],
+      "mass_density": 1000.0
+    },
+    "sphere": {
+      "radius": 0.5
+    },
+    "cube": {
+      "dimensions": [
+        1,
+        1,
+        1
+      ]
+    }
+  },
+  "model": {
+    "sphere0": [
+      {
+        "shape": "sphere",
+        "position": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "radius": 0.1
+      }
+    ],
+    "femur": [
+      {
+        "shape": "cube",
+        "position": [
+          0.00,
+          0.00,
+          0.25
+        ],
+        "dimensions": [
+          0.14,
+          0.14,
+          0.5
+        ],
+        "color": [
+          1,
+          0.8,
+          0.0
+        ]
+      }
+    ],
+    "sphere1": [
+      {
+        "shape": "sphere",
+        "position": [
+          0.0,
+          0.0,
+          0.5
+        ],
+        "radius": 0.1
+      }
+    ],
+    "tibia": [
+      {
+        "shape": "cube",
+        "position": [
+          0.00,
+          0.00,
+          0.75
+        ],
+        "dimensions": [
+          0.14,
+          0.14,
+          0.5
+        ],
+        "color": [
+          1,
+          0.2,
+          0.0
+        ]
+      }
+    ],
+    "sphere2": [
+      {
+        "shape": "sphere",
+        "position": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "radius": 0.1
+      }
+    ]
+  },
+  "joints": {
+    "joint0":  {
+      "type": "hinge",
+      "object1": "universe",
+      "object2": "sphere0",
+      "point": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "axis": [
+        0,
+        0,
+        1
+      ],
+      "motors": [
+        {
+          "motor_id": 0,
+          "axis": [
+            0,
+            0,
+            1
+          ]
+        }
+      ]
+    },
+    "joint1":  {
+      "type": "hinge",
+      "object1": "sphere0",
+      "object2": "femur",
+      "point": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "axis": [
+        0,
+        1,
+        0
+      ],
+      "motors": [
+        {
+          "motor_id": 1,
+          "axis": [
+            0,
+            1,
+            0
+          ]
+        }
+      ]
+    },
+    "joint2":  {
+      "type": "hinge",
+      "object1": "femur",
+      "object2": "sphere1",
+      "point": [
+        0.0,
+        0.0,
+        0.5
+      ],
+      "axis": [
+        0,
+        0,
+        1
+      ],
+      "motors": [
+        {
+          "motor_id": 2,
+          "axis": [
+            0,
+            0,
+            1
+          ]
+        }
+      ]
+    },
+    "joint3":  {
+      "type": "hinge",
+      "object1": "sphere1",
+      "object2": "tibia",
+      "point": [
+        0.0,
+        0.0,
+        0.5
+      ],
+      "axis": [
+        0,
+        1,
+        0
+      ],
+      "motors": [
+        {
+          "motor_id": 3,
+          "axis": [
+            0,
+            1,
+            0
+          ]
+        }
+      ]
+    },
+    "joint4":  {
+      "type": "fixed",
+      "object1": "tibia",
+      "object2": "sphere2",
+      "point": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  },
+  "sensors": [
+  ]
+}
