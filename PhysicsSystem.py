@@ -680,7 +680,7 @@ class Rigid3DBodyEngine(object):
         return self.positionVectors[:,:3], self.velocityVectors, self.rot_matrices
 
     def getCameraImage(self, camera_model):
-
+        pass
         # TODO: make a bipedal robot
 
         # get camera image

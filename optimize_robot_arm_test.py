@@ -136,6 +136,7 @@ def sample():
             np.random.uniform(low=0.0, high=1.0, size=(BATCH_SIZE,1))
             ], axis=1).astype('float32')
         res[idx] = s[idx]
+    res += np.array([0., 0., 0.1]*BATCH_SIZE, dtype='float32').reshape((BATCH_SIZE,3))
     return res.astype('float32')
 
 
