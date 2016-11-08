@@ -24,7 +24,7 @@ class MyApp(ShowBase):
         self.starttime = time.time()
         #self.setFrameRateMeter(True)
         cour = self.loader.loadFont('cmtt12.egg')
-        self.textObject = OnscreenText(font= cour, text = 'abcdefghijklmnopqrstuvwxyz', pos=(0, -0.045), parent = self.a2dTopCenter, bg=(0,0,0,0.5), fg =(1,1,1,1), scale = 0.07, mayChange=True)
+        self.textObject = None#OnscreenText(font= cour, text = 'abcdefghijklmnopqrstuvwxyz', pos=(0, -0.045), parent = self.a2dTopCenter, bg=(0,0,0,0.5), fg =(1,1,1,1), scale = 0.07, mayChange=True)
         cm = CardMaker("ground")
         cm.setFrame(-2000, 2000, -2000, 2000)
         cm.setUvRange(Point2(-2000/5,-2000/5),Point2(2000/5,2000/5))
@@ -99,8 +99,8 @@ class MyApp(ShowBase):
         #smiley = self.loader.loadModel("zup-axis")
         smiley = self.loader.loadModel("smiley")
         smiley.setScale(radius,radius,radius)
-        smiley.setTexture(self.loader.loadTexture('textures/soccer.png'), 1)
-        #smiley.setColor(0,0,0.1)
+        #smiley.setTexture(self.loader.loadTexture('textures/soccer.png'), 1)
+        smiley.setColor(0,0,0.5)
 
         # Reparent the model to render.
         smiley.reparentTo(self.render)
@@ -204,7 +204,7 @@ class MyApp(ShowBase):
         p3 = 3.*np.pi/4.
         p2 = np.pi/2
         p1 = np.pi
-        self.physics.do_time_step(motor_signals=5*np.array([A1*sin(ph)+B1,A1*sin(ph)+B1,-A2*sin(ph)-B2,-A2*sin(-ph)-B2], dtype='float32'))
+        self.physics.do_time_step(motor_signals=np.array([A1*sin(ph)+B1,A1*sin(ph)+B1,-A2*sin(ph)-B2,-A2*sin(-ph)-B2], dtype='float32'))
         #self.physics.do_time_step(motor_signals=[-p2,-p4,0,0])
 
 
@@ -219,13 +219,14 @@ class MyApp(ShowBase):
             obj.setScale(sc)
 
         # change camera movement
-        self.camera.setPos(1.5,5.5,1.5)
+        self.camera.setPos(1.5,3.5,1.5)
         #self.camera.lookAt(0,0,3)
         self.camera.lookAt(*self.physics.getPosition(self.physics.camera_focus)[:3])
         #print self.t, self.physics.getPosition(self.physics.camera_focus)
         real_time = time.time() - self.starttime
 
-        self.textObject.setText('Time: %3.3f s\n%3.3fx real time\n%s' % ( self.t, self.t/real_time , ""))
+        if self.textObject:
+            self.textObject.setText('Time: %3.3f s\n%3.3fx real time\n%s' % ( self.t, self.t/real_time , ""))
         time.sleep(0.0001)
         if self.t>80:
             self.userExit()

@@ -25,7 +25,7 @@ class MyApp(ShowBase):
         self.starttime = time.time()
         #self.setFrameRateMeter(True)
         cour = self.loader.loadFont('cmtt12.egg')
-        self.textObject = OnscreenText(font= cour, text = 'abcdefghijklmnopqrstuvwxyz', pos=(0, -0.045), parent = self.a2dTopCenter, bg=(0,0,0,0.5), fg =(1,1,1,1), scale = 0.07, mayChange=True)
+        self.textObject = OnscreenText(font= cour, text = 'abcdefghijklmnopqrstuvwxyz', pos=(0, -0.045), parent = self.a2dTopCenter, bg=(0,0,0,1), fg =(1,1,1,1), scale = 0.07, mayChange=True)
         cm = CardMaker("ground")
         cm.setFrame(-2000, 2000, -2000, 2000)
         cm.setUvRange(Point2(-2000/5,-2000/5),Point2(2000/5,2000/5))
@@ -35,7 +35,7 @@ class MyApp(ShowBase):
 
         tmp.setPos(0, 0, 0)
         tmp.lookAt((0, 0, -2))
-        tmp.setColor(1.0,1.0,1.0,0.)
+        tmp.setColor(1.0,1.0,1.0,1)
         tmp.setTexScale(TextureStage.getDefault(), 1, 1)
         tex = self.loader.loadTexture('textures/grid2.png')
 
@@ -68,7 +68,7 @@ class MyApp(ShowBase):
         # Load the environment model.
         self.objects = dict()
         self.names = []
-        data = pickle.load(open("../PhysXVids/state-dump-exp8.pkl","rb"))
+        data = pickle.load(open("../PhysXVids/important/state-dump-exp8.pkl","rb"))
 
         self.json = json.loads(data["json"]) # json.loads(data["json"])
         self.states = data["states"]
@@ -76,6 +76,7 @@ class MyApp(ShowBase):
         self.dt = self.json["integration_parameters"]["time_step"]
         self.setupKeys()
         self.robot_id = 0
+        self.movie(duration = 8.0)
 
     def setupKeys(self):
         self.parentnode = self.render.attachNewNode('camparent')
@@ -87,8 +88,8 @@ class MyApp(ShowBase):
         rotnode.setH(0)
         rotnode.setP(0)
         rotnode.setR(0)
-        rotnode.setPos(0,-2,0)
-        self.camera.lookAt(self.objects["spine"])
+        rotnode.setPos(0,-3.5,0)
+        self.camera.lookAt(self.objects[self.camera_focus])
         self.camera.wrtReparentTo(rotnode)
         self.camLens.setNear(0.1)
 
@@ -149,7 +150,6 @@ class MyApp(ShowBase):
                 md = self.win.getPointer(0)
                 x = md.getX()
                 y = md.getY()
-                print x,y
                 if self.win.movePointer(0, 300, 300):
                     if not keyMap["click"]:
 
@@ -165,8 +165,8 @@ class MyApp(ShowBase):
         #smiley = self.loader.loadModel("zup-axis")
         smiley = self.loader.loadModel("smiley")
         smiley.setScale(radius,radius,radius)
-        smiley.setTexture(self.loader.loadTexture('textures/soccer.png'), 1)
-        #smiley.setColor(0,0,0.1)
+        #smiley.setTexture(self.loader.loadTexture('textures/soccer.png'), 1)
+        smiley.setColor(0.2,0.2,0.8)
 
         # Reparent the model to render.
         smiley.reparentTo(self.render)
@@ -202,6 +202,10 @@ class MyApp(ShowBase):
 
     def load_robot_model(self):
         robot_dict = self.json
+        self.camera_focus = robot_dict["camera_focus"]
+
+        if "universe" in robot_dict["integration_parameters"] and robot_dict["integration_parameters"]["universe"]:
+            self.names.append("universe")
 
         for elementname, element in robot_dict["model"].iteritems():
             primitive = element[0]
@@ -218,40 +222,41 @@ class MyApp(ShowBase):
     # Define a procedure to move the camera.
     def spinCameraTask(self, task):
 
-        frame_step = 0.01
+        frame_step = 1.0/30
         self.t += frame_step
 
         positions, velocities, rotations = self.states[0], self.states[1], self.states[2]
-
         step = int(self.t / self.dt)
         step = step % positions.shape[0]
         self.t = self.t % (self.dt*positions.shape[0])
         robot_id = self.robot_id % positions.shape[1]
-        for idx, name in enumerate(self.names):
-            obj = self.objects[name]
-            sc = obj.getScale()
-            #print obj_name, self.physics.getRotationMatrix(obj_name).flatten()
-            print rotations[step,robot_id,idx].flatten()
-            obj.setMat(self.render, LMatrix4f(LMatrix3f(*rotations[step,robot_id,idx].flatten())))
-            obj.setPos(*positions[step,robot_id,idx])
-            obj.setScale(sc)
 
-        self.parentnode.setX(positions[step,robot_id,self.names.index("spine"),0])
-        self.parentnode.setY(positions[step,robot_id,self.names.index("spine"),1])
-        print
+        for idx, name in enumerate(self.names):
+            if name in self.objects:
+                obj = self.objects[name]
+                sc = obj.getScale()
+                #print obj_name, self.physics.getRotationMatrix(obj_name).flatten()
+
+                if np.isfinite(positions[step,robot_id,idx]).all():
+                    obj.setMat(self.render, LMatrix4f(LMatrix3f(*rotations[step,robot_id,idx].flatten())))
+                    obj.setPos(*positions[step,robot_id,idx])
+                    obj.setScale(sc)
+
+        #print np.sqrt(np.sum((positions[step,robot_id,self.names.index("sphere2"),:]-np.array([0.5,0.5,0.5]))**2))
+        self.parentnode.setX(positions[step,robot_id,self.names.index(self.camera_focus),0])
+        self.parentnode.setY(positions[step,robot_id,self.names.index(self.camera_focus),1])
 
         #print self.names
         # change camera movement
-        #self.camera.setPos(1.5,1.5,1.5)
-        #self.camera.lookAt(*positions[step,robot_id,self.names.index("spine")])
-        #self.camera.lookAt(*self.physics.getPosition("spine")[:3])
+        #self.camera.setPos(1.5,3.5,1.5)
+        #if np.isfinite(positions[step,robot_id,self.names.index(self.camera_focus)]).all():
+        #    self.camera.lookAt(*positions[step,robot_id,self.names.index(self.camera_focus)])
+
         #print self.t, self.physics.getPosition("ball")
         #real_time = time.time() - self.starttime
 
-        self.textObject.setText('Time: %3.3f s\nVx: %3.3f\nrobot #%d' % ( self.t, velocities[step,robot_id,self.names.index("spine"),0], robot_id))
+        self.textObject.setText('Time: %3.3f s\nVx: %3.3f\nrobot #%d' % ( self.t, velocities[step,robot_id,self.names.index(self.camera_focus),0], robot_id))
         time.sleep(frame_step)
-        #if self.t>5:
-        #    self.userExit()
         return Task.cont
 
 

@@ -13,7 +13,7 @@ import argparse
 from custom_ops import mulgrad
 from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
 
-EXP_NAME = "exp10-arm"
+EXP_NAME = "exp9-arm"
 
 parser = argparse.ArgumentParser(description='Process some integers.')
 parser.add_argument('--restart', dest='restart',
@@ -32,8 +32,8 @@ engine = BatchedTheanoRigid3DBodyEngine()
 jsonfile = "robotmodel/robot_arm.json"
 engine.load_robot_model(jsonfile)
 grapper_id = engine.getObjectIndex("sphere2")
-BATCH_SIZE = 128
-MEMORY_SIZE = 0
+BATCH_SIZE = 256
+MEMORY_SIZE = 32
 engine.compile(batch_size=BATCH_SIZE)
 print "#sensors:", engine.num_sensors
 print "#motors:", engine.num_motors
@@ -43,17 +43,11 @@ print "#motors:", engine.num_motors
 total_time = 8
 
 def sample():
-    res = np.array([1.]*3*BATCH_SIZE).reshape((BATCH_SIZE,3))
-    while (np.sum(res**2, axis=-1) > 1).any():
-        idx = (np.sum(res**2, axis=-1) > 1)
-        s = np.concatenate([
-            np.random.uniform(low=-1.0, high=1.0, size=(BATCH_SIZE,1)),
-            np.random.uniform(low=-1.0, high=1.0, size=(BATCH_SIZE,1)),
-            np.random.uniform(low=0.0, high=1.0, size=(BATCH_SIZE,1))
-            ], axis=1).astype('float32')
-        res[idx] = s[idx]
-    res += np.array([0., 0., 0.1]*BATCH_SIZE, dtype='float32').reshape((BATCH_SIZE,3))
-    return res.astype('float32')
+    return np.concatenate([
+        np.random.uniform(low=-1.0, high=1.0, size=(BATCH_SIZE,1)),
+        np.random.uniform(low=-1.0, high=1.0, size=(BATCH_SIZE,1)),
+        np.random.uniform(low=0.0, high=1.0, size=(BATCH_SIZE,1))
+        ], axis=1).astype('float32')
 
 target = theano.shared(sample(), name="target")
 target.set_value(sample())
@@ -62,13 +56,13 @@ def build_objectives(states_list):
     return T.mean((target[None,:,:] - positions[100:,:,grapper_id,:]).norm(L=2,axis=2),axis=0)
 
 def build_controller():
-    l_input = lasagne.layers.InputLayer((BATCH_SIZE,3+engine.num_sensors+MEMORY_SIZE), name="sensor_values")
-    l_1 = lasagne.layers.DenseLayer(l_input, 1024,
+    l_input = lasagne.layers.InputLayer((BATCH_SIZE,1+engine.num_sensors+MEMORY_SIZE), name="sensor_values")
+    l_1 = lasagne.layers.DenseLayer(l_input, 256,
                                          nonlinearity=lasagne.nonlinearities.rectify,
                                          W=lasagne.init.Orthogonal("relu"),
                                          b=lasagne.init.Constant(0.0),
                                          )
-    l_1 = lasagne.layers.DenseLayer(l_1, 1024,
+    l_1 = lasagne.layers.DenseLayer(l_1, 256,
                                          nonlinearity=lasagne.nonlinearities.rectify,
                                          W=lasagne.init.Orthogonal("relu"),
                                          b=lasagne.init.Constant(0.0),
@@ -103,15 +97,15 @@ def build_model():
     def control_loop(state, memory):
         positions, velocities, rot_matrices = state
         #sensor_values = engine.getSensorValues(state=(positions, velocities, rot_matrices))
-        #objective_sensor = T.sum((target - positions[:,grapper_id,:])**2,axis=1)[:,None]
+        objective_sensor = T.sum((target - positions[:,grapper_id,:])**2,axis=1)[:,None]
         ALPHA = 0.95
         if "recurrent" in controller:
-            network_input = T.concatenate([ target, memory],axis=1)
+            network_input = T.concatenate([ objective_sensor, memory],axis=1)
             controller["input"].input_var = network_input
             memory = lasagne.layers.helper.get_output(controller["recurrent"])
             memory = mulgrad(memory,ALPHA)
         else:
-            network_input = T.concatenate([ target],axis=1)
+            network_input = T.concatenate([target],axis=1)
             controller["input"].input_var = network_input
             memory = None
 
@@ -181,6 +175,8 @@ grads = lasagne.updates.total_norm_constraint(grads, 1.0)
 
 grads = [T.switch(T.isnan(g) + T.isinf(g), np.float32(0), g) for g in grads]
 
+#grad_norm = T.sqrt(T.sum([(g**2).sum() for g in theano.grad(loss, all_parameters)])+1e-9)
+#theano_to_print.append(grad_norm)
 updates.update(lasagne.updates.adam(grads, all_parameters, 0.001))  # we maximize fitness
 print "Compiling since %s..." % strftime("%H:%M:%S", localtime())
 iter_test = theano.function([],[fitness] + states[:3])
@@ -195,11 +191,18 @@ with open("state-dump-%s.pkl"%EXP_NAME, 'wb') as f:
 print "Ran test"
 print "Compiling since %s..." % strftime("%H:%M:%S", localtime())
 iter_train = theano.function([],
-                             [fitness]
+                             []
+                             + [fitness]
+                             #+ [T.max(abs(T.grad(fitness,param,return_disconnected='None'))) for param in all_parameters]
+                             #+ theano_to_print
+                             #+ [T.grad(theano_to_print[2], all_parameters[1], return_disconnected='None')]
                              ,
                              updates=updates,
                              )
 
+#print "Running since %s..." % strftime("%H:%M:%S", localtime())
+#import theano.printing
+#theano.printing.debugprint(iter_train.maker.fgraph.outputs[0])
 
 PARAMETERS_FILE = "optimized-parameters-%s.pkl" % EXP_NAME
 def load_parameters():

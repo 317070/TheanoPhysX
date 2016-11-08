@@ -72,7 +72,8 @@ class MyApp(ShowBase):
         #self.load_robot_model("robotmodel/test.json")
         #self.load_robot_model("robotmodel/predator.json")
         #self.load_robot_model("robotmodel/full_predator.json")
-        self.load_robot_model("robotmodel/demi_predator.json")
+        #self.load_robot_model("robotmodel/demi_predator.json")
+        self.load_robot_model("robotmodel/demi_predator_ground.json")
         #self.load_robot_model("robotmodel/ball.json")
         #self.load_robot_model("robotmodel/robot_arm.json")
         #self.load_robot_model("robotmodel/robot_arm_mini.json")
@@ -133,6 +134,7 @@ class MyApp(ShowBase):
 
         self.objects[name] = cube
         self.physics.addCube(name, dimensions, mass_density, position + rotation, velocity)
+
 
 
     def load_robot_model(self, filename):
@@ -198,8 +200,8 @@ class MyApp(ShowBase):
         ALPHA = 1.00
         self.step = (1-ALPHA) * self.step + ALPHA*np.random.randn(16)*30
         A1, A2, A3, A4, B1, B2, B3, B4 = 0.8, 0.8, 0.5, 0.5, 0.5, 0.5, 0, 0
-        #self.physics.do_time_step(motor_signals=[-A1*sin(ph)+B1,-A1*sin(ph)+B1,-A2*sin(ph)-B2,-A2*sin(-ph)-B2,-A3*cos(ph)+B3,A3*cos(ph)+B3,A4*cos(ph)+B4,-A4*cos(ph)+B4])
-        self.physics.do_time_step(motor_signals=[A1*sin(ph)+B1,-A1*sin(ph)+B1,-A2*sin(ph)+B2,A2*sin(ph)+B2,A3*cos(ph)+B3,-A3*cos(ph)+B3,-A4*cos(ph)+B4,A4*cos(ph)+B4])
+        self.physics.do_time_step(motor_signals=[-A1*sin(ph)+B1,-A1*sin(ph)+B1,-A2*sin(ph)-B2,-A2*sin(-ph)-B2,-A3*cos(ph)+B3,A3*cos(ph)+B3,A4*cos(ph)+B4,-A4*cos(ph)+B4])
+        #self.physics.do_time_step(motor_signals=[A1*sin(ph)+B1,-A1*sin(ph)+B1,-A2*sin(ph)+B2,A2*sin(ph)+B2,A3*cos(ph)+B3,-A3*cos(ph)+B3,-A4*cos(ph)+B4,A4*cos(ph)+B4])
         p4 = np.pi/4
         p3 = 3.*np.pi/4.
         p2 = np.pi/2

@@ -2,8 +2,8 @@
   "name": "Predator",
   "camera_focus": "spine",
   "integration_parameters": {
-    "time_step": 0.01,
-    "projected_gauss_seidel_iterations": 20,
+    "time_step": 0.005,
+    "projected_gauss_seidel_iterations": 40,
     "rotation_reorthogonalization_iterations": 1,
     "warm_start": 0.85
   },
@@ -103,6 +103,54 @@
           0.8,
           0.2
         ]
+      }
+    ],
+    "spine-sphere1": [
+      {
+        "shape": "sphere",
+        "radius": 0.05,
+        "position": [
+          -0.3,
+          0.1,
+          0.4
+        ],
+        "visible": false
+      }
+    ],
+    "spine-sphere2": [
+      {
+        "shape": "sphere",
+        "radius": 0.05,
+        "position": [
+          0.3,
+          -0.1,
+          0.4
+        ],
+        "visible": false
+      }
+    ],
+    "spine-sphere3": [
+      {
+        "shape": "sphere",
+        "radius": 0.05,
+        "position": [
+          -0.3,
+          -0.1,
+          0.4
+        ],
+        "visible": false
+      }
+    ],
+    "spine-sphere4": [
+      {
+        "shape": "sphere",
+        "radius": 0.05,
+        "position": [
+          0.3,
+          0.1,
+          0.4
+        ],
+        "visible": false
       }
     ],
     "femur1": [
@@ -558,6 +606,66 @@
           "motor_id": 7
         }
       ]
+    },
+    "contact1a": {
+      "type": "ground",
+      "object1": "spine-sphere1"
+    },
+    "contact2a": {
+      "type": "ground",
+      "object1": "spine-sphere2"
+    },
+    "contact3a": {
+      "type": "ground",
+      "object1": "spine-sphere3"
+    },
+    "contact4a": {
+      "type": "ground",
+      "object1": "spine-sphere4"
+    },
+    "contact1b": {
+      "type": "fixed",
+      "object1": "spine-sphere1",
+      "object2": "spine",
+      "point": [
+          0.3,
+          0.1,
+          0.4
+        ],
+      "zeta": 1.0
+    },
+    "contact2b": {
+      "type": "fixed",
+      "object1": "spine-sphere2",
+      "object2": "spine",
+      "point": [
+          -0.3,
+          0.1,
+          0.4
+        ],
+      "zeta": 1.0
+    },
+    "contact3b": {
+      "type": "fixed",
+      "object1": "spine-sphere3",
+      "object2": "spine",
+      "point": [
+          0.3,
+          -0.1,
+          0.4
+        ],
+      "zeta": 1.0
+    },
+    "contact4b": {
+      "type": "fixed",
+      "object1": "spine-sphere4",
+      "object2": "spine",
+      "point": [
+          -0.3,
+          -0.1,
+          0.4
+        ],
+      "zeta": 1.0
     }
   },
   "sensors": [

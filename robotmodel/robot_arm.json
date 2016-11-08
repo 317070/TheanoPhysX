@@ -3,7 +3,7 @@
   "camera_focus": "sphere2",
   "integration_parameters": {
     "time_step": 0.01,
-    "projected_gauss_seidel_iterations": 50,
+    "projected_gauss_seidel_iterations": 20,
     "rotation_reorthogonalization_iterations": 1,
     "warm_start": 0.85,
     "universe": true
@@ -15,8 +15,8 @@
     },
     "motor": {
       "type": "position",
-      "motor_gain": 20.00000000000000,
-      "motor_torque": 4,
+      "motor_gain": 30,
+      "motor_torque": 10,
       "motor_velocity": 45.0,
       "delta": 0.01,
       "zeta": 0.0
@@ -57,7 +57,6 @@
       "mass_density": 1000.0
     },
     "sphere": {
-      "radius": 0.5
     },
     "cube": {
       "dimensions": [
@@ -74,7 +73,7 @@
         "position": [
           0.0,
           0.0,
-          0.0
+          0.1
         ],
         "radius": 0.1
       }
@@ -85,7 +84,7 @@
         "position": [
           0.00,
           0.00,
-          0.25
+          0.35
         ],
         "dimensions": [
           0.14,
@@ -105,7 +104,7 @@
         "position": [
           0.0,
           0.0,
-          0.5
+          0.6
         ],
         "radius": 0.1
       }
@@ -116,7 +115,7 @@
         "position": [
           0.00,
           0.00,
-          0.75
+          0.85
         ],
         "dimensions": [
           0.14,
@@ -136,7 +135,7 @@
         "position": [
           0.0,
           0.0,
-          1.0
+          1.1
         ],
         "radius": 0.1
       }
@@ -150,7 +149,7 @@
       "point": [
         0.0,
         0.0,
-        0.0
+        0.1
       ],
       "axis": [
         0,
@@ -175,7 +174,7 @@
       "point": [
         0.0,
         0.0,
-        0.0
+        0.1
       ],
       "axis": [
         0,
@@ -202,7 +201,7 @@
       "point": [
         0.0,
         0.0,
-        0.5
+        0.6
       ],
       "axis": [
         0,
@@ -227,7 +226,7 @@
       "point": [
         0.0,
         0.0,
-        0.5
+        0.6
       ],
       "axis": [
         0,
@@ -254,8 +253,16 @@
       "point": [
         0.0,
         0.0,
-        1.0
+        1.1
       ]
+    },
+    "ground1":  {
+      "type": "ground",
+      "object1": "sphere2"
+    },
+    "ground2":  {
+      "type": "ground",
+      "object1": "sphere1"
     }
   },
   "sensors": [

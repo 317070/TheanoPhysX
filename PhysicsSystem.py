@@ -79,18 +79,19 @@ class Rigid3DBodyEngine(object):
         self.rotation_reorthogonalization_iterations = None
         self.warm_start = None
 
-        self.add_universe()
-
 
     def set_integration_parameters(self,
                                    time_step=0.001,
                                    projected_gauss_seidel_iterations=1,
                                    rotation_reorthogonalization_iterations=1,
-                                   warm_start=0):
+                                   warm_start=0,
+                                   universe=False):
         self.DT = time_step
         self.projected_gauss_seidel_iterations = projected_gauss_seidel_iterations
         self.rotation_reorthogonalization_iterations = rotation_reorthogonalization_iterations
         self.warm_start = warm_start
+        if universe:
+            self.add_universe()
 
     def add_universe(self, **parameters):
         self.objects["universe"] = self.positionVectors.shape[0]
@@ -99,7 +100,7 @@ class Rigid3DBodyEngine(object):
         self.massMatrices = np.append(self.massMatrices, 1e6*np.diag([1,1,1,0.4,0.4,0.4])[None,:,:], axis=0)
         self.positionVectors = np.append(self.positionVectors, np.array([[0,0,0,1,0,0,0]], dtype=DTYPE), axis=0)
         self.velocityVectors = np.append(self.velocityVectors, np.array([[0,0,0,0,0,0]], dtype=DTYPE), axis=0)
-        self.addConstraint("universe", ["universe", "universe"], parameters={"f":1, "zeta":0})
+        self.addConstraint("universe", ["universe", "universe"], parameters={"f":1, "zeta":0.01})
 
 
     def addCube(self, reference, dimensions, mass_density, position, velocity):
@@ -111,6 +112,7 @@ class Rigid3DBodyEngine(object):
         I1 = 1./12. * (dimensions[1]**2 + dimensions[2]**2)
         I2 = 1./12. * (dimensions[0]**2 + dimensions[2]**2)
         I3 = 1./12. * (dimensions[0]**2 + dimensions[1]**2)
+        print mass
         self.massMatrices = np.append(self.massMatrices, mass*np.diag([1,1,1,I1,I2,I3])[None,:,:], axis=0)
 
 
@@ -120,6 +122,7 @@ class Rigid3DBodyEngine(object):
         self.positionVectors = np.append(self.positionVectors, np.array([position], dtype=DTYPE), axis=0)
         self.velocityVectors = np.append(self.velocityVectors, np.array([velocity], dtype=DTYPE), axis=0)
         mass = mass_density*4./3.*np.pi*radius**3
+        print mass
         self.massMatrices = np.append(self.massMatrices, mass*np.diag([1,1,1,0.4,0.4,0.4])[None,:,:], axis=0)
 
     def addConstraint(self, constraint, references, parameters):
@@ -564,7 +567,6 @@ class Rigid3DBodyEngine(object):
                     return min(a1,b1)*((a1>b1)*2-1)
 
                 error_signal = -smallestSignedAngleBetween(theta, motor_signal)
-                print error_signal
 
                 if parameters["type"] == "velocity":
                     b_error[c_idx] = motor_signal
@@ -676,6 +678,21 @@ class Rigid3DBodyEngine(object):
 
     def getState(self):
         return self.positionVectors[:,:3], self.velocityVectors, self.rot_matrices
+
+    def getCameraImage(self, camera_model):
+
+        # TODO: make a bipedal robot
+
+        # get camera image
+        # do ray-sphere and ray-plane intersections
+        # find cube by using 6 planes, throwing away the irrelevant intersections
+
+        # step 1: generate list of rays (1 per pixel)
+        # step 2a: intersect the rays with the spheres
+        # step 2b: intersect the rays with the planes
+        # step 3: find the closest point of intersection (z-culling) for all objects
+        # step 4: go into the object's texture and get the corresponding value (see image transform)
+        # step 5: return this value
 
     def getPosition(self, reference):
         idx = self.objects[reference]

@@ -1,6 +1,5 @@
 import json
 from math import pi
-from TheanoPhysicsSystem import theano_to_print
 
 __author__ = 'jonas'
 import numpy as np
@@ -163,6 +162,7 @@ class BatchedTheanoRigid3DBodyEngine(object):
         self.batch_size = None
         self.num_bodies = None
         self.num_sensors = None
+        self.num_motors = None
 
         self.DT = None
         self.projected_gauss_seidel_iterations = None
@@ -365,6 +365,7 @@ class BatchedTheanoRigid3DBodyEngine(object):
         self.batch_size = batch_size
         self.num_bodies = self.positionVectors.shape[0]
         self.num_sensors = len(self.sensors)
+        self.num_motors = 0
 
         self.num_constraints = 0
 
@@ -463,6 +464,7 @@ class BatchedTheanoRigid3DBodyEngine(object):
                 c_idx += 1
 
             if constraint == "motor":
+                self.num_motors = max(self.num_motors, parameters["motor_id"]+1)
                 parameters['rot_init'] = np.dot(self.rot_matrices[idx2,:,:], self.rot_matrices[idx1,:,:].T)
 
                 self.map_object_to_constraint[idx1].append(2*c_idx + 0)
@@ -687,7 +689,6 @@ class BatchedTheanoRigid3DBodyEngine(object):
                 rot_diff = theano_dot_last_dimension_matrices(rot_current, rot_init)
 
                 traces = rot_diff[:,0,0] + rot_diff[:,1,1] + rot_diff[:,2,2]
-                #traces =  theano.scan(lambda y: T.nlinalg.trace(y), sequences=rot_diff)[0]
 
                 # grad when x=-1 or x=1 does not exist for arccos
                 theta2 = T.arccos(T.clip(0.5*(traces-1),-1+eps,1-eps))
