@@ -904,7 +904,7 @@ class BatchedTheanoRigid3DBodyEngine(object):
         # TODO: batch-dot-product
         rot_matrices = self.normalize_matrix(rot_matrices[:,:,:,:] + T.sum(rot_matrices[:,:,:,:,None] * batch_skew_symmetric(dt * velocities[:,:,3:])[:,:,None,:,:],axis=3) )
 
-        return (positions, velocities, rot_matrices)
+        return positions, velocities, rot_matrices
 
 
     def normalize_matrix(self, A):

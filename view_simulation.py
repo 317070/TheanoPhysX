@@ -68,7 +68,7 @@ class MyApp(ShowBase):
         # Load the environment model.
         self.objects = dict()
         self.names = []
-        data = pickle.load(open("../PhysXVids/state-dump-exp10-biped.pkl","rb"))
+        data = pickle.load(open("../PhysXVids/state-dump-exp10-arm.pkl","rb"))
 
         self.json = json.loads(data["json"]) # json.loads(data["json"])
         self.states = data["states"]
