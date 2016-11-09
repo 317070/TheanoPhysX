@@ -68,7 +68,7 @@ class MyApp(ShowBase):
         # Load the environment model.
         self.objects = dict()
         self.names = []
-        data = pickle.load(open("../PhysXVids/important/state-dump-exp8.pkl","rb"))
+        data = pickle.load(open("../PhysXVids/state-dump-exp10-biped.pkl","rb"))
 
         self.json = json.loads(data["json"]) # json.loads(data["json"])
         self.states = data["states"]
@@ -76,7 +76,7 @@ class MyApp(ShowBase):
         self.dt = self.json["integration_parameters"]["time_step"]
         self.setupKeys()
         self.robot_id = 0
-        self.movie(duration = 8.0)
+        #self.movie(duration = 8.0)
 
     def setupKeys(self):
         self.parentnode = self.render.attachNewNode('camparent')
@@ -166,6 +166,7 @@ class MyApp(ShowBase):
         smiley = self.loader.loadModel("smiley")
         smiley.setScale(radius,radius,radius)
         #smiley.setTexture(self.loader.loadTexture('textures/soccer.png'), 1)
+        smiley.setTextureOff(1)
         smiley.setColor(0.2,0.2,0.8)
 
         # Reparent the model to render.
@@ -222,7 +223,7 @@ class MyApp(ShowBase):
     # Define a procedure to move the camera.
     def spinCameraTask(self, task):
 
-        frame_step = 1.0/30
+        frame_step = 0.001
         self.t += frame_step
 
         positions, velocities, rotations = self.states[0], self.states[1], self.states[2]
@@ -237,14 +238,15 @@ class MyApp(ShowBase):
                 sc = obj.getScale()
                 #print obj_name, self.physics.getRotationMatrix(obj_name).flatten()
 
-                if np.isfinite(positions[step,robot_id,idx]).all():
+                if np.isfinite(positions[step,robot_id,idx]).all() and np.isfinite(rotations[step,robot_id,idx]).all():
                     obj.setMat(self.render, LMatrix4f(LMatrix3f(*rotations[step,robot_id,idx].flatten())))
                     obj.setPos(*positions[step,robot_id,idx])
                     obj.setScale(sc)
 
         #print np.sqrt(np.sum((positions[step,robot_id,self.names.index("sphere2"),:]-np.array([0.5,0.5,0.5]))**2))
-        self.parentnode.setX(positions[step,robot_id,self.names.index(self.camera_focus),0])
-        self.parentnode.setY(positions[step,robot_id,self.names.index(self.camera_focus),1])
+        if np.isfinite(positions[step,robot_id,self.names.index(self.camera_focus),:]).all():
+            self.parentnode.setX(positions[step,robot_id,self.names.index(self.camera_focus),0])
+            self.parentnode.setY(positions[step,robot_id,self.names.index(self.camera_focus),1])
 
         #print self.names
         # change camera movement

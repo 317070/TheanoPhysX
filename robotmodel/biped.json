@@ -1,0 +1,709 @@
+{
+  "name": "Biped",
+  "camera_focus": "spine",
+  "integration_parameters": {
+    "time_step": 0.005,
+    "projected_gauss_seidel_iterations": 80,
+    "rotation_reorthogonalization_iterations": 1,
+    "warm_start": 0.85
+  },
+  "default_constraint_parameters": {
+    "default": {
+      "f": 1.5,
+      "zeta": 0.01
+    },
+    "motor": {
+      "type": "position",
+      "motor_gain": 50.00000000000000,
+      "motor_torque": 4,
+      "motor_velocity": 1440,
+      "min": -45,
+      "max": 45,
+      "delta": 0.0,
+      "axis": [
+        0,
+        1,
+        0
+      ],
+      "zeta": 0.000
+    },
+    "ground": {
+      "mu": 0.5,
+      "torsional_friction": false,
+      "delta": 0.01,
+      "alpha": 0.01
+    },
+    "hinge": {
+      "axis": [
+        0,
+        1,
+        0
+      ],
+      "limits": [
+      ]
+    },
+    "fixed": {
+    },
+    "ball": {
+    },
+    "limit": {
+    }
+  },
+  "default_model_parameters": {
+    "default": {
+      "velocity": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "rotation": [
+        1,
+        0,
+        0,
+        0
+      ],
+      "mass_density": 1000.0
+    },
+    "sphere": {
+      "radius": 0.5
+    },
+    "cube": {
+      "dimensions": [
+        1,
+        1,
+        1
+      ]
+    }
+  },
+  "model": {
+    "head": [
+      {
+        "shape": "sphere",
+        "position": [
+          0,
+          0,
+          0.85
+        ],
+        "radius": 0.1,
+        "color": [
+          0,
+          0.8,
+          0.2
+        ]
+      }
+    ],
+    "spine": [
+      {
+        "shape": "cube",
+        "position": [
+          0,
+          0,
+          0.55
+        ],
+        "dimensions": [
+          0.1,
+          0.3,
+          0.4
+        ],
+        "color": [
+          0,
+          0.8,
+          0.2
+        ],
+        "mass_density": 1000.0
+      }
+    ],
+    "spine-sphere1": [
+      {
+        "shape": "sphere",
+        "radius": 0.05,
+        "position": [
+          0.0,
+          -0.1,
+          0.35
+        ],
+        "visible": false
+      }
+    ],
+    "spine-sphere2": [
+      {
+        "shape": "sphere",
+        "radius": 0.05,
+        "position": [
+          0.0,
+          0.1,
+          0.35
+        ],
+        "visible": false
+      }
+    ],
+    "spine-sphere3": [
+      {
+        "shape": "sphere",
+        "radius": 0.05,
+        "position": [
+          0.0,
+          -0.2,
+          0.7
+        ],
+        "visible": false
+      }
+    ],
+    "spine-sphere4": [
+      {
+        "shape": "sphere",
+        "radius": 0.05,
+        "position": [
+          0.0,
+          0.2,
+          0.7
+        ],
+        "visible": false
+      }
+    ],
+    "femur1": [
+      {
+        "shape": "cube",
+        "position": [
+          0.0,
+          -0.1,
+          0.3
+        ],
+        "dimensions": [
+          0.05,
+          0.05,
+          0.2
+        ],
+        "color": [
+          1,
+          0.8,
+          0.0
+        ]
+      }
+    ],
+    "tibia1": [
+      {
+        "shape": "cube",
+        "position": [
+          0.0,
+          -0.1,
+          0.125
+        ],
+        "dimensions": [
+          0.05,
+          0.05,
+          0.15
+        ],
+        "rotation": [
+          1,
+          0,
+          0,
+          0
+        ],
+        "color": [
+          1,
+          0.2,
+          0.0
+        ]
+      }
+    ],
+    "foot1": [
+      {
+        "shape": "sphere",
+        "position": [
+          0.0,
+          -0.1,
+          0.05
+        ],
+        "radius": 0.05,
+        "rotation": [
+          1,
+          0,
+          0,
+          0
+        ]
+      }
+    ],
+    "femur2": [
+      {
+        "shape": "cube",
+        "position": [
+          0.0,
+          0.1,
+          0.3
+        ],
+        "dimensions": [
+          0.05,
+          0.05,
+          0.2
+        ],
+        "color": [
+          1,
+          0.8,
+          0.0
+        ]
+      }
+    ],
+    "tibia2": [
+      {
+        "shape": "cube",
+        "position": [
+          0.0,
+          0.1,
+          0.125
+        ],
+        "dimensions": [
+          0.05,
+          0.05,
+          0.15
+        ],
+        "color": [
+          1,
+          0.2,
+          0.0
+        ]
+      }
+    ],
+    "foot2": [
+      {
+        "shape": "sphere",
+        "position": [
+          0.0,
+          0.1,
+          0.05
+        ],
+        "radius": 0.05
+      }
+    ],
+    "femur3": [
+      {
+        "shape": "cube",
+        "position": [
+          0.0,
+          -0.2,
+          0.6
+        ],
+        "dimensions": [
+          0.05,
+          0.05,
+          0.2
+        ],
+        "color": [
+          1,
+          0.8,
+          0.0
+        ]
+      }
+    ],
+    "tibia3": [
+      {
+        "shape": "cube",
+        "position": [
+          0.0,
+          -0.2,
+          0.425
+        ],
+        "dimensions": [
+          0.05,
+          0.05,
+          0.15
+        ],
+        "color": [
+          1,
+          0.2,
+          0.0
+        ]
+      }
+    ],
+    "foot3": [
+      {
+        "shape": "sphere",
+        "position": [
+          0.0,
+          -0.2,
+          0.35
+        ],
+        "radius": 0.05
+      }
+    ],
+    "femur4": [
+      {
+        "shape": "cube",
+        "position": [
+          0.0,
+          0.2,
+          0.6
+        ],
+        "dimensions": [
+          0.05,
+          0.05,
+          0.2
+        ],
+        "color": [
+          1,
+          0.8,
+          0.0
+        ]
+      }
+    ],
+    "tibia4": [
+      {
+        "shape": "cube",
+        "position": [
+          0.0,
+          0.2,
+          0.425
+        ],
+        "dimensions": [
+          0.05,
+          0.05,
+          0.15
+        ],
+        "color": [
+          1,
+          0.2,
+          0.0
+        ]
+      }
+    ],
+    "foot4": [
+      {
+        "shape": "sphere",
+        "position": [
+          0.0,
+          0.2,
+          0.35
+        ],
+        "radius": 0.05
+      }
+    ]
+  },
+  "joints": {
+    "floor1": {
+      "type": "ground",
+      "object1": "foot1"
+    },
+    "floor2": {
+      "type": "ground",
+      "object1": "foot2"
+    },
+    "floor3": {
+      "type": "ground",
+      "object1": "foot3"
+    },
+    "floor4": {
+      "type": "ground",
+      "object1": "foot4"
+    },
+    "heel1": {
+      "type": "fixed",
+      "object1": "foot1",
+      "object2": "tibia1",
+      "point": [
+        0.0,
+        -0.1,
+        0.05
+      ]
+    },
+    "heel2": {
+      "type": "fixed",
+      "object1": "foot2",
+      "object2": "tibia2",
+      "point": [
+        0.0,
+        0.1,
+        0.05
+      ]
+    },
+    "heel3": {
+      "type": "fixed",
+      "object1": "foot3",
+      "object2": "tibia3",
+      "point": [
+        0.0,
+        -0.2,
+        0.35
+      ]
+    },
+    "heel4": {
+      "type": "fixed",
+      "object1": "foot4",
+      "object2": "tibia4",
+      "point": [
+        0.0,
+        0.2,
+        0.35
+      ]
+    },
+    "knee1": {
+      "type": "hinge",
+      "object1": "tibia1",
+      "object2": "femur1",
+      "point": [
+        0.0,
+        -0.1,
+        0.2
+      ],
+      "motors": [
+        {
+          "motor_id": 0,
+          "min": -90,
+          "max": 0
+        }
+      ]
+    },
+    "knee2": {
+      "type": "hinge",
+      "object1": "tibia2",
+      "object2": "femur2",
+      "point": [
+        0.0,
+        0.1,
+        0.2
+      ],
+      "motors": [
+        {
+          "motor_id": 1,
+          "min": -90,
+          "max": 0
+        }
+      ]
+    },
+    "knee3": {
+      "type": "hinge",
+      "object1": "tibia3",
+      "object2": "femur3",
+      "point": [
+        0.0,
+        -0.2,
+        0.5
+      ],
+      "motors": [
+        {
+          "motor_id": 2,
+          "min": 0,
+          "max": 90
+        }
+      ]
+    },
+    "knee4": {
+      "type": "hinge",
+      "object1": "tibia4",
+      "object2": "femur4",
+      "point": [
+        0.0,
+        0.2,
+        0.5
+      ],
+      "motors": [
+        {
+          "motor_id": 3,
+          "min": 0,
+          "max": 90
+        }
+      ]
+    },
+    "hip1": {
+      "type": "hinge",
+      "object1": "femur1",
+      "object2": "spine",
+      "point": [
+        0.0,
+        -0.1,
+        0.4
+      ],
+      "motors": [
+        {
+          "motor_id": 4
+        }
+      ]
+    },
+    "hip2": {
+      "type": "hinge",
+      "object1": "femur2",
+      "object2": "spine",
+      "point": [
+        0.0,
+        0.1,
+        0.4
+      ],
+      "motors": [
+        {
+          "motor_id": 5
+        }
+      ]
+    },
+    "hip3": {
+      "type": "hinge",
+      "object1": "femur3",
+      "object2": "spine",
+      "point": [
+        0.0,
+        -0.2,
+        0.7
+      ],
+      "motors": [
+        {
+          "motor_id": 6
+        }
+      ]
+    },
+    "hip4": {
+      "type": "hinge",
+      "object1": "femur4",
+      "object2": "spine",
+      "point": [
+        0.0,
+        0.2,
+        0.7
+      ],
+      "motors": [
+        {
+          "motor_id": 7
+        }
+      ]
+    },
+    "contact1a": {
+      "type": "ground",
+      "object1": "spine-sphere1"
+    },
+    "contact2a": {
+      "type": "ground",
+      "object1": "spine-sphere2"
+    },
+    "contact3a": {
+      "type": "ground",
+      "object1": "spine-sphere3"
+    },
+    "contact4a": {
+      "type": "ground",
+      "object1": "spine-sphere4"
+    },
+    "contact1b": {
+      "type": "fixed",
+      "object1": "spine-sphere1",
+      "object2": "spine",
+      "point": [
+          0.0,
+          -0.1,
+          0.35
+        ],
+      "zeta": 0.01
+    },
+    "contact2b": {
+      "type": "fixed",
+      "object1": "spine-sphere2",
+      "object2": "spine",
+      "point": [
+          0.0,
+          0.1,
+          0.35
+        ],
+      "zeta": 0.01
+    },
+    "contact3b": {
+      "type": "fixed",
+      "object1": "spine-sphere3",
+      "object2": "spine",
+      "point": [
+          0.0,
+          -0.2,
+          0.7
+        ],
+      "zeta": 0.01
+    },
+    "contact4b": {
+      "type": "fixed",
+      "object1": "spine-sphere4",
+      "object2": "spine",
+      "point": [
+          0.0,
+          0.2,
+          0.7
+        ],
+      "zeta": 0.01
+    },
+    "neck": {
+      "type": "fixed",
+      "object1": "head",
+      "object2": "spine",
+      "point": [
+          0,
+          0,
+          0.85
+        ]
+    },
+    "face-plant": {
+      "type": "ground",
+      "object1": "head"
+    }
+  },
+  "sensors": [
+    {
+      "axis": [
+        1,
+        0,
+        0
+      ],
+      "object": "spine",
+      "type": "velocity"
+    },
+    {
+      "axis": [
+        1,
+        0,
+        0
+      ],
+      "object": "spine",
+      "type": "orientation"
+    },
+    {
+      "axis": [
+        0,
+        1,
+        0
+      ],
+      "object": "spine",
+      "type": "velocity"
+    },
+    {
+      "axis": [
+        0,
+        1,
+        0
+      ],
+      "object": "spine",
+      "type": "orientation"
+    },
+    {
+      "axis": [
+        0,
+        0,
+        1
+      ],
+      "object": "spine",
+      "type": "velocity"
+    },
+    {
+      "axis": [
+        0,
+        0,
+        1
+      ],
+      "object": "spine",
+      "type": "position"
+    },
+    {
+      "axis": [
+        0,
+        0,
+        1
+      ],
+      "object": "spine",
+      "type": "orientation"
+    }
+  ]
+}

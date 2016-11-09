@@ -234,12 +234,14 @@ for i in xrange(100000):
     if np.isfinite(fitnesses).all():
         dump_parameters()
     if i%10==0:
-        target.set_value(sample())
+        t=sample()
+        target.set_value(t)
         st = time.time()
         r = iter_test()
         print "test fitness:", r[0]
         with open("state-dump-%s.pkl"%EXP_NAME, 'wb') as f:
             pickle.dump({
+                "targets": t,
                 "states": r[1:],
                 "json": open(jsonfile,"rb").read()
             }, f, pickle.HIGHEST_PROTOCOL)
