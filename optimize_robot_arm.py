@@ -14,6 +14,7 @@ from custom_ops import mulgrad
 from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
 
 EXP_NAME = "exp10-arm"
+PARAMETERS_FILE = "optimized-parameters-%s.pkl" % EXP_NAME
 
 parser = argparse.ArgumentParser(description='Process some integers.')
 parser.add_argument('--restart', dest='restart',
@@ -57,6 +58,7 @@ def sample():
 
 target = theano.shared(sample(), name="target")
 target.set_value(sample())
+
 def build_objectives(states_list):
     positions, velocities, rotations = states_list[:3]
     return T.mean((target[None,:,:] - positions[100:,:,grapper_id,:]).norm(L=2,axis=2),axis=0)
@@ -97,7 +99,7 @@ def build_controller():
     return result
 
 
-def build_model():
+def build_model(controller, controller_parameters, deterministic = False):
 
     def get_shared_variables():
         return controller_parameters + engine.getSharedVariables() + [target]
@@ -110,14 +112,14 @@ def build_model():
         if "recurrent" in controller:
             network_input = T.concatenate([ target, memory],axis=1)
             controller["input"].input_var = network_input
-            memory = lasagne.layers.helper.get_output(controller["recurrent"])
+            memory = lasagne.layers.helper.get_output(controller["recurrent"], deterministic = deterministic)
             memory = mulgrad(memory,ALPHA)
         else:
             network_input = T.concatenate([ target],axis=1)
             controller["input"].input_var = network_input
             memory = None
 
-        motor_signals = lasagne.layers.helper.get_output(controller["output"])
+        motor_signals = lasagne.layers.helper.get_output(controller["output"], deterministic = deterministic)
 
         positions, velocities, rot_matrices = mulgrad(positions, ALPHA), mulgrad(velocities, ALPHA), mulgrad(rot_matrices, ALPHA)
         newstate = engine.step_from_this_state(state=(positions, velocities, rot_matrices), motor_signals=motor_signals)
@@ -137,9 +139,9 @@ def build_model():
         strict=True,
         non_sequences=get_shared_variables()
     )
-    #print updates
+    print updates
     #assert len(updates)==0
-    return outputs, controller_parameters, updates
+    return outputs, updates
 
 controller = build_controller()
 top_layer = lasagne.layers.MergeLayer(
@@ -167,43 +169,6 @@ for layer in all_layers[:-1]:
     print "    %s %s %s %s" % (name,  num_param, num_size, layer.output_shape)
 print "  number of parameters:", comma_seperator(num_params)
 
-
-
-states, all_parameters, updates = build_model()
-fitness = build_objectives(states)
-fitness = T.switch(T.isnan(fitness) + T.isinf(fitness), np.float32(0), fitness)
-
-#import theano.printing
-#theano.printing.debugprint(T.mean(fitness), print_type=True)
-print "Finding gradient since %s..." % strftime("%H:%M:%S", localtime())
-loss = T.mean(fitness)
-
-grads = theano.grad(loss, all_parameters)
-grads = lasagne.updates.total_norm_constraint(grads, 1.0)
-
-grads = [T.switch(T.isnan(g) + T.isinf(g), np.float32(0), g) for g in grads]
-
-updates.update(lasagne.updates.adam(grads, all_parameters, 0.001))  # we maximize fitness
-print "Compiling since %s..." % strftime("%H:%M:%S", localtime())
-iter_test = theano.function([],[fitness] + states[:3])
-r = iter_test()
-st = r[1:]
-print "initial fitness:", r[0]
-with open("state-dump-%s.pkl"%EXP_NAME, 'wb') as f:
-    pickle.dump({
-        "states": st,
-        "json": open(jsonfile,"rb").read()
-    }, f, pickle.HIGHEST_PROTOCOL)
-print "Ran test"
-print "Compiling since %s..." % strftime("%H:%M:%S", localtime())
-iter_train = theano.function([],
-                             [fitness]
-                             ,
-                             updates=updates,
-                             )
-
-
-PARAMETERS_FILE = "optimized-parameters-%s.pkl" % EXP_NAME
 def load_parameters():
     with open(PARAMETERS_FILE, 'rb') as f:
         resume_metadata = pickle.load(f)
@@ -223,6 +188,49 @@ def are_there_NaNs(result):
 if not args.restart:
     print "Loading parameters... ", load_parameters()
 
+print "Compiling since %s..." % strftime("%H:%M:%S", localtime())
+deterministic_states, det_updates = build_model(controller, controller_parameters, deterministic=True)
+deterministic_fitness = build_objectives(deterministic_states)
+
+iter_test = theano.function([],[deterministic_fitness] + deterministic_states[:3])
+load_parameters()
+r = iter_test()
+st = r[1:]
+print "initial fitness:", r[0], np.mean(r[0])
+with open("state-dump-%s.pkl"%EXP_NAME, 'wb') as f:
+    pickle.dump({
+        "states": st,
+        "json": open(jsonfile,"rb").read()
+    }, f, pickle.HIGHEST_PROTOCOL)
+print "Ran test %s..." % strftime("%H:%M:%S", localtime())
+
+states, updates = build_model(controller, controller_parameters)
+fitness = build_objectives(states)
+fitness = T.switch(T.isnan(fitness) + T.isinf(fitness), np.float32(0), fitness)
+
+#import theano.printing
+#theano.printing.debugprint(T.mean(fitness), print_type=True)
+print "Finding gradient since %s..." % strftime("%H:%M:%S", localtime())
+loss = T.mean(fitness)
+
+grads = theano.grad(loss, controller_parameters)
+grads = lasagne.updates.total_norm_constraint(grads, 1.0)
+
+grads = [T.switch(T.isnan(g) + T.isinf(g), np.float32(0), g) for g in grads]
+
+
+lr = theano.shared(np.float32(0.01))
+updates.update(lasagne.updates.adam(grads, controller_parameters, lr))  # we maximize fitness
+
+print "Compiling since %s..." % strftime("%H:%M:%S", localtime())
+iter_train = theano.function([],
+                             [fitness]
+                             ,
+                             updates=updates,
+                             )
+
+
+
 print "Running since %s..." % strftime("%H:%M:%S", localtime())
 import time
 for i in xrange(100000):
@@ -238,7 +246,10 @@ for i in xrange(100000):
         target.set_value(t)
         st = time.time()
         r = iter_test()
-        print "test fitness:", r[0]
+        print "test fitness:", r[0], np.mean(r[0])
+        if np.mean(r[0])<0.10:
+            lr.set_value(0.0001)
+
         with open("state-dump-%s.pkl"%EXP_NAME, 'wb') as f:
             pickle.dump({
                 "targets": t,
