@@ -189,7 +189,7 @@ if not args.restart:
     print "Loading parameters... ", load_parameters()
 
 print "Compiling since %s..." % strftime("%H:%M:%S", localtime())
-deterministic_states, det_updates = build_model(controller, controller_parameters, deterministic=True)
+deterministic_states, det_updates = build_model(controller, controller_parameters)
 deterministic_fitness = build_objectives(deterministic_states)
 
 iter_test = theano.function([],[deterministic_fitness] + deterministic_states[:3])
@@ -204,7 +204,8 @@ with open("state-dump-%s.pkl"%EXP_NAME, 'wb') as f:
     }, f, pickle.HIGHEST_PROTOCOL)
 print "Ran test %s..." % strftime("%H:%M:%S", localtime())
 
-states, updates = build_model(controller, controller_parameters)
+states, updates = deterministic_states, det_updates
+#states, updates = build_model(controller, controller_parameters)
 fitness = build_objectives(states)
 fitness = T.switch(T.isnan(fitness) + T.isinf(fitness), np.float32(0), fitness)
 
@@ -219,7 +220,7 @@ grads = lasagne.updates.total_norm_constraint(grads, 1.0)
 grads = [T.switch(T.isnan(g) + T.isinf(g), np.float32(0), g) for g in grads]
 
 
-lr = theano.shared(np.float32(0.01))
+lr = theano.shared(np.float32(0.001))
 updates.update(lasagne.updates.adam(grads, controller_parameters, lr))  # we maximize fitness
 
 print "Compiling since %s..." % strftime("%H:%M:%S", localtime())

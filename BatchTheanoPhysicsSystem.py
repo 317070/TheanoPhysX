@@ -260,7 +260,7 @@ class BatchedTheanoRigid3DBodyEngine(object):
         parameters['axis'] = axis.astype('float32')
         parameters['axis1_in_model1_coordinates'] = convert_world_to_model_coordinate_no_bias(forbidden_axis_1, self.rot_matrices[idx1,:]).astype('float32')
         parameters['axis2_in_model1_coordinates'] = convert_world_to_model_coordinate_no_bias(forbidden_axis_2, self.rot_matrices[idx1,:]).astype('float32')
-        parameters['axis_in_model2_coordinates'] =  convert_world_to_model_coordinate_no_bias(axis, self.rot_matrices[idx2,:]).astype('float32')
+        parameters['axis_in_model2_coordinates']  = convert_world_to_model_coordinate_no_bias(axis, self.rot_matrices[idx2,:]).astype('float32')
 
         self.addConstraint("hinge", [object1, object2], parameters)
 
