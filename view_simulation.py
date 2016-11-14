@@ -69,7 +69,7 @@ class MyApp(ShowBase):
         self.objects = dict()
         self.names = []
         data = pickle.load(open("../PhysXVids/state-dump-exp10-arm.pkl","rb"))
-
+        self.target = data["targets"]
         self.json = json.loads(data["json"]) # json.loads(data["json"])
         self.states = data["states"]
         self.load_robot_model()
@@ -116,13 +116,13 @@ class MyApp(ShowBase):
         def cameraMovement(task):
             self.disableMouse()
             if keyMap["arrow_left"]!=0:
-                rotnode.setH(rotnode.getH()+80 * 0.01)
+                self.parentnode.setH(self.parentnode.getH()+80 * 0.01)
             if keyMap["arrow_right"]!=0:
-                rotnode.setH(rotnode.getH()-80 * 0.01)
+                self.parentnode.setH(self.parentnode.getH()-80 * 0.01)
             if keyMap["arrow_up"]!=0:
-                rotnode.setP(rotnode.getP()+60 * 0.01)
+                self.parentnode.setP(self.parentnode.getP()+60 * 0.01)
             if keyMap["arrow_down"]!=0:
-                rotnode.setP(rotnode.getP()-60 * 0.01)
+                self.parentnode.setP(self.parentnode.getP()-60 * 0.01)
             if keyMap["u"]!=0:
                 self.robot_id -= 1
             if keyMap["i"]!=0:
@@ -153,8 +153,8 @@ class MyApp(ShowBase):
                 if self.win.movePointer(0, 300, 300):
                     if not keyMap["click"]:
 
-                        rotnode.setH(rotnode.getH() - (x-300)*0.5)
-                        rotnode.setP(rotnode.getP() - (y-300)*0.5)
+                        self.parentnode.setH(self.parentnode.getH() - (x-300)*0.5)
+                        self.parentnode.setP(self.parentnode.getP() - (y-300)*0.5)
             return task.cont
 
         self.taskMgr.add( cameraMovement, 'cameraMovement')
@@ -220,10 +220,14 @@ class MyApp(ShowBase):
                 self.addSphere(elementname, **parameters)
 
 
+        self.addSphere("target", radius=0.01, mass_density=0, position=[0,0,0], rotation=[1,0,0,0], velocity=[0,0,0,0,0,0])
+        self.names.remove("target")
+
+
     # Define a procedure to move the camera.
     def spinCameraTask(self, task):
 
-        frame_step = 0.001
+        frame_step = 0.01
         self.t += frame_step
 
         positions, velocities, rotations = self.states[0], self.states[1], self.states[2]
@@ -253,7 +257,7 @@ class MyApp(ShowBase):
         #self.camera.setPos(1.5,3.5,1.5)
         #if np.isfinite(positions[step,robot_id,self.names.index(self.camera_focus)]).all():
         #    self.camera.lookAt(*positions[step,robot_id,self.names.index(self.camera_focus)])
-
+        self.objects["target"].setPos(*self.target[robot_id,:])
         #print self.t, self.physics.getPosition("ball")
         #real_time = time.time() - self.starttime
 

@@ -13,7 +13,7 @@ import argparse
 from custom_ops import mulgrad
 from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
 
-EXP_NAME = "exp10-arm"
+EXP_NAME = "exp12-arm"
 PARAMETERS_FILE = "optimized-parameters-%s.pkl" % EXP_NAME
 
 parser = argparse.ArgumentParser(description='Process some integers.')
@@ -45,8 +45,9 @@ total_time = 8
 
 def sample():
     res = np.array([1.]*3*BATCH_SIZE).reshape((BATCH_SIZE,3))
-    while (np.sum(res**2, axis=-1) > 1).any():
-        idx = (np.sum(res**2, axis=-1) > 1)
+    while (np.sum(res**2, axis=-1) > 1).any() or (np.sum(res**2, axis=-1) < np.sqrt(2)/2).any():
+        idx = np.logical_or(np.sqrt(2)/2 > np.sum(res**2, axis=-1),
+                            np.sum(res**2, axis=-1) > 1)
         s = np.concatenate([
             np.random.uniform(low=-1.0, high=1.0, size=(BATCH_SIZE,1)),
             np.random.uniform(low=-1.0, high=1.0, size=(BATCH_SIZE,1)),
@@ -66,6 +67,12 @@ def build_objectives(states_list):
 def build_controller():
     l_input = lasagne.layers.InputLayer((BATCH_SIZE,3+engine.num_sensors+MEMORY_SIZE), name="sensor_values")
     l_1 = lasagne.layers.DenseLayer(l_input, 1024,
+                                         nonlinearity=lasagne.nonlinearities.rectify,
+                                         W=lasagne.init.Orthogonal("relu"),
+                                         b=lasagne.init.Constant(0.0),
+                                         )
+    l_1 = lasagne.layers.dropout(l_1)
+    l_1 = lasagne.layers.DenseLayer(l_1, 1024,
                                          nonlinearity=lasagne.nonlinearities.rectify,
                                          W=lasagne.init.Orthogonal("relu"),
                                          b=lasagne.init.Constant(0.0),
@@ -99,7 +106,7 @@ def build_controller():
     return result
 
 
-def build_model(controller, controller_parameters, deterministic = False):
+def build_model(engine, controller, controller_parameters, deterministic = False):
 
     def get_shared_variables():
         return controller_parameters + engine.getSharedVariables() + [target]
@@ -139,7 +146,7 @@ def build_model(controller, controller_parameters, deterministic = False):
         strict=True,
         non_sequences=get_shared_variables()
     )
-    print updates
+    #print updates
     #assert len(updates)==0
     return outputs, updates
 
@@ -189,12 +196,21 @@ if not args.restart:
     print "Loading parameters... ", load_parameters()
 
 print "Compiling since %s..." % strftime("%H:%M:%S", localtime())
-deterministic_states, det_updates = build_model(controller, controller_parameters, deterministic=True)
+test_engine = BatchedTheanoRigid3DBodyEngine()
+jsonfile = "robotmodel/robot_arm.json"
+test_engine.load_robot_model(jsonfile)
+test_engine.compile(batch_size=BATCH_SIZE)
+
+deterministic_states, det_updates = build_model(test_engine, controller, controller_parameters, deterministic=True)
 deterministic_fitness = build_objectives(deterministic_states)
 
 iter_test = theano.function([],[deterministic_fitness] + deterministic_states[:3])
-load_parameters()
+
+if not args.restart:
+    load_parameters()
+
 r = iter_test()
+
 st = r[1:]
 print "initial fitness:", r[0], np.mean(r[0])
 with open("state-dump-%s.pkl"%EXP_NAME, 'wb') as f:
@@ -204,7 +220,7 @@ with open("state-dump-%s.pkl"%EXP_NAME, 'wb') as f:
     }, f, pickle.HIGHEST_PROTOCOL)
 print "Ran test %s..." % strftime("%H:%M:%S", localtime())
 
-states, updates = build_model(controller, controller_parameters)
+states, updates = build_model(engine, controller, controller_parameters, deterministic=True)
 fitness = build_objectives(states)
 fitness = T.switch(T.isnan(fitness) + T.isinf(fitness), np.float32(0), fitness)
 
@@ -219,7 +235,8 @@ grads = lasagne.updates.total_norm_constraint(grads, 1.0)
 grads = [T.switch(T.isnan(g) + T.isinf(g), np.float32(0), g) for g in grads]
 
 
-lr = theano.shared(np.float32(0.01))
+lr = theano.shared(np.float32(0.001))
+lr.set_value(np.float32(np.mean(r[0]) / 1000.))
 updates.update(lasagne.updates.adam(grads, controller_parameters, lr))  # we maximize fitness
 
 print "Compiling since %s..." % strftime("%H:%M:%S", localtime())
@@ -233,7 +250,9 @@ iter_train = theano.function([],
 
 print "Running since %s..." % strftime("%H:%M:%S", localtime())
 import time
-for i in xrange(100000):
+i=0
+while True:
+    i+=1
     target.set_value(sample())
     st = time.time()
     fitnesses = iter_train()
@@ -247,15 +266,15 @@ for i in xrange(100000):
         st = time.time()
         r = iter_test()
         print "test fitness:", r[0], np.mean(r[0])
-        if np.mean(r[0])<0.10:
-            lr.set_value(0.0001)
-
+        lr.set_value(np.float32(np.mean(r[0]) / 1000.))
         with open("state-dump-%s.pkl"%EXP_NAME, 'wb') as f:
             pickle.dump({
                 "targets": t,
                 "states": r[1:],
                 "json": open(jsonfile,"rb").read()
             }, f, pickle.HIGHEST_PROTOCOL)
+        if np.mean(r[0])<0.01:
+            break
 
 
 
