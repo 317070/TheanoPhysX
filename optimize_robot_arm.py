@@ -78,12 +78,6 @@ def build_controller():
                                          b=lasagne.init.Constant(0.0),
                                          )
     l_1 = lasagne.layers.dropout(l_1)
-    l_1 = lasagne.layers.DenseLayer(l_1, 1024,
-                                         nonlinearity=lasagne.nonlinearities.rectify,
-                                         W=lasagne.init.Orthogonal("relu"),
-                                         b=lasagne.init.Constant(0.0),
-                                         )
-    l_1 = lasagne.layers.dropout(l_1)
     l_2 = lasagne.layers.DenseLayer(l_1, engine.num_motors,
                                          nonlinearity=lasagne.nonlinearities.identity,
                                          W=lasagne.init.Constant(0.0),

@@ -1,4 +1,5 @@
 from math import pi
+import json
 
 __author__ = 'jonas'
 import numpy as np
@@ -29,11 +30,11 @@ def quat_to_rot_matrix(quat):
                     [      xz - wy,         yz + wx,    1 - (xx + yy) ]])
 
 
-def convert_world_to_model_coordinate(coor, model_position):
-    return np.dot(quat_to_rot_matrix(model_position[3:]), coor - model_position[:3])
+def convert_world_to_model_coordinate(coor, model_position, rot_matrix):
+    return np.dot(rot_matrix, coor - model_position)
 
-def convert_world_to_model_coordinate_no_bias(coor, model_position):
-    return np.dot(quat_to_rot_matrix(model_position[3:]), coor)
+def convert_world_to_model_coordinate_no_bias(coor, model_position, rot_matrix):
+    return np.dot(rot_matrix, coor)
 
 def convert_model_to_world_coordinate(coor, rot_matrix, model_position):
     return convert_model_to_world_coordinate_no_bias(coor, rot_matrix) + model_position
@@ -54,7 +55,8 @@ def skew_symmetric(x):
 class Rigid3DBodyEngine(object):
     def __init__(self):
         self.radii = np.zeros(shape=(0,), dtype=DTYPE)
-        self.positionVectors = np.zeros(shape=(0,7), dtype=DTYPE)
+        self.positionVectors = np.zeros(shape=(0,3), dtype=DTYPE)
+        self.rot_matrices = np.zeros(shape=(0,3,3), dtype='float32')
         self.velocityVectors = np.zeros(shape=(0,6), dtype=DTYPE)
         self.massMatrices = np.zeros(shape=(0,6,6), dtype=DTYPE)
         self.objects = dict()
@@ -72,12 +74,13 @@ class Rigid3DBodyEngine(object):
         self.C = None
         self.zero_index = None
         self.one_index = None
-        self.rot_matrices = None
 
         self.DT = None
         self.projected_gauss_seidel_iterations = None
         self.rotation_reorthogonalization_iterations = None
         self.warm_start = None
+        self.cube_ids = []
+        self.sphere_ids = []
 
 
     def set_integration_parameters(self,
@@ -103,11 +106,14 @@ class Rigid3DBodyEngine(object):
         self.addConstraint("universe", ["universe", "universe"], parameters={"f":1, "zeta":0.01})
 
 
-    def addCube(self, reference, dimensions, mass_density, position, velocity):
+    def addCube(self, reference, dimensions, mass_density, position, rotation, velocity, **kwargs):
         self.objects[reference] = self.positionVectors.shape[0]
+        self.cube_ids += self.positionVectors.shape[0]
         self.radii = np.append(self.radii, -1)
         self.positionVectors = np.append(self.positionVectors, np.array([position], dtype=DTYPE), axis=0)
+        self.rot_matrices = np.append(self.rot_matrices, np.array([quat_to_rot_matrix(rotation)], dtype='float32'), axis=0)
         self.velocityVectors = np.append(self.velocityVectors, np.array([velocity], dtype=DTYPE), axis=0)
+
         mass = mass_density*np.prod(dimensions)
         I1 = 1./12. * (dimensions[1]**2 + dimensions[2]**2)
         I2 = 1./12. * (dimensions[0]**2 + dimensions[2]**2)
@@ -116,10 +122,12 @@ class Rigid3DBodyEngine(object):
         self.massMatrices = np.append(self.massMatrices, mass*np.diag([1,1,1,I1,I2,I3])[None,:,:], axis=0)
 
 
-    def addSphere(self, reference, radius, mass_density, position, velocity):
+    def addSphere(self, reference, radius, mass_density, position, rotation, velocity, **kwargs):
         self.objects[reference] = self.positionVectors.shape[0]
+        self.sphere_ids += self.positionVectors.shape[0]
         self.radii = np.append(self.radii, radius)
         self.positionVectors = np.append(self.positionVectors, np.array([position], dtype=DTYPE), axis=0)
+        self.rot_matrices = np.append(self.rot_matrices, np.array([quat_to_rot_matrix(rotation)], dtype='float32'), axis=0)
         self.velocityVectors = np.append(self.velocityVectors, np.array([velocity], dtype=DTYPE), axis=0)
         mass = mass_density*4./3.*np.pi*radius**3
         print mass
@@ -142,8 +150,8 @@ class Rigid3DBodyEngine(object):
         idx1 = self.objects[object1]
         idx2 = self.objects[object2]
 
-        parameters['joint_in_model1_coordinates'] = convert_world_to_model_coordinate(point, self.positionVectors[idx1,:])
-        parameters['joint_in_model2_coordinates'] = convert_world_to_model_coordinate(point, self.positionVectors[idx2,:])
+        parameters['joint_in_model1_coordinates'] = convert_world_to_model_coordinate(point, self.positionVectors[idx1,:], self.rot_matrices[idx1,:,:])
+        parameters['joint_in_model2_coordinates'] = convert_world_to_model_coordinate(point, self.positionVectors[idx2,:], self.rot_matrices[idx2,:,:])
 
         self.addConstraint("ball-and-socket", [object1, object2], parameters)
 
@@ -152,8 +160,8 @@ class Rigid3DBodyEngine(object):
         idx1 = self.objects[object1]
         idx2 = self.objects[object2]
 
-        parameters['joint_in_model1_coordinates'] = convert_world_to_model_coordinate(point, self.positionVectors[idx1,:])
-        parameters['joint_in_model2_coordinates'] = convert_world_to_model_coordinate(point, self.positionVectors[idx2,:])
+        parameters['joint_in_model1_coordinates'] = convert_world_to_model_coordinate(point, self.positionVectors[idx1,:], self.rot_matrices[idx1,:,:])
+        parameters['joint_in_model2_coordinates'] = convert_world_to_model_coordinate(point, self.positionVectors[idx2,:], self.rot_matrices[idx2,:,:])
 
         # create two forbidden axis:
         axis = np.array(axis)
@@ -166,12 +174,9 @@ class Rigid3DBodyEngine(object):
             forbidden_axis_2 = np.cross(axis, forbidden_axis_1)
 
         parameters['axis'] = axis
-        parameters['axis1_in_model1_coordinates'] = convert_world_to_model_coordinate_no_bias(forbidden_axis_1, self.positionVectors[idx1,:])
-        parameters['axis2_in_model1_coordinates'] = convert_world_to_model_coordinate_no_bias(forbidden_axis_2, self.positionVectors[idx1,:])
-        parameters['axis_in_model2_coordinates'] = convert_world_to_model_coordinate_no_bias(axis, self.positionVectors[idx2,:])
-
-        parameters['q_init'] = q_div(self.positionVectors[idx2,3:], self.positionVectors[idx1,3:])
-
+        parameters['axis1_in_model1_coordinates'] = convert_world_to_model_coordinate_no_bias(forbidden_axis_1, self.positionVectors[idx1,:], self.rot_matrices[idx1,:,:])
+        parameters['axis2_in_model1_coordinates'] = convert_world_to_model_coordinate_no_bias(forbidden_axis_2, self.positionVectors[idx1,:], self.rot_matrices[idx1,:,:])
+        parameters['axis_in_model2_coordinates'] = convert_world_to_model_coordinate_no_bias(axis, self.positionVectors[idx2,:], self.rot_matrices[idx2,:,:])
 
         self.addConstraint("hinge", [object1, object2], parameters)
 
@@ -189,10 +194,8 @@ class Rigid3DBodyEngine(object):
         idx1 = self.objects[object1]
         idx2 = self.objects[object2]
 
-        parameters['joint_in_model1_coordinates'] = convert_world_to_model_coordinate(point, self.positionVectors[idx1,:])
-        parameters['joint_in_model2_coordinates'] = convert_world_to_model_coordinate(point, self.positionVectors[idx2,:])
-
-        parameters['q_init'] = q_div(self.positionVectors[idx2,3:], self.positionVectors[idx1,3:])
+        parameters['joint_in_model1_coordinates'] = convert_world_to_model_coordinate(point, self.positionVectors[idx1,:], self.rot_matrices[idx1,:,:])
+        parameters['joint_in_model2_coordinates'] = convert_world_to_model_coordinate(point, self.positionVectors[idx2,:], self.rot_matrices[idx2,:,:])
 
         self.addConstraint("fixed", [object1, object2], parameters)
 
@@ -205,7 +208,7 @@ class Rigid3DBodyEngine(object):
         axis = np.array(axis)
         axis = axis / np.linalg.norm(axis)
         parameters['axis'] = axis
-        parameters['axis_in_model2_coordinates'] = convert_world_to_model_coordinate_no_bias(axis, self.positionVectors[idx2,:])
+        parameters['axis_in_model2_coordinates'] = convert_world_to_model_coordinate_no_bias(axis, self.positionVectors[idx2,:], self.rot_matrices[idx2,:,:])
 
         self.addConstraint("motor", [object1, object2], parameters)
 
@@ -220,19 +223,72 @@ class Rigid3DBodyEngine(object):
         axis = np.array(axis)
         axis = axis / np.linalg.norm(axis)
         parameters['axis'] = axis
-        parameters['axis_in_model1_coordinates'] = convert_world_to_model_coordinate_no_bias(axis, self.positionVectors[idx1,:])
+        parameters['axis_in_model1_coordinates'] = convert_world_to_model_coordinate_no_bias(axis, self.positionVectors[idx1,:], self.rot_matrices[idx1,:,:])
 
         self.addConstraint("limit", [object1, object2], parameters)
 
 
-    def addSensor(self, object, reference_object):
-        self.sensors.append((object,reference_object))
+    def addSensor(self, **kwargs):
+        if "axis" in kwargs and "reference" in kwargs:
+            kwargs["axis"] = convert_world_to_model_coordinate_no_bias(kwargs["axis"], self.rot_matrices[self.getObjectIndex(kwargs["reference"]),:,:])
+        kwargs["axis"] = np.array(kwargs["axis"], dtype='float32')
+        self.sensors.append(kwargs)
+
+
+    def load_robot_model(self, filename):
+        robot_dict = json.load(open(filename,"rb"))
+
+        self.set_integration_parameters(**robot_dict["integration_parameters"])
+
+        for elementname, element in robot_dict["model"].iteritems():
+            primitive = element[0]
+            parameters = dict(robot_dict["default_model_parameters"]["default"])  # copy
+            if primitive["shape"] in robot_dict["default_model_parameters"]:
+                parameters.update(robot_dict["default_model_parameters"][primitive["shape"]])
+            parameters.update(primitive)
+            if primitive["shape"] == "cube":
+                self.addCube(elementname, **parameters)
+            elif primitive["shape"] == "sphere":
+                self.addSphere(elementname, **parameters)
+
+        for jointname, joint in robot_dict["joints"].iteritems():
+            parameters = dict(robot_dict["default_constraint_parameters"]["default"])  # copy
+            if joint["type"] in robot_dict["default_constraint_parameters"]:
+                parameters.update(robot_dict["default_constraint_parameters"][joint["type"]])
+            parameters.update(joint)
+            if joint["type"] == "hinge":
+                self.addHingeConstraint(jointname, **parameters)
+
+            elif joint["type"] == "ground":
+                self.addGroundConstraint(jointname, **parameters)
+
+            elif joint["type"] == "fixed":
+                self.addFixedConstraint(jointname, **parameters)
+
+            elif joint["type"] == "ball":
+                self.addBallAndSocketConstraint(jointname, **parameters)
+
+            if "limits" in parameters:
+                for limit in parameters["limits"]:
+                    limitparameters = dict(robot_dict["default_constraint_parameters"]["default"])
+                    if "limit" in robot_dict["default_constraint_parameters"]:
+                        limitparameters.update(robot_dict["default_constraint_parameters"]["limit"])
+                    limitparameters.update(limit)
+                    self.addLimitConstraint(joint["object1"], joint["object2"], **limitparameters)
+
+            if "motors" in parameters:
+                for motor in parameters["motors"]:
+                    motorparameters = dict(robot_dict["default_constraint_parameters"]["default"])
+                    if "motor" in robot_dict["default_constraint_parameters"]:
+                        motorparameters.update(robot_dict["default_constraint_parameters"]["motor"])
+                    motorparameters.update(motor)
+                    self.addMotorConstraint(joint["object1"], joint["object2"], **motorparameters)
+
+        for sensor in robot_dict["sensors"]:
+            self.addSensor(**sensor)
+
 
     def compile(self):
-
-        self.rot_matrices = np.zeros((len(self.objects),3,3), dtype=DTYPE)
-        for i in xrange(len(self.objects)):
-            self.rot_matrices[i,:,:] = quat_to_rot_matrix(self.positionVectors[i,3:])
 
         self.inertia_inv = np.linalg.inv(self.massMatrices)
         self.num_constraints = 0
@@ -679,16 +735,56 @@ class Rigid3DBodyEngine(object):
     def getState(self):
         return self.positionVectors[:,:3], self.velocityVectors, self.rot_matrices
 
-    def getCameraImage(self, camera_model):
+    def getObjectIndex(self, reference):
+        return self.objects[reference]
+
+    def getCameraImage(self):
         pass
-        # TODO: make a bipedal robot
 
         # get camera image
         # do ray-sphere and ray-plane intersections
         # find cube by using 6 planes, throwing away the irrelevant intersections
 
         # step 1: generate list of rays (1 per pixel)
-        # step 2a: intersect the rays with the spheres
+        # focal_point (3,)
+        # ray_dir (px_hor, px_ver, 3)
+        # ray_offset (px_hor, px_ver, 3)
+        px_hor = 5
+        px_ver = 6
+        cam_width = 1.0
+        cam_height = 1.0
+        focal_distance = 1.0
+        parent = "spine"
+        pid = self.objects["spine"]
+
+        ray_offset =  np.array([-focal_distance,0,0])
+
+        dcw = cam_width/(px_hor*2)
+        dch = cam_width/(px_ver*2)
+        ray_dir = np.array(np.meshgrid([0],
+                                       np.linspace(-0.5*cam_width+dcw, 0.5*cam_width-dcw, px_hor),
+                                       np.linspace(-0.5*cam_height+dch,0.5*cam_height-dch,px_ver),
+                                       ))[:,:,0,:].T
+
+        corr_ray_dir = np.dot(ray_dir, self.rot_matrices[pid,:,:])
+        corr_ray_offset = np.dot(ray_offset, self.rot_matrices[pid,:,:])
+        corr_ray_offset = corr_ray_offset + self.positionVectors[pid,:]
+        print corr_ray_offset.shape, corr_ray_dir.shape
+
+        ray_dir = corr_ray_dir
+        ray_offset = corr_ray_offset
+        # step 2a: intersect the rays with all the spheres
+        sphere_ids = []
+        L = self.positionVectors[self.sphere_ids,:] - ray_offset
+        tca = np.inner(L,ray_dir[:,:,None,:])  # L.dotProduct(ray_dir);
+        #// if (tca < 0) return false;
+        d2 = np.inner(L,L)[None,None,:,:] - tca*tca
+        #if (d2 > radius2) return false;
+        thc = np.sqrt(self.radii**2 - d2)
+        t0 = tca - thc
+
+
+
         # step 2b: intersect the rays with the planes
         # step 3: find the closest point of intersection (z-culling) for all objects
         # step 4: go into the object's texture and get the corresponding value (see image transform)
