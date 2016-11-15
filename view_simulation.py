@@ -77,6 +77,7 @@ class MyApp(ShowBase):
         self.setupKeys()
         self.robot_id = 0
         #self.movie(duration = 8.0)
+        self.target = data["targets"]
 
     def setupKeys(self):
         self.parentnode = self.render.attachNewNode('camparent')

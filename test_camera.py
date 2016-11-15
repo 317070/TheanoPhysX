@@ -28,11 +28,15 @@ np.random.seed(0)
 
 # step 1: load the physics model
 engine = Rigid3DBodyEngine()
-jsonfile = "robotmodel/demi_predator_ground.json"
+jsonfile = "robotmodel/abstract_art.json"
 engine.load_robot_model(jsonfile)
-spine_id = engine.getObjectIndex("spine")
 BATCH_SIZE = 1
 engine.compile()
 
 image = engine.getCameraImage()
+
+import matplotlib.pyplot as plt
+plt.imshow(image/255., interpolation='nearest')
+plt.gca().invert_yaxis()
+plt.show()
 print "done"

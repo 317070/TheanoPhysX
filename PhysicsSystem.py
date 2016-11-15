@@ -4,6 +4,7 @@ import json
 __author__ = 'jonas'
 import numpy as np
 import scipy.linalg
+import scipy.ndimage
 import random
 #np.seterr(all='raise')
 
@@ -108,7 +109,7 @@ class Rigid3DBodyEngine(object):
 
     def addCube(self, reference, dimensions, mass_density, position, rotation, velocity, **kwargs):
         self.objects[reference] = self.positionVectors.shape[0]
-        self.cube_ids += self.positionVectors.shape[0]
+        self.cube_ids += [self.positionVectors.shape[0]]
         self.radii = np.append(self.radii, -1)
         self.positionVectors = np.append(self.positionVectors, np.array([position], dtype=DTYPE), axis=0)
         self.rot_matrices = np.append(self.rot_matrices, np.array([quat_to_rot_matrix(rotation)], dtype='float32'), axis=0)
@@ -118,19 +119,18 @@ class Rigid3DBodyEngine(object):
         I1 = 1./12. * (dimensions[1]**2 + dimensions[2]**2)
         I2 = 1./12. * (dimensions[0]**2 + dimensions[2]**2)
         I3 = 1./12. * (dimensions[0]**2 + dimensions[1]**2)
-        print mass
+
         self.massMatrices = np.append(self.massMatrices, mass*np.diag([1,1,1,I1,I2,I3])[None,:,:], axis=0)
 
 
     def addSphere(self, reference, radius, mass_density, position, rotation, velocity, **kwargs):
         self.objects[reference] = self.positionVectors.shape[0]
-        self.sphere_ids += self.positionVectors.shape[0]
+        self.sphere_ids += [self.positionVectors.shape[0]]
         self.radii = np.append(self.radii, radius)
         self.positionVectors = np.append(self.positionVectors, np.array([position], dtype=DTYPE), axis=0)
         self.rot_matrices = np.append(self.rot_matrices, np.array([quat_to_rot_matrix(rotation)], dtype='float32'), axis=0)
         self.velocityVectors = np.append(self.velocityVectors, np.array([velocity], dtype=DTYPE), axis=0)
         mass = mass_density*4./3.*np.pi*radius**3
-        print mass
         self.massMatrices = np.append(self.massMatrices, mass*np.diag([1,1,1,0.4,0.4,0.4])[None,:,:], axis=0)
 
     def addConstraint(self, constraint, references, parameters):
@@ -749,46 +749,136 @@ class Rigid3DBodyEngine(object):
         # focal_point (3,)
         # ray_dir (px_hor, px_ver, 3)
         # ray_offset (px_hor, px_ver, 3)
-        px_hor = 5
-        px_ver = 6
+        px_hor = 1000
+        px_ver = 1001
         cam_width = 1.0
         cam_height = 1.0
-        focal_distance = 1.0
-        parent = "spine"
-        pid = self.objects["spine"]
+        focal_distance = 0.5
+        parent = "camera"
+        pid = self.objects[parent]
 
-        ray_offset =  np.array([-focal_distance,0,0])
+        camera_position = np.array([0.5,0,0]) # in model coordinates
 
         dcw = cam_width/(px_hor*2)
         dch = cam_width/(px_ver*2)
-        ray_dir = np.array(np.meshgrid([0],
+        ray_dir = np.array(np.meshgrid([focal_distance],
                                        np.linspace(-0.5*cam_width+dcw, 0.5*cam_width-dcw, px_hor),
                                        np.linspace(-0.5*cam_height+dch,0.5*cam_height-dch,px_ver),
                                        ))[:,:,0,:].T
 
+        ray_dir = ray_dir / np.linalg.norm(ray_dir, axis=2, keepdims=True)   #normalize
+
+        ray_offset = np.array(np.meshgrid([0],
+                                       np.linspace(-0.5*cam_width+dcw, 0.5*cam_width-dcw, px_hor),
+                                       np.linspace(-0.5*cam_height+dch,0.5*cam_height-dch,px_ver),
+                                       ))[:,:,0,:].T
+
+
         corr_ray_dir = np.dot(ray_dir, self.rot_matrices[pid,:,:])
-        corr_ray_offset = np.dot(ray_offset, self.rot_matrices[pid,:,:])
+        corr_ray_offset = np.dot(ray_offset + camera_position[None,None,:], self.rot_matrices[pid,:,:])
         corr_ray_offset = corr_ray_offset + self.positionVectors[pid,:]
-        print corr_ray_offset.shape, corr_ray_dir.shape
 
         ray_dir = corr_ray_dir
         ray_offset = corr_ray_offset
         # step 2a: intersect the rays with all the spheres
-        sphere_ids = []
-        L = self.positionVectors[self.sphere_ids,:] - ray_offset
-        tca = np.inner(L,ray_dir[:,:,None,:])  # L.dotProduct(ray_dir);
+        s_relevant = np.ones(shape=(px_ver, px_hor, len(self.sphere_ids)))
+
+        L = self.positionVectors[None,None,self.sphere_ids,:] - ray_offset[:,:,None,:]
+        tca = np.sum(L * ray_dir[:,:,None,:],axis=3)  # L.dotProduct(ray_dir);
         #// if (tca < 0) return false;
-        d2 = np.inner(L,L)[None,None,:,:] - tca*tca
+        s_relevant *= (tca > 0)
+        d2 = np.sum(L * L, axis=3) - tca*tca
+        r2 = self.radii[None,None,self.sphere_ids]**2
         #if (d2 > radius2) return false;
-        thc = np.sqrt(self.radii**2 - d2)
-        t0 = tca - thc
+
+        s_relevant *= (d2 <= r2)
+
+        thc = np.sqrt(s_relevant * (r2 - d2))
+        s_t0 = tca - thc
+        Phit = ray_offset[:,:,None,:] + s_t0[:,:,:,None]*ray_dir[:,:,None,:]
+        N = (Phit-self.positionVectors[None,None,self.sphere_ids,:]) / self.radii[None,None,self.sphere_ids,None]
+
+        # TODO: return N to model coordinates (by rotating)
+
+        s_tex_x = -1+2*np.arccos(N[:,:,:,1]*s_relevant)/np.pi
+        s_tex_y = np.arctan2(N[:,:,:,2], N[:,:,:,0])/np.pi
+        s_tex_t = np.array([0]*len(self.sphere_ids))
+        # tex_y en tex_x in [-1,1]
 
 
 
         # step 2b: intersect the rays with the planes
+
+        n = np.array([[0,0,1]])
+        p0 = np.array([[0,0,0]])
+
+        x0 = np.array([[1,0,0]])
+        y0 = np.array([[0,1,0]])
+
+        p_relevant = np.ones(shape=(px_ver, px_hor, n.shape[0]))
+
+        print n.shape
+        denom = np.sum(n[None,None,:,:] * ray_dir[:,:,None,:],axis=3)
+        p0l0 = p0[None,None,:,:] - ray_offset[:,:,None,:]
+        p_t0 = np.sum(p0l0 * n[None,None,:,:], axis=3) / (denom + 1e-9)
+        p_relevant *= (p_t0 > 0)
+        print "mm",np.min(p_t0),np.max(p_t0)
+
+        Phit = ray_offset[:,:,None,:] + p_t0[:,:,:,None]*ray_dir[:,:,None,:]
+
+        p_tex_x = -1 + 2*(np.sum(x0[None,None,:,:] * Phit, axis=3)%1.)
+        p_tex_y = -1 + 2*(np.sum(y0[None,None,:,:] * Phit, axis=3)%1.)
+        p_tex_t = np.array([1]*1)
+        print np.min(p_tex_x),np.max(p_tex_x)
+        print np.min(p_tex_y),np.max(p_tex_y)
+
         # step 3: find the closest point of intersection (z-culling) for all objects
+        relevant = np.concatenate([s_relevant, p_relevant],axis=2)
+        tex_x = np.concatenate([s_tex_x, p_tex_x],axis=2)
+        tex_y = np.concatenate([s_tex_y, p_tex_y],axis=2)
+        tex_t = np.concatenate([s_tex_t, p_tex_t],axis=0)
+
+
+        t = np.concatenate([s_t0, p_t0], axis=2)
+
+        mint = np.min(t*relevant + (1-relevant)*1e9, axis=-1)
+        relevant *= (t==mint[:,:,None])  #only use the closest object
+        print "rel?", np.sum(relevant[:,:,-1])
+
+
         # step 4: go into the object's texture and get the corresponding value (see image transform)
+        texture1 = scipy.ndimage.imread("textures/soccer_128.png")
+        texture2 = scipy.ndimage.imread("textures/grass_128.png")
+        #print texture.shape
+        print texture1.shape, texture2.shape
+        textures = np.stack([texture1, texture2])
+        print textures.shape
+        tex_x = tex_x*63 + 63
+        tex_y = tex_y*63 + 63
+        x_idx = np.floor(tex_x).astype('int32')
+        print x_idx.shape
+        x_wgh = tex_x - x_idx
+        y_idx = np.floor(tex_y).astype('int32')
+        y_wgh = tex_y - y_idx
+
+        #print np.min(tex_x), np.max(tex_x)
+        #print np.min(x_idx), np.max(x_idx)
+        #print np.min(y_idx), np.max(y_idx)
+
+
+        sample= (   x_wgh  *    y_wgh )[:,:,:,None] * textures[tex_t[None,None,:],x_idx+1,y_idx+1,:] + \
+                (   x_wgh  * (1-y_wgh))[:,:,:,None] * textures[tex_t[None,None,:],x_idx+1,y_idx  ,:] + \
+                ((1-x_wgh) *    y_wgh )[:,:,:,None] * textures[tex_t[None,None,:],x_idx  ,y_idx+1,:] + \
+                ((1-x_wgh) * (1-y_wgh))[:,:,:,None] * textures[tex_t[None,None,:],x_idx  ,y_idx  ,:]
+
+        #print sample.shape
+
         # step 5: return this value
+
+        image = np.sum(sample * relevant[:,:,:,None],axis=2)
+        #print image.shape
+        return image
+
 
     def getPosition(self, reference):
         idx = self.objects[reference]

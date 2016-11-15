@@ -30,7 +30,7 @@ np.random.seed(0)
 
 # step 1: load the physics model
 engine = BatchedTheanoRigid3DBodyEngine()
-jsonfile = "robotmodel/robot_arm.json"
+jsonfile = "robotmodel/robot_arm_mem.json"
 engine.load_robot_model(jsonfile)
 grapper_id = engine.getObjectIndex("sphere2")
 BATCH_SIZE = 256
@@ -73,14 +73,14 @@ def build_objectives_test(states_list):
 def build_controller():
     l_input = lasagne.layers.InputLayer((BATCH_SIZE,1+engine.num_sensors), name="sensor_values")
     l_memory = lasagne.layers.InputLayer((BATCH_SIZE,MEMORY_SIZE), name="memory_values")
-    l_1a = lasagne.layers.DenseLayer(l_input, 512,
+    l_1a = lasagne.layers.DenseLayer(l_input, 768,
                                          nonlinearity=lasagne.nonlinearities.identity,
                                          W=lasagne.init.Orthogonal("relu"),
                                          b=None,
                                          )
     l_1a = lasagne.layers.batch_norm(l_1a)
 
-    l_1b = lasagne.layers.DenseLayer(l_memory, 512,
+    l_1b = lasagne.layers.DenseLayer(l_memory, 256,
                                          nonlinearity=lasagne.nonlinearities.rectify,
                                          W=lasagne.init.Orthogonal("relu"),
                                          b=lasagne.init.Constant(0.0),
@@ -92,13 +92,13 @@ def build_controller():
     l_1 = lasagne.layers.DenseLayer(l_1, 1024,
                                          nonlinearity=lasagne.nonlinearities.rectify,
                                          W=lasagne.init.Orthogonal("relu"),
-                                         b=lasagne.init.Constant(0.0),
+                                         b=lasagne.init.Constant(-0.5),
                                          )
 
     l_1 = lasagne.layers.DenseLayer(l_1, 1024,
                                          nonlinearity=lasagne.nonlinearities.rectify,
                                          W=lasagne.init.Orthogonal("relu"),
-                                         b=lasagne.init.Constant(0.0),
+                                         b=lasagne.init.Constant(-0.5),
                                          )
 
     l_2 = lasagne.layers.DenseLayer(l_1, engine.num_motors,
@@ -115,8 +115,8 @@ def build_controller():
     if MEMORY_SIZE>0:
         l_recurrent = lasagne.layers.DenseLayer(l_1, MEMORY_SIZE,
                                              nonlinearity=lasagne.nonlinearities.tanh,
-                                             W=lasagne.init.Constant(0.0),
-                                             b=lasagne.init.Constant(0.0),
+                                             W=lasagne.init.Orthogonal("relu"),
+                                             b=lasagne.init.Constant(-0.5),
                                              )
         result["recurrent"] = l_recurrent
         result["memory"] = l_memory
@@ -133,7 +133,7 @@ def build_model(engine, controller, controller_parameters, deterministic = False
         positions, velocities, rot_matrices = state
         #sensor_values = engine.getSensorValues(state=(positions, velocities, rot_matrices))
         objective_sensor = (target - positions[:,grapper_id,:]).norm(L=2,axis=1)[:,None]
-        ALPHA = 0.95
+        ALPHA = 1.0
         if "recurrent" in controller:
             controller["input"].input_var = objective_sensor
             controller["memory"].input_var = memory

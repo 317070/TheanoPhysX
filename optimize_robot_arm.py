@@ -13,7 +13,7 @@ import argparse
 from custom_ops import mulgrad
 from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
 
-EXP_NAME = "exp12-arm"
+EXP_NAME = "exp13-arm"
 PARAMETERS_FILE = "optimized-parameters-%s.pkl" % EXP_NAME
 
 parser = argparse.ArgumentParser(description='Process some integers.')
@@ -60,13 +60,24 @@ def sample():
 target = theano.shared(sample(), name="target")
 target.set_value(sample())
 
+
+def build_objectives_test(states_list):
+    positions, velocities, rotations = states_list[:3]
+    return T.mean((target[None,:,:] - positions[400:,:,grapper_id,:]).norm(L=2,axis=2),axis=0)
+
 def build_objectives(states_list):
     positions, velocities, rotations = states_list[:3]
-    return T.mean((target[None,:,:] - positions[100:,:,grapper_id,:]).norm(L=2,axis=2),axis=0)
+    return T.mean((target[None,:,:] - positions[:,:,grapper_id,:]).norm(L=2,axis=2),axis=0)
 
 def build_controller():
     l_input = lasagne.layers.InputLayer((BATCH_SIZE,3+engine.num_sensors+MEMORY_SIZE), name="sensor_values")
     l_1 = lasagne.layers.DenseLayer(l_input, 1024,
+                                         nonlinearity=lasagne.nonlinearities.rectify,
+                                         W=lasagne.init.Orthogonal("relu"),
+                                         b=lasagne.init.Constant(0.0),
+                                         )
+    l_1 = lasagne.layers.dropout(l_1)
+    l_1 = lasagne.layers.DenseLayer(l_1, 1024,
                                          nonlinearity=lasagne.nonlinearities.rectify,
                                          W=lasagne.init.Orthogonal("relu"),
                                          b=lasagne.init.Constant(0.0),
@@ -196,7 +207,7 @@ test_engine.load_robot_model(jsonfile)
 test_engine.compile(batch_size=BATCH_SIZE)
 
 deterministic_states, det_updates = build_model(test_engine, controller, controller_parameters, deterministic=True)
-deterministic_fitness = build_objectives(deterministic_states)
+deterministic_fitness = build_objectives_test(deterministic_states)
 
 iter_test = theano.function([],[deterministic_fitness] + deterministic_states[:3])
 
