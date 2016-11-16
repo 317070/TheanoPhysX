@@ -804,8 +804,8 @@ class Rigid3DBodyEngine(object):
         # focal_point (3,)
         # ray_dir (px_hor, px_ver, 3)
         # ray_offset (px_hor, px_ver, 3)
-        px_hor = 64
-        px_ver = 64
+        px_hor = 1024
+        px_ver = 1024
         cam_width = 1.0
         cam_height = 1.0
         focal_distance = 0.5
@@ -954,7 +954,7 @@ class Rigid3DBodyEngine(object):
         denom = np.sum(n[None,None,:,:] * ray_dir[:,:,None,:],axis=3)
         p0l0 = p0[None,None,:,:] - ray_offset[:,:,None,:]
         p_t0 = np.sum(p0l0 * n[None,None,:,:], axis=3) / (denom + 1e-9)
-        p_relevant *= (p_t0 > 0)
+        p_relevant *= (p_t0 > 0)  #only planes in front of us
 
         Phit = ray_offset[:,:,None,:] + p_t0[:,:,:,None]*ray_dir[:,:,None,:]
 
