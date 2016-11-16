@@ -83,10 +83,10 @@
         ],
         "radius": 0.5,
         "rotation": [
-          1,
-          0,
-          0,
-          0
+          0.5,
+          0.5,
+          0.5,
+          -0.5
         ]
       }
     ],
@@ -100,28 +100,38 @@
         ],
         "radius": 1.0,
         "rotation": [
-          1,
-          0,
-          0,
-          0
+          0.5,
+          -0.5,
+          0.5,
+          0.5
         ]
       }
     ],
-    "ball3": [
+    "spine": [
       {
-        "shape": "sphere",
+        "shape": "cube",
         "position": [
           1.5,
           -0.75,
           0.5
         ],
-        "radius": 1.0,
+        "dimensions": [
+          1.2,
+          0.6,
+          0.4
+        ],
+        "color": [
+          0,
+          0.8,
+          0.2
+        ],
         "rotation": [
-          1,
+          0.65094455,
+          0.65094455,
           0,
-          0,
-          0
-        ]
+          0.39056673
+        ],
+        "mass_density": 1000.0
       }
     ]
   },
@@ -137,10 +147,6 @@
     "floor3": {
       "type": "ground",
       "object1": "ball2"
-    },
-    "floor4": {
-      "type": "ground",
-      "object1": "ball3"
     }
   },
   "sensors": []

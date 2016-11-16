@@ -31,10 +31,10 @@ def quat_to_rot_matrix(quat):
                     [      xz - wy,         yz + wx,    1 - (xx + yy) ]])
 
 
-def convert_world_to_model_coordinate(coor, model_position, rot_matrix):
+def convert_world_to_model_coordinate(coor, rot_matrix, model_position):
     return np.dot(rot_matrix, coor - model_position)
 
-def convert_world_to_model_coordinate_no_bias(coor, model_position, rot_matrix):
+def convert_world_to_model_coordinate_no_bias(coor, rot_matrix):
     return np.dot(rot_matrix, coor)
 
 def convert_model_to_world_coordinate(coor, rot_matrix, model_position):
@@ -42,6 +42,50 @@ def convert_model_to_world_coordinate(coor, rot_matrix, model_position):
 
 def convert_model_to_world_coordinate_no_bias(coor, rot_matrix):
     return np.sum(rot_matrix[:,:] * coor[:,None], axis=0)
+
+
+def batched_convert_world_to_model_coordinate(coor, rot_matrix, model_position):
+    A = coor.ndim
+    B = rot_matrix.ndim
+    print A,B
+    if A==4 and B==3:
+        return batched_convert_world_to_model_coordinate_no_bias(coor[:,:,:,:] - model_position[None,None,:,:], rot_matrix)
+    raise NotImplementedError()
+    #return np.dot(rot_matrix, coor - model_position)
+
+def batched_convert_world_to_model_coordinate_no_bias(coor, rot_matrix):
+    A = coor.ndim
+    B = rot_matrix.ndim
+    print A,B
+    if A==4 and B==3:
+        return np.sum(rot_matrix[None,None,:,:,:] * coor[:,:,:,None,:], axis=4)
+    raise NotImplementedError()
+    #return np.dot(rot_matrix, coor)
+
+def batched_convert_model_to_world_coordinate(coor, rot_matrix, model_position):
+    A = coor.ndim
+    B = rot_matrix.ndim
+    print A,B
+    if A==3 and B==2:
+        return batched_convert_model_to_world_coordinate_no_bias(coor, rot_matrix) + model_position[None,None,:]
+    if A==2 and B==2:
+        return batched_convert_model_to_world_coordinate_no_bias(coor, rot_matrix) + model_position[None,:]
+
+    raise NotImplementedError()
+    #return batched_convert_model_to_world_coordinate_no_bias(coor, rot_matrix) + model_position
+
+def batched_convert_model_to_world_coordinate_no_bias(coor, rot_matrix):
+    A = coor.ndim
+    B = rot_matrix.ndim
+    print A,B
+    if A==3 and B==2:
+        return np.sum(rot_matrix[None,None,:,:] * coor[:,:,:,None], axis=2)
+    if A==2 and B==2:
+        return np.sum(rot_matrix[None,:,:] * coor[:,:,None], axis=1)
+    raise NotImplementedError()
+    #return np.sum(rot_matrix[:,:] * coor[:,None], axis=0)
+
+
 
 def skew_symmetric(x):
     a,b,c = x[...,0,None,None],x[...,1,None,None],x[...,2,None,None]
@@ -56,6 +100,7 @@ def skew_symmetric(x):
 class Rigid3DBodyEngine(object):
     def __init__(self):
         self.radii = np.zeros(shape=(0,), dtype=DTYPE)
+        self.dimensions = np.zeros(shape=(0,3), dtype=DTYPE)
         self.positionVectors = np.zeros(shape=(0,3), dtype=DTYPE)
         self.rot_matrices = np.zeros(shape=(0,3,3), dtype='float32')
         self.velocityVectors = np.zeros(shape=(0,6), dtype=DTYPE)
@@ -100,6 +145,7 @@ class Rigid3DBodyEngine(object):
     def add_universe(self, **parameters):
         self.objects["universe"] = self.positionVectors.shape[0]
         self.radii = np.append(self.radii, -1)
+        self.dimensions = np.append(self.dimensions, [[-1,-1,-1]], axis=0)
 
         self.massMatrices = np.append(self.massMatrices, 1e6*np.diag([1,1,1,0.4,0.4,0.4])[None,:,:], axis=0)
         self.positionVectors = np.append(self.positionVectors, np.array([[0,0,0,1,0,0,0]], dtype=DTYPE), axis=0)
@@ -111,6 +157,8 @@ class Rigid3DBodyEngine(object):
         self.objects[reference] = self.positionVectors.shape[0]
         self.cube_ids += [self.positionVectors.shape[0]]
         self.radii = np.append(self.radii, -1)
+        self.dimensions = np.append(self.dimensions, [dimensions], axis=0)
+
         self.positionVectors = np.append(self.positionVectors, np.array([position], dtype=DTYPE), axis=0)
         self.rot_matrices = np.append(self.rot_matrices, np.array([quat_to_rot_matrix(rotation)], dtype='float32'), axis=0)
         self.velocityVectors = np.append(self.velocityVectors, np.array([velocity], dtype=DTYPE), axis=0)
@@ -127,6 +175,7 @@ class Rigid3DBodyEngine(object):
         self.objects[reference] = self.positionVectors.shape[0]
         self.sphere_ids += [self.positionVectors.shape[0]]
         self.radii = np.append(self.radii, radius)
+        self.dimensions = np.append(self.dimensions, [[-1,-1,-1]], axis=0)
         self.positionVectors = np.append(self.positionVectors, np.array([position], dtype=DTYPE), axis=0)
         self.rot_matrices = np.append(self.rot_matrices, np.array([quat_to_rot_matrix(rotation)], dtype='float32'), axis=0)
         self.velocityVectors = np.append(self.velocityVectors, np.array([velocity], dtype=DTYPE), axis=0)
@@ -150,8 +199,8 @@ class Rigid3DBodyEngine(object):
         idx1 = self.objects[object1]
         idx2 = self.objects[object2]
 
-        parameters['joint_in_model1_coordinates'] = convert_world_to_model_coordinate(point, self.positionVectors[idx1,:], self.rot_matrices[idx1,:,:])
-        parameters['joint_in_model2_coordinates'] = convert_world_to_model_coordinate(point, self.positionVectors[idx2,:], self.rot_matrices[idx2,:,:])
+        parameters['joint_in_model1_coordinates'] = convert_world_to_model_coordinate(point, self.rot_matrices[idx1,:,:], self.positionVectors[idx1,:])
+        parameters['joint_in_model2_coordinates'] = convert_world_to_model_coordinate(point, self.rot_matrices[idx2,:,:], self.positionVectors[idx2,:])
 
         self.addConstraint("ball-and-socket", [object1, object2], parameters)
 
@@ -160,8 +209,8 @@ class Rigid3DBodyEngine(object):
         idx1 = self.objects[object1]
         idx2 = self.objects[object2]
 
-        parameters['joint_in_model1_coordinates'] = convert_world_to_model_coordinate(point, self.positionVectors[idx1,:], self.rot_matrices[idx1,:,:])
-        parameters['joint_in_model2_coordinates'] = convert_world_to_model_coordinate(point, self.positionVectors[idx2,:], self.rot_matrices[idx2,:,:])
+        parameters['joint_in_model1_coordinates'] = convert_world_to_model_coordinate(point, self.rot_matrices[idx1,:,:], self.positionVectors[idx1,:])
+        parameters['joint_in_model2_coordinates'] = convert_world_to_model_coordinate(point, self.rot_matrices[idx2,:,:], self.positionVectors[idx2,:])
 
         # create two forbidden axis:
         axis = np.array(axis)
@@ -174,9 +223,9 @@ class Rigid3DBodyEngine(object):
             forbidden_axis_2 = np.cross(axis, forbidden_axis_1)
 
         parameters['axis'] = axis
-        parameters['axis1_in_model1_coordinates'] = convert_world_to_model_coordinate_no_bias(forbidden_axis_1, self.positionVectors[idx1,:], self.rot_matrices[idx1,:,:])
-        parameters['axis2_in_model1_coordinates'] = convert_world_to_model_coordinate_no_bias(forbidden_axis_2, self.positionVectors[idx1,:], self.rot_matrices[idx1,:,:])
-        parameters['axis_in_model2_coordinates'] = convert_world_to_model_coordinate_no_bias(axis, self.positionVectors[idx2,:], self.rot_matrices[idx2,:,:])
+        parameters['axis1_in_model1_coordinates'] = convert_world_to_model_coordinate_no_bias(forbidden_axis_1, self.rot_matrices[idx1,:,:], self.positionVectors[idx1,:])
+        parameters['axis2_in_model1_coordinates'] = convert_world_to_model_coordinate_no_bias(forbidden_axis_2, self.rot_matrices[idx1,:,:], self.positionVectors[idx1,:])
+        parameters['axis_in_model2_coordinates'] = convert_world_to_model_coordinate_no_bias(axis, self.rot_matrices[idx2,:,:], self.positionVectors[idx2,:])
 
         self.addConstraint("hinge", [object1, object2], parameters)
 
@@ -194,8 +243,8 @@ class Rigid3DBodyEngine(object):
         idx1 = self.objects[object1]
         idx2 = self.objects[object2]
 
-        parameters['joint_in_model1_coordinates'] = convert_world_to_model_coordinate(point, self.positionVectors[idx1,:], self.rot_matrices[idx1,:,:])
-        parameters['joint_in_model2_coordinates'] = convert_world_to_model_coordinate(point, self.positionVectors[idx2,:], self.rot_matrices[idx2,:,:])
+        parameters['joint_in_model1_coordinates'] = convert_world_to_model_coordinate(point, self.rot_matrices[idx1,:,:], self.positionVectors[idx1,:])
+        parameters['joint_in_model2_coordinates'] = convert_world_to_model_coordinate(point, self.rot_matrices[idx2,:,:], self.positionVectors[idx2,:])
 
         self.addConstraint("fixed", [object1, object2], parameters)
 
@@ -208,7 +257,7 @@ class Rigid3DBodyEngine(object):
         axis = np.array(axis)
         axis = axis / np.linalg.norm(axis)
         parameters['axis'] = axis
-        parameters['axis_in_model2_coordinates'] = convert_world_to_model_coordinate_no_bias(axis, self.positionVectors[idx2,:], self.rot_matrices[idx2,:,:])
+        parameters['axis_in_model2_coordinates'] = convert_world_to_model_coordinate_no_bias(axis, self.rot_matrices[idx2,:,:], self.positionVectors[idx2,:])
 
         self.addConstraint("motor", [object1, object2], parameters)
 
@@ -223,7 +272,7 @@ class Rigid3DBodyEngine(object):
         axis = np.array(axis)
         axis = axis / np.linalg.norm(axis)
         parameters['axis'] = axis
-        parameters['axis_in_model1_coordinates'] = convert_world_to_model_coordinate_no_bias(axis, self.positionVectors[idx1,:], self.rot_matrices[idx1,:,:])
+        parameters['axis_in_model1_coordinates'] = convert_world_to_model_coordinate_no_bias(axis, self.rot_matrices[idx1,:,:], self.positionVectors[idx1,:])
 
         self.addConstraint("limit", [object1, object2], parameters)
 
@@ -739,7 +788,13 @@ class Rigid3DBodyEngine(object):
         return self.objects[reference]
 
     def getCameraImage(self):
-        pass
+
+        # TODO: flatten the for loop
+        # TODO: move a lot of the initialization outside of this function
+        # TODO: edit the json-format to support all of this
+        # TODO: support multiple cameras
+        # TODO: support the visible-flag
+        # TODO: support initial camera rotation relative to model
 
         # get camera image
         # do ray-sphere and ray-plane intersections
@@ -749,13 +804,17 @@ class Rigid3DBodyEngine(object):
         # focal_point (3,)
         # ray_dir (px_hor, px_ver, 3)
         # ray_offset (px_hor, px_ver, 3)
-        px_hor = 1000
-        px_ver = 1001
+        px_hor = 64
+        px_ver = 64
         cam_width = 1.0
         cam_height = 1.0
         focal_distance = 0.5
         parent = "camera"
         pid = self.objects[parent]
+        background_color = np.array([0.0, 191.0/255.0, 1.0])
+
+
+        colors = np.zeros(shape=(0,3), dtype=DTYPE)
 
         camera_position = np.array([0.5,0,0]) # in model coordinates
 
@@ -774,14 +833,15 @@ class Rigid3DBodyEngine(object):
                                        ))[:,:,0,:].T
 
 
-        corr_ray_dir = np.dot(ray_dir, self.rot_matrices[pid,:,:])
-        corr_ray_offset = np.dot(ray_offset + camera_position[None,None,:], self.rot_matrices[pid,:,:])
-        corr_ray_offset = corr_ray_offset + self.positionVectors[pid,:]
+        # rotate and move the camera according to its parent
+        ray_dir = batched_convert_model_to_world_coordinate_no_bias(ray_dir, self.rot_matrices[pid,:,:])
+        ray_offset = batched_convert_model_to_world_coordinate(ray_offset + camera_position[None,None,:], self.rot_matrices[pid,:,:], self.positionVectors[pid,:])
 
-        ray_dir = corr_ray_dir
-        ray_offset = corr_ray_offset
         # step 2a: intersect the rays with all the spheres
         s_relevant = np.ones(shape=(px_ver, px_hor, len(self.sphere_ids)))
+        colors = np.append(colors,
+                      np.array([[1, 0, 0]] * len(self.sphere_ids)),
+                      axis=0)
 
         L = self.positionVectors[None,None,self.sphere_ids,:] - ray_offset[:,:,None,:]
         tca = np.sum(L * ray_dir[:,:,None,:],axis=3)  # L.dotProduct(ray_dir);
@@ -798,22 +858,95 @@ class Rigid3DBodyEngine(object):
         Phit = ray_offset[:,:,None,:] + s_t0[:,:,:,None]*ray_dir[:,:,None,:]
         N = (Phit-self.positionVectors[None,None,self.sphere_ids,:]) / self.radii[None,None,self.sphere_ids,None]
 
-        # TODO: return N to model coordinates (by rotating)
+        N = batched_convert_world_to_model_coordinate_no_bias(N, self.rot_matrices[self.sphere_ids,:,:])
 
         s_tex_x = -1+2*np.arccos(N[:,:,:,1]*s_relevant)/np.pi
         s_tex_y = np.arctan2(N[:,:,:,2], N[:,:,:,0])/np.pi
         s_tex_t = np.array([0]*len(self.sphere_ids))
         # tex_y en tex_x in [-1,1]
 
+        n = np.zeros(shape=(0,3), dtype=DTYPE)
+        p0 = np.zeros(shape=(0,3), dtype=DTYPE)
+        x0 = np.zeros(shape=(0,3), dtype=DTYPE)
+        y0 = np.zeros(shape=(0,3), dtype=DTYPE)
+        p_tex_t = np.zeros(shape=(0,), dtype='int32')
+        p_cube = np.zeros(shape=(0,), dtype='int32')
+
+        # step 2b: intersect the rays with the cubes
+        for cube_id in self.cube_ids:
+            nn =  np.array([[1, 0, 0],
+                            [0, 1, 0],
+                            [0, 0, 1],
+                            [-1, 0, 0],
+                            [0, -1, 0],
+                            [0, 0, -1]])
+
+            nn = batched_convert_model_to_world_coordinate_no_bias(nn, self.rot_matrices[cube_id,:,:])
+
+            n = np.append(n,
+                          nn,
+                          axis=0)
+            h, w, z = self.dimensions[cube_id]
+            h, w, z = h/2., w/2., z/2.
+            np0 = np.array([[h, 0, 0],
+                             [0, w, 0],
+                             [0, 0, z],
+                             [-h, 0, 0],
+                             [0, -w, 0],
+                             [0, 0, -z]])
+
+            np0 = batched_convert_model_to_world_coordinate(np0, self.rot_matrices[cube_id,:,:], self.positionVectors[cube_id,:])
+
+            p0 = np.append(p0,
+                           np0,
+                           axis=0)
+
+            h, w, z = 1./h, 1./w, 1./z
+
+            nx0 = np.array( [[0, w, 0],
+                             [0, 0, z],
+                             [h, 0, 0],
+                             [0,-w, 0],
+                             [0, 0,-z],
+                             [-h, 0,0]])
+            ny0 = np.array( [[0, 0, z],
+                             [h, 0, 0],
+                             [0, w, 0],
+                             [0, 0,-z],
+                             [-h,0, 0],
+                             [0,-w, 0]])
+
+            nx0 = batched_convert_model_to_world_coordinate_no_bias(nx0, self.rot_matrices[cube_id,:,:])
+            ny0 = batched_convert_model_to_world_coordinate_no_bias(ny0, self.rot_matrices[cube_id,:,:])
+
+            x0 = np.append(x0,
+                           nx0,
+                           axis=0)
+
+            y0 = np.append(y0,
+                           ny0,
+                           axis=0)
+            p_tex_t = np.append(p_tex_t, [2]*6)
+            p_cube = np.append(p_cube, [1]*6)
 
 
-        # step 2b: intersect the rays with the planes
+            colors = np.append(colors,
+                      np.array([[0, 1, 0]] * 6),
+                      axis=0)
 
-        n = np.array([[0,0,1]])
-        p0 = np.array([[0,0,0]])
 
-        x0 = np.array([[1,0,0]])
-        y0 = np.array([[0,1,0]])
+        #   build a list with n's, p0's, x0's, y0's
+
+
+        # step 2c: intersect the rays with the planes
+        n =  np.append(n, np.array([[0,0,1]]),axis=0)
+        p0 = np.append(p0,np.array([[0,0,0]]),axis=0)
+
+        x0 = np.append(x0,np.array([[1,0,0]]),axis=0)
+        y0 = np.append(y0,np.array([[0,1,0]]),axis=0)
+        colors = np.append(colors,
+                      np.array([[1, 1, 1]]),
+                      axis=0)
 
         p_relevant = np.ones(shape=(px_ver, px_hor, n.shape[0]))
 
@@ -822,23 +955,31 @@ class Rigid3DBodyEngine(object):
         p0l0 = p0[None,None,:,:] - ray_offset[:,:,None,:]
         p_t0 = np.sum(p0l0 * n[None,None,:,:], axis=3) / (denom + 1e-9)
         p_relevant *= (p_t0 > 0)
-        print "mm",np.min(p_t0),np.max(p_t0)
 
         Phit = ray_offset[:,:,None,:] + p_t0[:,:,:,None]*ray_dir[:,:,None,:]
 
-        p_tex_x = -1 + 2*(np.sum(x0[None,None,:,:] * Phit, axis=3)%1.)
-        p_tex_y = -1 + 2*(np.sum(y0[None,None,:,:] * Phit, axis=3)%1.)
-        p_tex_t = np.array([1]*1)
-        print np.min(p_tex_x),np.max(p_tex_x)
-        print np.min(p_tex_y),np.max(p_tex_y)
+        p_tex_x = np.sum(x0[None,None,:,:] * (Phit-p0), axis=3)
+        p_tex_y = np.sum(y0[None,None,:,:] * (Phit-p0), axis=3)
+        p_tex_t = np.append(p_tex_t,1)
+        p_cube = np.append(p_cube, 0)
+
+        # the following only on cubes
+        p_relevant *= 1 - (1-(-1 < p_tex_x) * (p_tex_x < 1) * (-1 < p_tex_y) * (p_tex_y < 1)) * p_cube
+
+        p_tex_x = ((p_tex_x+1)%2.)-1
+        p_tex_y = ((p_tex_y+1)%2.)-1
+
+
+        print np.min(p_tex_x), np.max(p_tex_x)
+        print np.min(p_tex_y), np.max(p_tex_y)
 
         # step 3: find the closest point of intersection (z-culling) for all objects
         relevant = np.concatenate([s_relevant, p_relevant],axis=2)
         tex_x = np.concatenate([s_tex_x, p_tex_x],axis=2)
         tex_y = np.concatenate([s_tex_y, p_tex_y],axis=2)
         tex_t = np.concatenate([s_tex_t, p_tex_t],axis=0)
-
-
+        print s_tex_t.shape, p_tex_t.shape
+        print "s:", tex_x.shape, tex_y.shape, tex_t.shape
         t = np.concatenate([s_t0, p_t0], axis=2)
 
         mint = np.min(t*relevant + (1-relevant)*1e9, axis=-1)
@@ -849,9 +990,10 @@ class Rigid3DBodyEngine(object):
         # step 4: go into the object's texture and get the corresponding value (see image transform)
         texture1 = scipy.ndimage.imread("textures/soccer_128.png")
         texture2 = scipy.ndimage.imread("textures/grass_128.png")
+        texture3 = scipy.ndimage.imread("textures/square_128.png")
         #print texture.shape
         print texture1.shape, texture2.shape
-        textures = np.stack([texture1, texture2])
+        textures = np.stack([texture1, texture2, texture3]) / 255.0
         print textures.shape
         tex_x = tex_x*63 + 63
         tex_y = tex_y*63 + 63
@@ -871,11 +1013,14 @@ class Rigid3DBodyEngine(object):
                 ((1-x_wgh) *    y_wgh )[:,:,:,None] * textures[tex_t[None,None,:],x_idx  ,y_idx+1,:] + \
                 ((1-x_wgh) * (1-y_wgh))[:,:,:,None] * textures[tex_t[None,None,:],x_idx  ,y_idx  ,:]
 
+
         #print sample.shape
+        # multiply with color of object
+        sample = colors[None,None,:,:] * sample
 
         # step 5: return this value
-
-        image = np.sum(sample * relevant[:,:,:,None],axis=2)
+        background = background_color[None,None,:] * (1-np.max(relevant[:,:,:],axis=2))[:,:,None]
+        image = np.sum(sample * relevant[:,:,:,None],axis=2) + background
         #print image.shape
         return image
 

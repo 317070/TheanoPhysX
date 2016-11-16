@@ -63,11 +63,11 @@ target.set_value(sample())
 
 def build_objectives_test(states_list):
     positions, velocities, rotations = states_list[:3]
-    return T.mean((target[None,:,:] - positions[400:,:,grapper_id,:]).norm(L=2,axis=2),axis=0)
+    return T.mean((target[None,:,:] - positions[700:,:,grapper_id,:]).norm(L=2,axis=2),axis=0)
 
 def build_objectives(states_list):
     positions, velocities, rotations = states_list[:3]
-    return T.mean((target[None,:,:] - positions[:,:,grapper_id,:]).norm(L=2,axis=2),axis=0)
+    return T.mean((target[None,:,:] - positions[400:,:,grapper_id,:]).norm(L=2,axis=2),axis=0)
 
 def build_controller():
     l_input = lasagne.layers.InputLayer((BATCH_SIZE,3+engine.num_sensors+MEMORY_SIZE), name="sensor_values")
@@ -261,8 +261,7 @@ while True:
     target.set_value(sample())
     st = time.time()
     fitnesses = iter_train()
-    print fitnesses, np.mean(fitnesses), datetime.datetime.now().strftime("%H:%M:%S.%f")
-    print "train:", time.time()-st, i
+    print "train fitness:", np.mean(fitnesses), i
     if np.isfinite(fitnesses).all():
         dump_parameters()
     if i%10==0:
@@ -270,7 +269,7 @@ while True:
         target.set_value(t)
         st = time.time()
         r = iter_test()
-        print "test fitness:", r[0], np.mean(r[0])
+        print "test fitness:", np.mean(r[0])
         lr.set_value(np.float32(np.mean(r[0]) / 1000.))
         with open("state-dump-%s.pkl"%EXP_NAME, 'wb') as f:
             pickle.dump({

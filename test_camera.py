@@ -12,6 +12,7 @@ import cPickle as pickle
 import argparse
 from PhysicsSystem import Rigid3DBodyEngine
 from custom_ops import mulgrad
+import time
 
 
 parser = argparse.ArgumentParser(description='Process some integers.')
@@ -33,10 +34,12 @@ engine.load_robot_model(jsonfile)
 BATCH_SIZE = 1
 engine.compile()
 
+t = time.time()
 image = engine.getCameraImage()
+print "time taken =", time.time() - t
 
 import matplotlib.pyplot as plt
-plt.imshow(image/255., interpolation='nearest')
+plt.imshow(image, interpolation='nearest')
 plt.gca().invert_yaxis()
 plt.show()
 print "done"
