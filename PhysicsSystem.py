@@ -954,7 +954,7 @@ class Rigid3DBodyEngine(object):
         denom = np.sum(n[None,None,:,:] * ray_dir[:,:,None,:],axis=3)
         p0l0 = p0[None,None,:,:] - ray_offset[:,:,None,:]
         p_t0 = np.sum(p0l0 * n[None,None,:,:], axis=3) / (denom + 1e-9)
-        p_relevant *= (p_t0 > 0)
+        p_relevant *= (p_t0 > 0)  #only planes in front of us
 
         Phit = ray_offset[:,:,None,:] + p_t0[:,:,:,None]*ray_dir[:,:,None,:]
 
