@@ -804,8 +804,8 @@ class Rigid3DBodyEngine(object):
         # focal_point (3,)
         # ray_dir (px_hor, px_ver, 3)
         # ray_offset (px_hor, px_ver, 3)
-        px_hor = 64
-        px_ver = 64
+        px_hor = 1024
+        px_ver = 1024
         cam_width = 1.0
         cam_height = 1.0
         focal_distance = 0.5
