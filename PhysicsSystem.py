@@ -1,3 +1,4 @@
+from collections import namedtuple
 from math import pi
 import json
 
@@ -106,8 +107,13 @@ class Rigid3DBodyEngine(object):
         self.velocityVectors = np.zeros(shape=(0,6), dtype=DTYPE)
         self.massMatrices = np.zeros(shape=(0,6,6), dtype=DTYPE)
         self.objects = dict()
+        self.shapes = []
         self.constraints = []
         self.sensors = []
+
+        self.planes = dict()
+        self.planeNormals = np.zeros(shape=(0,3), dtype=DTYPE)
+        self.planePoints = np.zeros(shape=(0,3), dtype=DTYPE)
 
         self.P = None
         self.w = None
@@ -125,8 +131,21 @@ class Rigid3DBodyEngine(object):
         self.projected_gauss_seidel_iterations = None
         self.rotation_reorthogonalization_iterations = None
         self.warm_start = None
-        self.cube_ids = []
-        self.sphere_ids = []
+
+        self.face_normal = np.zeros(shape=(0,3), dtype=DTYPE)
+        self.face_point = np.zeros(shape=(0,3), dtype=DTYPE)
+        self.face_parent = []
+        self.face_texture_x = np.zeros(shape=(0,3), dtype=DTYPE)
+        self.face_texture_y = np.zeros(shape=(0,3), dtype=DTYPE)
+        self.face_texture_limited = np.zeros(shape=(0,), dtype='int32')
+        self.face_texture_index = np.zeros(shape=(0,), dtype='int32')
+
+        self.sphere_radius = np.zeros(shape=(0,), dtype=DTYPE)
+        self.sphere_parent = np.zeros(shape=(0,), dtype='int32')
+        self.sphere_texture_index = np.zeros(shape=(0,), dtype='int32')
+
+        self.textures = None
+        self.texture_files = []
 
 
     def set_integration_parameters(self,
@@ -142,6 +161,7 @@ class Rigid3DBodyEngine(object):
         if universe:
             self.add_universe()
 
+    # TODO: remove universe, replace with None in joints
     def add_universe(self, **parameters):
         self.objects["universe"] = self.positionVectors.shape[0]
         self.radii = np.append(self.radii, -1)
@@ -155,7 +175,7 @@ class Rigid3DBodyEngine(object):
 
     def addCube(self, reference, dimensions, mass_density, position, rotation, velocity, **kwargs):
         self.objects[reference] = self.positionVectors.shape[0]
-        self.cube_ids += [self.positionVectors.shape[0]]
+        self.shapes += ["cube"]
         self.radii = np.append(self.radii, -1)
         self.dimensions = np.append(self.dimensions, [dimensions], axis=0)
 
@@ -173,7 +193,7 @@ class Rigid3DBodyEngine(object):
 
     def addSphere(self, reference, radius, mass_density, position, rotation, velocity, **kwargs):
         self.objects[reference] = self.positionVectors.shape[0]
-        self.sphere_ids += [self.positionVectors.shape[0]]
+        self.shapes += ["sphere"]
         self.radii = np.append(self.radii, radius)
         self.dimensions = np.append(self.dimensions, [[-1,-1,-1]], axis=0)
         self.positionVectors = np.append(self.positionVectors, np.array([position], dtype=DTYPE), axis=0)
@@ -181,6 +201,302 @@ class Rigid3DBodyEngine(object):
         self.velocityVectors = np.append(self.velocityVectors, np.array([velocity], dtype=DTYPE), axis=0)
         mass = mass_density*4./3.*np.pi*radius**3
         self.massMatrices = np.append(self.massMatrices, mass*np.diag([1,1,1,0.4,0.4,0.4])[None,:,:], axis=0)
+
+
+    def addPlane(self, reference, normal, point, limited=False, **kwargs):
+        self.objects[reference] = None
+        self.planes[reference] = reference
+        self.planeNormals = np.append(self.planeNormals, np.array([normal]), axis=0)
+        self.planePoints = np.append(self.planePoints, np.array([point]), axis=0)
+
+        self.addFace(crash)
+
+
+
+
+    def addFace(self, normal, point, parent, face_x, face_y, limited, texture, **kwargs):
+        self.face_normal = np.append(self.face_normal, [normal], axis=0)
+        self.face_point = np.append(self.face_point, [point], axis=0)
+        self.face_parent = self.face_parent.append(parent)
+        self.face_texture_x = np.append(self.face_texture_x, [face_x], axis=0)
+        self.face_texture_y = np.append(self.face_texture_y, [face_y], axis=0)
+        self.face_texture_limited = np.append(self.face_texture_limited, 1 if limited else 0, axis=0)
+
+        texture_index = self.load_texture(texture)
+        self.face_texture_index = np.append(self.face_texture_index, [texture_index], axis=0)
+
+
+    def load_texture(self, filename):
+        if filename in self.texture_files:
+            return self.texture_files.index(filename)
+        tex = scipy.ndimage.imread(filename)
+        #print texture.shape
+        assert tex.ndim==3 and tex.shape[2]==3, "Make sure the texture is in RGB-space"
+        if self.textures is None:
+            self.textures = tex[None,:,:,:]
+        else:
+            self.textures = np.append(self.textures, [tex], axis=0)
+        return self.textures.shape[0]-1
+
+
+    def compileCamera(self):
+        self.cameras = dict()
+
+        self.colors = np.zeros(shape=(0,3), dtype=DTYPE)
+
+
+        self.colors = np.append(self.colors,
+                      np.array([[0, 1, 0]] * 6),
+                      axis=0)
+
+        for object in self.objects:
+
+
+            self.colors = np.append(self.colors,
+                      np.array([[1, 0, 0]] * len(self.sphere_ids)),
+                      axis=0)
+
+
+        for camera_name in ["cam1"]:
+            camera = dict()
+
+            px_hor = 1024
+            px_ver = 512
+            cam_width = 1.0
+            cam_height = 1.0
+            focal_distance = 0.5
+            parent = "camera"
+            background_color = np.array([0.0, 191.0/255.0, 1.0])
+
+            camera_position = np.array([0.5,0,0]) # in model coordinates
+
+            dcw = cam_width/(px_hor*2)
+            dch = cam_width/(px_ver*2)
+            ray_dir = np.array(np.meshgrid([focal_distance],
+                                           np.linspace(-0.5*cam_width+dcw, 0.5*cam_width-dcw, px_hor),
+                                           np.linspace(-0.5*cam_height+dch,0.5*cam_height-dch,px_ver),
+                                           ))[:,:,0,:].T
+
+            ray_dir = ray_dir / np.linalg.norm(ray_dir, axis=2, keepdims=True)   #normalize
+            if focal_distance<0: #support negative focal distances
+                ray_dir = -ray_dir
+
+            ray_offset = np.array(np.meshgrid([0],
+                                           np.linspace(-0.5*cam_width+dcw, 0.5*cam_width-dcw, px_hor),
+                                           np.linspace(-0.5*cam_height+dch,0.5*cam_height-dch,px_ver),
+                                           ))[:,:,0,:].T
+            ray_offset += camera_position[None,None,:]
+
+            camera["ray_offset"] = ray_offset
+            camera["ray_direction"] = ray_dir
+            camera["parent_id"] = self.objects[parent]
+            camera["background_color"] = background_color
+            self.cameras[camera_name] = camera
+
+
+
+
+    def getCameraImage(self, camera_name):
+
+        # TODO: flatten the for loop
+        # TODO: move a lot of the initialization outside of this function
+        # TODO: edit the json-format to support all of this
+        # TODO: support multiple cameras
+        # TODO: support the visible-flag
+        # TODO: support the physics-flag
+        # TODO: support initial camera rotation relative to model
+
+        # get camera image
+        # do ray-sphere and ray-plane intersections
+        # find cube by using 6 planes, throwing away the irrelevant intersections
+
+        # step 1: generate list of rays (1 per pixel)
+        # focal_point (3,)
+        # ray_dir (px_hor, px_ver, 3)
+        # ray_offset (px_hor, px_ver, 3)
+
+        camera = self.cameras[camera_name]
+
+
+        ray_dir = camera["ray_direction"]
+        ray_offset = camera["ray_offset"]
+        pid = camera["parent_id"]
+
+        px_ver = ray_dir.shape[0]
+        px_hor = ray_dir.shape[1]
+        # rotate and move the camera according to its parent
+        ray_dir = batched_convert_model_to_world_coordinate_no_bias(ray_dir, self.rot_matrices[pid,:,:])
+        ray_offset = batched_convert_model_to_world_coordinate(ray_offset, self.rot_matrices[pid,:,:], self.positionVectors[pid,:])
+
+        # step 2a: intersect the rays with all the spheres
+        s_relevant = np.ones(shape=(px_ver, px_hor, len(self.sphere_ids)))
+
+
+        L = self.positionVectors[None,None,self.sphere_ids,:] - ray_offset[:,:,None,:]
+        tca = np.sum(L * ray_dir[:,:,None,:],axis=3)  # L.dotProduct(ray_dir);
+        #// if (tca < 0) return false;
+        s_relevant *= (tca > 0)
+        d2 = np.sum(L * L, axis=3) - tca*tca
+        r2 = self.radii[None,None,self.sphere_ids]**2
+        #if (d2 > radius2) return false;
+
+        s_relevant *= (d2 <= r2)
+
+        thc = np.sqrt(s_relevant * (r2 - d2))
+        s_t0 = tca - thc
+        Phit = ray_offset[:,:,None,:] + s_t0[:,:,:,None]*ray_dir[:,:,None,:]
+        N = (Phit-self.positionVectors[None,None,self.sphere_ids,:]) / self.radii[None,None,self.sphere_ids,None]
+
+        N = batched_convert_world_to_model_coordinate_no_bias(N, self.rot_matrices[self.sphere_ids,:,:])
+
+        s_tex_x = -1+2*np.arccos(N[:,:,:,1]*s_relevant)/np.pi
+        s_tex_y = np.arctan2(N[:,:,:,2], N[:,:,:,0])/np.pi
+        # tex_y en tex_x in [-1,1]
+
+
+        # step 2b: intersect the rays with the cubes
+        for cube_id in self.cube_ids:
+            nn =  np.array([[1, 0, 0],
+                            [0, 1, 0],
+                            [0, 0, 1],
+                            [-1, 0, 0],
+                            [0, -1, 0],
+                            [0, 0, -1]])
+
+            nn = batched_convert_model_to_world_coordinate_no_bias(nn, self.rot_matrices[cube_id,:,:])
+
+            n = np.append(n,
+                          nn,
+                          axis=0)
+            h, w, z = self.dimensions[cube_id]
+            h, w, z = h/2., w/2., z/2.
+            np0 = np.array([[h, 0, 0],
+                             [0, w, 0],
+                             [0, 0, z],
+                             [-h, 0, 0],
+                             [0, -w, 0],
+                             [0, 0, -z]])
+
+            np0 = batched_convert_model_to_world_coordinate(np0, self.rot_matrices[cube_id,:,:], self.positionVectors[cube_id,:])
+
+            p0 = np.append(p0,
+                           np0,
+                           axis=0)
+
+            h, w, z = 1./h, 1./w, 1./z
+
+            nx0 = np.array( [[0, w, 0],
+                             [0, 0, z],
+                             [h, 0, 0],
+                             [0,-w, 0],
+                             [0, 0,-z],
+                             [-h, 0,0]])
+            ny0 = np.array( [[0, 0, z],
+                             [h, 0, 0],
+                             [0, w, 0],
+                             [0, 0,-z],
+                             [-h,0, 0],
+                             [0,-w, 0]])
+
+            nx0 = batched_convert_model_to_world_coordinate_no_bias(nx0, self.rot_matrices[cube_id,:,:])
+            ny0 = batched_convert_model_to_world_coordinate_no_bias(ny0, self.rot_matrices[cube_id,:,:])
+
+            x0 = np.append(x0,
+                           nx0,
+                           axis=0)
+
+            y0 = np.append(y0,
+                           ny0,
+                           axis=0)
+            p_tex_t = np.append(p_tex_t, [2]*6)
+            p_cube = np.append(p_cube, [1]*6)
+
+
+
+
+
+        #   build a list with n's, p0's, x0's, y0's
+
+
+        # step 2c: intersect the rays with the planes
+        n =  np.append(n, np.array([[0,0,1]]),axis=0)
+        p0 = np.append(p0,np.array([[0,0,0]]),axis=0)
+
+        x0 = np.append(x0,np.array([[1,0,0]]),axis=0)
+        y0 = np.append(y0,np.array([[0,1,0]]),axis=0)
+
+        p_relevant = np.ones(shape=(px_ver, px_hor, n.shape[0]))
+
+        print n.shape
+        denom = np.sum(n[None,None,:,:] * ray_dir[:,:,None,:],axis=3)
+        p0l0 = p0[None,None,:,:] - ray_offset[:,:,None,:]
+        p_t0 = np.sum(p0l0 * n[None,None,:,:], axis=3) / (denom + 1e-9)
+        p_relevant *= (p_t0 > 0)  #only planes in front of us
+
+        Phit = ray_offset[:,:,None,:] + p_t0[:,:,:,None]*ray_dir[:,:,None,:]
+
+        p_tex_x = np.sum(x0[None,None,:,:] * (Phit-p0), axis=3)
+        p_tex_y = np.sum(y0[None,None,:,:] * (Phit-p0), axis=3)
+        p_tex_t = np.append(p_tex_t,1)
+        p_cube = np.append(p_cube, 0)
+
+        # the following only on cubes
+        p_relevant *= 1 - (1-(-1 < p_tex_x) * (p_tex_x < 1) * (-1 < p_tex_y) * (p_tex_y < 1)) * p_cube
+
+        p_tex_x = ((p_tex_x+1)%2.)-1
+        p_tex_y = ((p_tex_y+1)%2.)-1
+
+
+        print np.min(p_tex_x), np.max(p_tex_x)
+        print np.min(p_tex_y), np.max(p_tex_y)
+
+        # step 3: find the closest point of intersection (z-culling) for all objects
+        relevant = np.concatenate([s_relevant, p_relevant],axis=2)
+        tex_x = np.concatenate([s_tex_x, p_tex_x],axis=2)
+        tex_y = np.concatenate([s_tex_y, p_tex_y],axis=2)
+        tex_t = np.concatenate([s_tex_t, p_tex_t],axis=0)
+        print s_tex_t.shape, p_tex_t.shape
+        print "s:", tex_x.shape, tex_y.shape, tex_t.shape
+
+        t = np.concatenate([s_t0, p_t0], axis=2)
+
+        mint = np.min(t*relevant + (1-relevant)*1e9, axis=-1)
+        relevant *= (t==mint[:,:,None])  #only use the closest object
+        print "rel?", np.sum(relevant[:,:,-1])
+
+
+        # step 4: go into the object's texture and get the corresponding value (see image transform)
+        tex_x = tex_x*63 + 63
+        tex_y = tex_y*63 + 63
+        x_idx = np.floor(tex_x).astype('int32')
+        print x_idx.shape
+        x_wgh = tex_x - x_idx
+        y_idx = np.floor(tex_y).astype('int32')
+        y_wgh = tex_y - y_idx
+
+        #print np.min(tex_x), np.max(tex_x)
+        #print np.min(x_idx), np.max(x_idx)
+        #print np.min(y_idx), np.max(y_idx)
+
+
+        sample= (   x_wgh  *    y_wgh )[:,:,:,None] * textures[tex_t[None,None,:],x_idx+1,y_idx+1,:] + \
+                (   x_wgh  * (1-y_wgh))[:,:,:,None] * textures[tex_t[None,None,:],x_idx+1,y_idx  ,:] + \
+                ((1-x_wgh) *    y_wgh )[:,:,:,None] * textures[tex_t[None,None,:],x_idx  ,y_idx+1,:] + \
+                ((1-x_wgh) * (1-y_wgh))[:,:,:,None] * textures[tex_t[None,None,:],x_idx  ,y_idx  ,:]
+
+
+        #print sample.shape
+        # multiply with color of object
+        sample = self.colors[None,None,:,:] * sample
+
+        # step 5: return this value
+        background_color = camera["background_color"]
+        background = background_color[None,None,:] * (1-np.max(relevant[:,:,:],axis=2))[:,:,None]
+        image = np.sum(sample * relevant[:,:,:,None],axis=2) + background
+        #print image.shape
+        return image
+
+
 
     def addConstraint(self, constraint, references, parameters):
         references = [self.objects[reference] for reference in references]
@@ -739,7 +1055,6 @@ class Rigid3DBodyEngine(object):
             m_c = 1./(1./m_eff + CFM)
             b = ERP/dt * b_error + b_res
 
-
             lamb = - m_c[:] * (np.sum(J[:,:,:]*v[:,:,:], axis=(1,2)) + CFM * self.P[:] + b)
 
             self.P += lamb
@@ -787,242 +1102,7 @@ class Rigid3DBodyEngine(object):
     def getObjectIndex(self, reference):
         return self.objects[reference]
 
-    def getCameraImage(self):
 
-        # TODO: flatten the for loop
-        # TODO: move a lot of the initialization outside of this function
-        # TODO: edit the json-format to support all of this
-        # TODO: support multiple cameras
-        # TODO: support the visible-flag
-        # TODO: support initial camera rotation relative to model
-
-        # get camera image
-        # do ray-sphere and ray-plane intersections
-        # find cube by using 6 planes, throwing away the irrelevant intersections
-
-        # step 1: generate list of rays (1 per pixel)
-        # focal_point (3,)
-        # ray_dir (px_hor, px_ver, 3)
-        # ray_offset (px_hor, px_ver, 3)
-        px_hor = 1024
-        px_ver = 1024
-        cam_width = 1.0
-        cam_height = 1.0
-        focal_distance = 0.5
-        parent = "camera"
-        pid = self.objects[parent]
-        background_color = np.array([0.0, 191.0/255.0, 1.0])
-
-
-        colors = np.zeros(shape=(0,3), dtype=DTYPE)
-
-        camera_position = np.array([0.5,0,0]) # in model coordinates
-
-        dcw = cam_width/(px_hor*2)
-        dch = cam_width/(px_ver*2)
-        ray_dir = np.array(np.meshgrid([focal_distance],
-                                       np.linspace(-0.5*cam_width+dcw, 0.5*cam_width-dcw, px_hor),
-                                       np.linspace(-0.5*cam_height+dch,0.5*cam_height-dch,px_ver),
-                                       ))[:,:,0,:].T
-
-        ray_dir = ray_dir / np.linalg.norm(ray_dir, axis=2, keepdims=True)   #normalize
-
-        ray_offset = np.array(np.meshgrid([0],
-                                       np.linspace(-0.5*cam_width+dcw, 0.5*cam_width-dcw, px_hor),
-                                       np.linspace(-0.5*cam_height+dch,0.5*cam_height-dch,px_ver),
-                                       ))[:,:,0,:].T
-
-
-        # rotate and move the camera according to its parent
-        ray_dir = batched_convert_model_to_world_coordinate_no_bias(ray_dir, self.rot_matrices[pid,:,:])
-        ray_offset = batched_convert_model_to_world_coordinate(ray_offset + camera_position[None,None,:], self.rot_matrices[pid,:,:], self.positionVectors[pid,:])
-
-        # step 2a: intersect the rays with all the spheres
-        s_relevant = np.ones(shape=(px_ver, px_hor, len(self.sphere_ids)))
-        colors = np.append(colors,
-                      np.array([[1, 0, 0]] * len(self.sphere_ids)),
-                      axis=0)
-
-        L = self.positionVectors[None,None,self.sphere_ids,:] - ray_offset[:,:,None,:]
-        tca = np.sum(L * ray_dir[:,:,None,:],axis=3)  # L.dotProduct(ray_dir);
-        #// if (tca < 0) return false;
-        s_relevant *= (tca > 0)
-        d2 = np.sum(L * L, axis=3) - tca*tca
-        r2 = self.radii[None,None,self.sphere_ids]**2
-        #if (d2 > radius2) return false;
-
-        s_relevant *= (d2 <= r2)
-
-        thc = np.sqrt(s_relevant * (r2 - d2))
-        s_t0 = tca - thc
-        Phit = ray_offset[:,:,None,:] + s_t0[:,:,:,None]*ray_dir[:,:,None,:]
-        N = (Phit-self.positionVectors[None,None,self.sphere_ids,:]) / self.radii[None,None,self.sphere_ids,None]
-
-        N = batched_convert_world_to_model_coordinate_no_bias(N, self.rot_matrices[self.sphere_ids,:,:])
-
-        s_tex_x = -1+2*np.arccos(N[:,:,:,1]*s_relevant)/np.pi
-        s_tex_y = np.arctan2(N[:,:,:,2], N[:,:,:,0])/np.pi
-        s_tex_t = np.array([0]*len(self.sphere_ids))
-        # tex_y en tex_x in [-1,1]
-
-        n = np.zeros(shape=(0,3), dtype=DTYPE)
-        p0 = np.zeros(shape=(0,3), dtype=DTYPE)
-        x0 = np.zeros(shape=(0,3), dtype=DTYPE)
-        y0 = np.zeros(shape=(0,3), dtype=DTYPE)
-        p_tex_t = np.zeros(shape=(0,), dtype='int32')
-        p_cube = np.zeros(shape=(0,), dtype='int32')
-
-        # step 2b: intersect the rays with the cubes
-        for cube_id in self.cube_ids:
-            nn =  np.array([[1, 0, 0],
-                            [0, 1, 0],
-                            [0, 0, 1],
-                            [-1, 0, 0],
-                            [0, -1, 0],
-                            [0, 0, -1]])
-
-            nn = batched_convert_model_to_world_coordinate_no_bias(nn, self.rot_matrices[cube_id,:,:])
-
-            n = np.append(n,
-                          nn,
-                          axis=0)
-            h, w, z = self.dimensions[cube_id]
-            h, w, z = h/2., w/2., z/2.
-            np0 = np.array([[h, 0, 0],
-                             [0, w, 0],
-                             [0, 0, z],
-                             [-h, 0, 0],
-                             [0, -w, 0],
-                             [0, 0, -z]])
-
-            np0 = batched_convert_model_to_world_coordinate(np0, self.rot_matrices[cube_id,:,:], self.positionVectors[cube_id,:])
-
-            p0 = np.append(p0,
-                           np0,
-                           axis=0)
-
-            h, w, z = 1./h, 1./w, 1./z
-
-            nx0 = np.array( [[0, w, 0],
-                             [0, 0, z],
-                             [h, 0, 0],
-                             [0,-w, 0],
-                             [0, 0,-z],
-                             [-h, 0,0]])
-            ny0 = np.array( [[0, 0, z],
-                             [h, 0, 0],
-                             [0, w, 0],
-                             [0, 0,-z],
-                             [-h,0, 0],
-                             [0,-w, 0]])
-
-            nx0 = batched_convert_model_to_world_coordinate_no_bias(nx0, self.rot_matrices[cube_id,:,:])
-            ny0 = batched_convert_model_to_world_coordinate_no_bias(ny0, self.rot_matrices[cube_id,:,:])
-
-            x0 = np.append(x0,
-                           nx0,
-                           axis=0)
-
-            y0 = np.append(y0,
-                           ny0,
-                           axis=0)
-            p_tex_t = np.append(p_tex_t, [2]*6)
-            p_cube = np.append(p_cube, [1]*6)
-
-
-            colors = np.append(colors,
-                      np.array([[0, 1, 0]] * 6),
-                      axis=0)
-
-
-        #   build a list with n's, p0's, x0's, y0's
-
-
-        # step 2c: intersect the rays with the planes
-        n =  np.append(n, np.array([[0,0,1]]),axis=0)
-        p0 = np.append(p0,np.array([[0,0,0]]),axis=0)
-
-        x0 = np.append(x0,np.array([[1,0,0]]),axis=0)
-        y0 = np.append(y0,np.array([[0,1,0]]),axis=0)
-        colors = np.append(colors,
-                      np.array([[1, 1, 1]]),
-                      axis=0)
-
-        p_relevant = np.ones(shape=(px_ver, px_hor, n.shape[0]))
-
-        print n.shape
-        denom = np.sum(n[None,None,:,:] * ray_dir[:,:,None,:],axis=3)
-        p0l0 = p0[None,None,:,:] - ray_offset[:,:,None,:]
-        p_t0 = np.sum(p0l0 * n[None,None,:,:], axis=3) / (denom + 1e-9)
-        p_relevant *= (p_t0 > 0)  #only planes in front of us
-
-        Phit = ray_offset[:,:,None,:] + p_t0[:,:,:,None]*ray_dir[:,:,None,:]
-
-        p_tex_x = np.sum(x0[None,None,:,:] * (Phit-p0), axis=3)
-        p_tex_y = np.sum(y0[None,None,:,:] * (Phit-p0), axis=3)
-        p_tex_t = np.append(p_tex_t,1)
-        p_cube = np.append(p_cube, 0)
-
-        # the following only on cubes
-        p_relevant *= 1 - (1-(-1 < p_tex_x) * (p_tex_x < 1) * (-1 < p_tex_y) * (p_tex_y < 1)) * p_cube
-
-        p_tex_x = ((p_tex_x+1)%2.)-1
-        p_tex_y = ((p_tex_y+1)%2.)-1
-
-
-        print np.min(p_tex_x), np.max(p_tex_x)
-        print np.min(p_tex_y), np.max(p_tex_y)
-
-        # step 3: find the closest point of intersection (z-culling) for all objects
-        relevant = np.concatenate([s_relevant, p_relevant],axis=2)
-        tex_x = np.concatenate([s_tex_x, p_tex_x],axis=2)
-        tex_y = np.concatenate([s_tex_y, p_tex_y],axis=2)
-        tex_t = np.concatenate([s_tex_t, p_tex_t],axis=0)
-        print s_tex_t.shape, p_tex_t.shape
-        print "s:", tex_x.shape, tex_y.shape, tex_t.shape
-        t = np.concatenate([s_t0, p_t0], axis=2)
-
-        mint = np.min(t*relevant + (1-relevant)*1e9, axis=-1)
-        relevant *= (t==mint[:,:,None])  #only use the closest object
-        print "rel?", np.sum(relevant[:,:,-1])
-
-
-        # step 4: go into the object's texture and get the corresponding value (see image transform)
-        texture1 = scipy.ndimage.imread("textures/soccer_128.png")
-        texture2 = scipy.ndimage.imread("textures/grass_128.png")
-        texture3 = scipy.ndimage.imread("textures/square_128.png")
-        #print texture.shape
-        print texture1.shape, texture2.shape
-        textures = np.stack([texture1, texture2, texture3]) / 255.0
-        print textures.shape
-        tex_x = tex_x*63 + 63
-        tex_y = tex_y*63 + 63
-        x_idx = np.floor(tex_x).astype('int32')
-        print x_idx.shape
-        x_wgh = tex_x - x_idx
-        y_idx = np.floor(tex_y).astype('int32')
-        y_wgh = tex_y - y_idx
-
-        #print np.min(tex_x), np.max(tex_x)
-        #print np.min(x_idx), np.max(x_idx)
-        #print np.min(y_idx), np.max(y_idx)
-
-
-        sample= (   x_wgh  *    y_wgh )[:,:,:,None] * textures[tex_t[None,None,:],x_idx+1,y_idx+1,:] + \
-                (   x_wgh  * (1-y_wgh))[:,:,:,None] * textures[tex_t[None,None,:],x_idx+1,y_idx  ,:] + \
-                ((1-x_wgh) *    y_wgh )[:,:,:,None] * textures[tex_t[None,None,:],x_idx  ,y_idx+1,:] + \
-                ((1-x_wgh) * (1-y_wgh))[:,:,:,None] * textures[tex_t[None,None,:],x_idx  ,y_idx  ,:]
-
-
-        #print sample.shape
-        # multiply with color of object
-        sample = colors[None,None,:,:] * sample
-
-        # step 5: return this value
-        background = background_color[None,None,:] * (1-np.max(relevant[:,:,:],axis=2))[:,:,None]
-        image = np.sum(sample * relevant[:,:,:,None],axis=2) + background
-        #print image.shape
-        return image
 
 
     def getPosition(self, reference):

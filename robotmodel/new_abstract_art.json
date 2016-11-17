@@ -1,0 +1,172 @@
+{
+  "name": "new abstract art",
+  "interface": 0.1,
+  "integration_parameters": {
+    "time_step": 0.01,
+    "projected_gauss_seidel_iterations": 1,
+    "rotation_reorthogonalization_iterations": 1,
+    "warm_start": 0.85
+  },
+  "default_camera_parameters":{
+    "background_color": [0, 0.7490196, 0]
+  },
+  "default_constraint_parameters": {
+    "default": {
+      "f": 1.0,
+      "zeta": 0.0
+    },
+    "ground": {
+      "mu": 1.0,
+      "torsional_friction": false,
+      "delta": 0.0,
+      "alpha": 0.5
+    }
+  },
+  "default_model_parameters": {
+    "default": {
+      "velocity": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "velocity2": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "rotation": [
+        1,
+        0,
+        0,
+        0
+      ],
+      "mass_density": 1000.0
+    },
+    "sphere": {
+      "radius": 0.5
+    },
+    "cube": {
+      "dimensions": [
+        1,
+        1,
+        1
+      ]
+    }
+  },
+  "model": {
+    "ground": [
+      {
+        "shape": "plane",
+        "position": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "normal": [
+          0,
+          0,
+          1
+        ]
+      }
+    ],
+    "camera": [
+      {
+        "shape": "sphere",
+        "position": [
+          -0.5,
+          0.0,
+          0.5
+        ],
+        "radius": 0.5,
+        "rotation": [
+          1,
+          0,
+          0,
+          0
+        ]
+      }
+    ],
+    "ball1": [
+      {
+        "shape": "sphere",
+        "position": [
+          1.5,
+          0.0,
+          1.5
+        ],
+        "radius": 0.5,
+        "rotation": [
+          0.5,
+          0.5,
+          0.5,
+          -0.5
+        ]
+      }
+    ],
+    "ball2": [
+      {
+        "shape": "sphere",
+        "position": [
+          1.5,
+          1.0,
+          2.5
+        ],
+        "radius": 1.0,
+        "rotation": [
+          0.5,
+          -0.5,
+          0.5,
+          0.5
+        ]
+      }
+    ],
+    "spine": [
+      {
+        "shape": "cube",
+        "position": [
+          1.5,
+          -0.75,
+          0.5
+        ],
+        "dimensions": [
+          1.2,
+          0.6,
+          0.4
+        ],
+        "color": [
+          0,
+          0.8,
+          0.2
+        ],
+        "rotation": [
+          0.65094455,
+          0.65094455,
+          0,
+          0.39056673
+        ],
+        "mass_density": 1000.0
+      }
+    ]
+  },
+  "joints": {
+    "floor1": {
+      "type": "ground",
+      "object1": "camera"
+    },
+    "floor2": {
+      "type": "ground",
+      "object1": "ball1"
+    },
+    "floor3": {
+      "type": "ground",
+      "object1": "ball2"
+    }
+  },
+  "sensors": []
+}
