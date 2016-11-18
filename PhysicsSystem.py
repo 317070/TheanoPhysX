@@ -173,7 +173,19 @@ class Rigid3DBodyEngine(object):
         self.addConstraint("universe", ["universe", "universe"], parameters={"f":1, "zeta":0.01})
 
 
-    def addCube(self, reference, dimensions, mass_density, position, rotation, velocity, **kwargs):
+    def addCube(self,
+                reference,
+                dimensions=[1,1,1],
+                mass_density=1000.0,
+                position=[0,0,0],
+                rotation=[1,0,0,0],
+                velocity=[0,0,0,0,0,0],
+                visible=True,
+                default_textures={
+                    "texture": None,
+                                 },
+                faces = {},
+                **kwargs):
         self.objects[reference] = self.positionVectors.shape[0]
         self.shapes += ["cube"]
         self.radii = np.append(self.radii, -1)
@@ -190,8 +202,73 @@ class Rigid3DBodyEngine(object):
 
         self.massMatrices = np.append(self.massMatrices, mass*np.diag([1,1,1,I1,I2,I3])[None,:,:], axis=0)
 
+        if visible:
+            for i,tag in enumerate(["right", "left", "front", "back", "top", "bottom"]):
+                dt = dict(default_textures)  # take a copy, don't mute original
+                if tag in faces:
+                    face = faces[tag]
+                    if face is None:
+                        continue
+                    dt.update(face)
 
-    def addSphere(self, reference, radius, mass_density, position, rotation, velocity, **kwargs):
+                texture_file = dt["texture"]
+                texture_index = self.load_texture(texture_file)
+                self.face_texture_index = np.append(self.face_texture_limited, [texture_index], axis=0)
+                self.face_parent.append(self.objects[reference])
+                self.face_texture_limited = np.append(self.face_texture_limited, [1], axis=0)
+
+                nn = [[1, 0, 0],
+                     [-1, 0, 0],
+                      [0, 1, 0],
+                      [0,-1, 0],
+                      [0, 0, 1],
+                      [0, 0, -1]][i]
+                self.face_normal = np.append(self.face_normal, [nn], axis=0)
+
+                h, w, z = dimensions
+                h, w, z = h/2., w/2., z/2.
+                np0 = [[h, 0, 0],
+                       [-h, 0, 0],
+                       [0, w, 0],
+                       [0, -w, 0],
+                       [0, 0, z],
+                       [0, 0, -z]][i]
+                self.face_point = np.append(self.face_point, [np0], axis=0)
+
+                nx0 = [[0, w, 0],
+                     [0,-w, 0],
+                     [0, 0, z],
+                     [0, 0,-z],
+                     [h, 0, 0],
+                     [-h, 0,0]][i]
+                ny0 = [[0, 0, z],
+                     [0, 0,-z],
+                     [h, 0, 0],
+                     [-h,0, 0],
+                     [0, w, 0],
+                     [0,-w, 0]][i]
+                self.face_texture_x = np.append(self.face_texture_x, [nx0], axis=0)
+                self.face_texture_y = np.append(self.face_texture_y, [ny0], axis=0)
+
+
+
+
+
+
+
+
+
+
+    def addSphere(self,
+                  reference,
+                  radius=1.0,
+                  mass_density=1000.0,
+                  position=[0,0,0],
+                  rotation=[1,0,0,0],
+                  velocity=[0,0,0,0,0,0],
+                  visible=True,
+                  texture=None,
+                  **kwargs):
         self.objects[reference] = self.positionVectors.shape[0]
         self.shapes += ["sphere"]
         self.radii = np.append(self.radii, radius)
@@ -202,22 +279,44 @@ class Rigid3DBodyEngine(object):
         mass = mass_density*4./3.*np.pi*radius**3
         self.massMatrices = np.append(self.massMatrices, mass*np.diag([1,1,1,0.4,0.4,0.4])[None,:,:], axis=0)
 
+        if visible:
+            self.sphere_radius = np.append(self.sphere_radius, [radius], axis=0)
+            self.sphere_parent = np.append(self.sphere_parent, self.objects[reference], axis=0)
+            texture_index = self.load_texture(texture)
+            self.sphere_texture_index = np.append(self.sphere_texture_index, [texture_index], axis=0)
 
-    def addPlane(self, reference, normal, point, limited=False, **kwargs):
+
+    def addPlane(self, reference, normal, point, visible=True, parent=None, **kwargs):
         self.objects[reference] = None
         self.planes[reference] = reference
         self.planeNormals = np.append(self.planeNormals, np.array([normal]), axis=0)
         self.planePoints = np.append(self.planePoints, np.array([point]), axis=0)
 
-        self.addFace(crash)
+        if visible:
+            self.addFace(normal=normal, point=point, parent=parent, **kwargs)
 
 
+    def addFace(self,
+                normal=np.array([0,0,1]),
+                point=np.array([0,0,0]),
+                parent=None,
+                face_x=None,
+                face_y=None,
+                limited=False,
+                texture=None,
+                **kwargs):
 
+        if face_x is None or face_y is None:
+            if (normal == np.array([1,0,0])).all():
+                face_x = np.array([0,1,0], dtype=DTYPE)
+                face_y = np.array([0,0,1], dtype=DTYPE)
+            else:
+                face_x = np.array([0,-normal[2],normal[1]])
+                face_y = np.cross(normal, face_x)
 
-    def addFace(self, normal, point, parent, face_x, face_y, limited, texture, **kwargs):
         self.face_normal = np.append(self.face_normal, [normal], axis=0)
         self.face_point = np.append(self.face_point, [point], axis=0)
-        self.face_parent = self.face_parent.append(parent)
+        self.face_parent = self.face_parent.append(self.objects[parent])
         self.face_texture_x = np.append(self.face_texture_x, [face_x], axis=0)
         self.face_texture_y = np.append(self.face_texture_y, [face_y], axis=0)
         self.face_texture_limited = np.append(self.face_texture_limited, 1 if limited else 0, axis=0)
@@ -229,13 +328,24 @@ class Rigid3DBodyEngine(object):
     def load_texture(self, filename):
         if filename in self.texture_files:
             return self.texture_files.index(filename)
-        tex = scipy.ndimage.imread(filename)
-        #print texture.shape
-        assert tex.ndim==3 and tex.shape[2]==3, "Make sure the texture is in RGB-space"
-        if self.textures is None:
-            self.textures = tex[None,:,:,:]
+        if filename is None:
+            if self.textures is None:
+                self.textures = np.append(self.textures, [np.zeros(shape=(128,128,3))], axis=0)
+            else:
+                self.textures = np.append(self.textures, [np.zeros(shape=self.textures.shape[1:])], axis=0)
         else:
-            self.textures = np.append(self.textures, [tex], axis=0)
+            tex = scipy.ndimage.imread(filename)
+            assert tex.ndim==3 and tex.shape[2]==3, "Make sure the texture is in RGB-space"
+            if self.textures is None:
+                self.textures = tex[None,:,:,:]
+            elif np.max(self.textures)==0 and self.textures.shape[0]==1:
+                # we already added zeros and nothing else, reshape the texture to fit this textures shape
+                zeros = np.zeros(shape=tex.shape)
+                self.textures = np.append([zeros], [tex], axis=0)
+            else:
+                self.textures = np.append(self.textures, [tex], axis=0)
+
+        self.texture_files.append(filename)
         return self.textures.shape[0]-1
 
 
