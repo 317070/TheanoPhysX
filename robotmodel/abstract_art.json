@@ -45,14 +45,31 @@
       "mass_density": 1000.0
     },
     "sphere": {
-      "radius": 0.5
+      "radius": 0.5,
+      "texture": "textures/soccer_128.png"
     },
     "cube": {
       "dimensions": [
         1,
         1,
         1
-      ]
+      ],
+      "default_textures":{
+        "texture":"textures/square_128.png",
+        "color": [0,1,0]
+      }
+    }
+  },
+  "default_camera_parameters": {
+
+  },
+  "cameras": {
+    "front_camera": {
+      "position": [0,0,0.5],
+      "parent": null,
+      "vertical_pixels": 1024,
+      "horizontal_pixels": 1024,
+      "focal_length":0.01
     }
   },
   "model": {

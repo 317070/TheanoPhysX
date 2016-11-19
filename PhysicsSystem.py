@@ -71,6 +71,8 @@ def batched_convert_model_to_world_coordinate(coor, rot_matrix, model_position):
         return batched_convert_model_to_world_coordinate_no_bias(coor, rot_matrix) + model_position[None,None,:]
     if A==2 and B==2:
         return batched_convert_model_to_world_coordinate_no_bias(coor, rot_matrix) + model_position[None,:]
+    if A==2 and B==3:
+        return batched_convert_model_to_world_coordinate_no_bias(coor, rot_matrix) + model_position[:,:]
 
     raise NotImplementedError()
     #return batched_convert_model_to_world_coordinate_no_bias(coor, rot_matrix) + model_position
@@ -83,6 +85,8 @@ def batched_convert_model_to_world_coordinate_no_bias(coor, rot_matrix):
         return np.sum(rot_matrix[None,None,:,:] * coor[:,:,:,None], axis=2)
     if A==2 and B==2:
         return np.sum(rot_matrix[None,:,:] * coor[:,:,None], axis=1)
+    if A==2 and B==3:
+        return np.sum(rot_matrix[:,:,:] * coor[:,:,None], axis=1)
     raise NotImplementedError()
     #return np.sum(rot_matrix[:,:] * coor[:,None], axis=0)
 
@@ -139,14 +143,17 @@ class Rigid3DBodyEngine(object):
         self.face_texture_y = np.zeros(shape=(0,3), dtype=DTYPE)
         self.face_texture_limited = np.zeros(shape=(0,), dtype='int32')
         self.face_texture_index = np.zeros(shape=(0,), dtype='int32')
+        self.face_colors = np.zeros(shape=(0,3), dtype=DTYPE)
 
         self.sphere_radius = np.zeros(shape=(0,), dtype=DTYPE)
         self.sphere_parent = np.zeros(shape=(0,), dtype='int32')
         self.sphere_texture_index = np.zeros(shape=(0,), dtype='int32')
+        self.sphere_colors = np.zeros(shape=(0,3), dtype=DTYPE)
 
         self.textures = None
         self.texture_files = []
 
+        self.cameras = dict()
 
     def set_integration_parameters(self,
                                    time_step=0.001,
@@ -183,6 +190,7 @@ class Rigid3DBodyEngine(object):
                 visible=True,
                 default_textures={
                     "texture": None,
+                    "color": [1,1,1]
                                  },
                 faces = {},
                 **kwargs):
@@ -211,19 +219,13 @@ class Rigid3DBodyEngine(object):
                         continue
                     dt.update(face)
 
-                texture_file = dt["texture"]
-                texture_index = self.load_texture(texture_file)
-                self.face_texture_index = np.append(self.face_texture_limited, [texture_index], axis=0)
-                self.face_parent.append(self.objects[reference])
-                self.face_texture_limited = np.append(self.face_texture_limited, [1], axis=0)
-
+                # This is all in model coordinates
                 nn = [[1, 0, 0],
                      [-1, 0, 0],
                       [0, 1, 0],
                       [0,-1, 0],
                       [0, 0, 1],
                       [0, 0, -1]][i]
-                self.face_normal = np.append(self.face_normal, [nn], axis=0)
 
                 h, w, z = dimensions
                 h, w, z = h/2., w/2., z/2.
@@ -233,8 +235,8 @@ class Rigid3DBodyEngine(object):
                        [0, -w, 0],
                        [0, 0, z],
                        [0, 0, -z]][i]
-                self.face_point = np.append(self.face_point, [np0], axis=0)
 
+                h, w, z = 1./h,1./w,1./z
                 nx0 = [[0, w, 0],
                      [0,-w, 0],
                      [0, 0, z],
@@ -247,16 +249,10 @@ class Rigid3DBodyEngine(object):
                      [-h,0, 0],
                      [0, w, 0],
                      [0,-w, 0]][i]
-                self.face_texture_x = np.append(self.face_texture_x, [nx0], axis=0)
-                self.face_texture_y = np.append(self.face_texture_y, [ny0], axis=0)
 
-
-
-
-
-
-
-
+                texture_file = dt["texture"]
+                color = dt["color"] if "color" in dt else [1,1,1]
+                self.addFace(normal=nn, point=np0, parent=reference, face_x=nx0, face_y=ny0, texture=texture_file, color=color, limited=True)
 
 
     def addSphere(self,
@@ -268,6 +264,7 @@ class Rigid3DBodyEngine(object):
                   velocity=[0,0,0,0,0,0],
                   visible=True,
                   texture=None,
+                  color=[1,1,1],
                   **kwargs):
         self.objects[reference] = self.positionVectors.shape[0]
         self.shapes += ["sphere"]
@@ -281,9 +278,10 @@ class Rigid3DBodyEngine(object):
 
         if visible:
             self.sphere_radius = np.append(self.sphere_radius, [radius], axis=0)
-            self.sphere_parent = np.append(self.sphere_parent, self.objects[reference], axis=0)
+            self.sphere_parent = np.append(self.sphere_parent, [self.objects[reference]], axis=0)
             texture_index = self.load_texture(texture)
             self.sphere_texture_index = np.append(self.sphere_texture_index, [texture_index], axis=0)
+            self.sphere_colors = np.append(self.sphere_colors, [color], axis=0)
 
 
     def addPlane(self, reference, normal, point, visible=True, parent=None, **kwargs):
@@ -304,6 +302,7 @@ class Rigid3DBodyEngine(object):
                 face_y=None,
                 limited=False,
                 texture=None,
+                color=[1,1,1],
                 **kwargs):
 
         if face_x is None or face_y is None:
@@ -316,29 +315,33 @@ class Rigid3DBodyEngine(object):
 
         self.face_normal = np.append(self.face_normal, [normal], axis=0)
         self.face_point = np.append(self.face_point, [point], axis=0)
-        self.face_parent = self.face_parent.append(self.objects[parent])
+        self.face_parent.append(self.objects[parent])
         self.face_texture_x = np.append(self.face_texture_x, [face_x], axis=0)
         self.face_texture_y = np.append(self.face_texture_y, [face_y], axis=0)
-        self.face_texture_limited = np.append(self.face_texture_limited, 1 if limited else 0, axis=0)
+        self.face_texture_limited = np.append(self.face_texture_limited, [1 if limited else 0], axis=0)
 
         texture_index = self.load_texture(texture)
         self.face_texture_index = np.append(self.face_texture_index, [texture_index], axis=0)
+        self.face_colors = np.append(self.face_colors, [color], axis=0)
 
 
     def load_texture(self, filename):
+
         if filename in self.texture_files:
             return self.texture_files.index(filename)
+
         if filename is None:
             if self.textures is None:
-                self.textures = np.append(self.textures, [np.zeros(shape=(128,128,3))], axis=0)
+                self.textures = np.ones(shape=(1,128,128,3))
             else:
                 self.textures = np.append(self.textures, [np.zeros(shape=self.textures.shape[1:])], axis=0)
         else:
-            tex = scipy.ndimage.imread(filename)
+            tex = scipy.ndimage.imread(filename) / 255.
             assert tex.ndim==3 and tex.shape[2]==3, "Make sure the texture is in RGB-space"
+            assert (0.0<=tex).all() and (tex<=1.0).all()
             if self.textures is None:
                 self.textures = tex[None,:,:,:]
-            elif np.max(self.textures)==0 and self.textures.shape[0]==1:
+            elif np.min(self.textures)==1 and self.textures.shape[0]==1:
                 # we already added zeros and nothing else, reshape the texture to fit this textures shape
                 zeros = np.zeros(shape=tex.shape)
                 self.textures = np.append([zeros], [tex], axis=0)
@@ -349,59 +352,59 @@ class Rigid3DBodyEngine(object):
         return self.textures.shape[0]-1
 
 
-    def compileCamera(self):
-        self.cameras = dict()
+    def addCamera(self,
+                  reference,
+                  parent=None,
+                  position=[0,0,0],  # position of the lens
+                  orientation=[1,0,0,0],  # orientation of the camera, by default, camera looks according to the x-axis
+                  focal_length=0.043,
+                  camera_width=0.035,  # width of the sensor in meters
+                  camera_height=0.035,  # height of the sensor in meters
+                  horizontal_pixels=128,
+                  vertical_pixels=128,
+                  background_color=[0.0, 191.0/255.0, 1.0],  # color of the sky
+                  ):
 
-        self.colors = np.zeros(shape=(0,3), dtype=DTYPE)
+        camera = dict()
+        self.cameras[reference] = camera
+        position = np.array(position)
+        if parent is not None:
+            parent_id = self.objects[parent]
+            camera_position = position - self.positionVectors[parent_id,:] # in model coordinates
+        else:
+            camera_position = position
 
+        camera["parent"] = parent
 
-        self.colors = np.append(self.colors,
-                      np.array([[0, 1, 0]] * 6),
-                      axis=0)
+        dcw = camera_width/(horizontal_pixels*2)
+        dch = camera_height/(vertical_pixels*2)
 
-        for object in self.objects:
+        ray_dir = np.array(np.meshgrid([focal_length],
+                                       np.linspace(-0.5*camera_width+dcw, 0.5*camera_width-dcw, horizontal_pixels),
+                                       np.linspace(-0.5*camera_height+dch,0.5*camera_height-dch,vertical_pixels),
+                                       ))[:,:,0,:].T
 
+        # add the inital orientation
+        ray_dir = batched_convert_model_to_world_coordinate_no_bias(ray_dir, quat_to_rot_matrix(orientation))
 
-            self.colors = np.append(self.colors,
-                      np.array([[1, 0, 0]] * len(self.sphere_ids)),
-                      axis=0)
+        ray_dir = ray_dir / np.linalg.norm(ray_dir, axis=2, keepdims=True)   #normalize
+        if focal_length<0: #support negative focal lengths
+            ray_dir = -ray_dir
 
+        # the following is useful for depth of field !
+        """
+        ray_offset = np.array(np.meshgrid([0],
+                                       0*np.linspace(-0.5*camera_width+dcw, 0.5*camera_width-dcw, horizontal_pixels),
+                                       0*np.linspace(-0.5*camera_height+dch,0.5*camera_height-dch,vertical_pixels),
+                                       ))[:,:,0,:].T
+        """
+        ray_offset = np.zeros(shape=(3,))[None,None,:] #"""
+        ray_offset = batched_convert_model_to_world_coordinate_no_bias(ray_offset, quat_to_rot_matrix(orientation))
+        ray_offset = ray_offset + camera_position[None,None,:]
 
-        for camera_name in ["cam1"]:
-            camera = dict()
-
-            px_hor = 1024
-            px_ver = 512
-            cam_width = 1.0
-            cam_height = 1.0
-            focal_distance = 0.5
-            parent = "camera"
-            background_color = np.array([0.0, 191.0/255.0, 1.0])
-
-            camera_position = np.array([0.5,0,0]) # in model coordinates
-
-            dcw = cam_width/(px_hor*2)
-            dch = cam_width/(px_ver*2)
-            ray_dir = np.array(np.meshgrid([focal_distance],
-                                           np.linspace(-0.5*cam_width+dcw, 0.5*cam_width-dcw, px_hor),
-                                           np.linspace(-0.5*cam_height+dch,0.5*cam_height-dch,px_ver),
-                                           ))[:,:,0,:].T
-
-            ray_dir = ray_dir / np.linalg.norm(ray_dir, axis=2, keepdims=True)   #normalize
-            if focal_distance<0: #support negative focal distances
-                ray_dir = -ray_dir
-
-            ray_offset = np.array(np.meshgrid([0],
-                                           np.linspace(-0.5*cam_width+dcw, 0.5*cam_width-dcw, px_hor),
-                                           np.linspace(-0.5*cam_height+dch,0.5*cam_height-dch,px_ver),
-                                           ))[:,:,0,:].T
-            ray_offset += camera_position[None,None,:]
-
-            camera["ray_offset"] = ray_offset
-            camera["ray_direction"] = ray_dir
-            camera["parent_id"] = self.objects[parent]
-            camera["background_color"] = background_color
-            self.cameras[camera_name] = camera
+        camera["ray_offset"] = ray_offset
+        camera["ray_direction"] = ray_dir
+        camera["background_color"] = np.array(background_color)
 
 
 
@@ -430,24 +433,27 @@ class Rigid3DBodyEngine(object):
 
         ray_dir = camera["ray_direction"]
         ray_offset = camera["ray_offset"]
-        pid = camera["parent_id"]
+        parent = camera["parent"]
 
         px_ver = ray_dir.shape[0]
         px_hor = ray_dir.shape[1]
-        # rotate and move the camera according to its parent
-        ray_dir = batched_convert_model_to_world_coordinate_no_bias(ray_dir, self.rot_matrices[pid,:,:])
-        ray_offset = batched_convert_model_to_world_coordinate(ray_offset, self.rot_matrices[pid,:,:], self.positionVectors[pid,:])
+        if parent:
+            pid = self.objects[parent]
+            # rotate and move the camera according to its parent
+            ray_dir = batched_convert_model_to_world_coordinate_no_bias(ray_dir, self.rot_matrices[pid,:,:])
+            ray_offset = batched_convert_model_to_world_coordinate(ray_offset, self.rot_matrices[pid,:,:], self.positionVectors[pid,:])
 
         # step 2a: intersect the rays with all the spheres
-        s_relevant = np.ones(shape=(px_ver, px_hor, len(self.sphere_ids)))
+        s_relevant = np.ones(shape=(px_ver, px_hor, self.sphere_parent.shape[0]))
+        s_pos_vectors = self.positionVectors[None,None,self.sphere_parent,:]
+        s_rot_matrices = self.rot_matrices[self.sphere_parent,:,:]
 
-
-        L = self.positionVectors[None,None,self.sphere_ids,:] - ray_offset[:,:,None,:]
+        L = s_pos_vectors - ray_offset[:,:,None,:]
         tca = np.sum(L * ray_dir[:,:,None,:],axis=3)  # L.dotProduct(ray_dir);
         #// if (tca < 0) return false;
         s_relevant *= (tca > 0)
         d2 = np.sum(L * L, axis=3) - tca*tca
-        r2 = self.radii[None,None,self.sphere_ids]**2
+        r2 = self.sphere_radius**2
         #if (d2 > radius2) return false;
 
         s_relevant *= (d2 <= r2)
@@ -455,9 +461,9 @@ class Rigid3DBodyEngine(object):
         thc = np.sqrt(s_relevant * (r2 - d2))
         s_t0 = tca - thc
         Phit = ray_offset[:,:,None,:] + s_t0[:,:,:,None]*ray_dir[:,:,None,:]
-        N = (Phit-self.positionVectors[None,None,self.sphere_ids,:]) / self.radii[None,None,self.sphere_ids,None]
+        N = (Phit-s_pos_vectors) / self.sphere_radius[None,None,:,None]
 
-        N = batched_convert_world_to_model_coordinate_no_bias(N, self.rot_matrices[self.sphere_ids,:,:])
+        N = batched_convert_world_to_model_coordinate_no_bias(N, s_rot_matrices)
 
         s_tex_x = -1+2*np.arccos(N[:,:,:,1]*s_relevant)/np.pi
         s_tex_y = np.arctan2(N[:,:,:,2], N[:,:,:,0])/np.pi
@@ -465,145 +471,89 @@ class Rigid3DBodyEngine(object):
 
 
         # step 2b: intersect the rays with the cubes
-        for cube_id in self.cube_ids:
-            nn =  np.array([[1, 0, 0],
-                            [0, 1, 0],
-                            [0, 0, 1],
-                            [-1, 0, 0],
-                            [0, -1, 0],
-                            [0, 0, -1]])
-
-            nn = batched_convert_model_to_world_coordinate_no_bias(nn, self.rot_matrices[cube_id,:,:])
-
-            n = np.append(n,
-                          nn,
-                          axis=0)
-            h, w, z = self.dimensions[cube_id]
-            h, w, z = h/2., w/2., z/2.
-            np0 = np.array([[h, 0, 0],
-                             [0, w, 0],
-                             [0, 0, z],
-                             [-h, 0, 0],
-                             [0, -w, 0],
-                             [0, 0, -z]])
-
-            np0 = batched_convert_model_to_world_coordinate(np0, self.rot_matrices[cube_id,:,:], self.positionVectors[cube_id,:])
-
-            p0 = np.append(p0,
-                           np0,
-                           axis=0)
-
-            h, w, z = 1./h, 1./w, 1./z
-
-            nx0 = np.array( [[0, w, 0],
-                             [0, 0, z],
-                             [h, 0, 0],
-                             [0,-w, 0],
-                             [0, 0,-z],
-                             [-h, 0,0]])
-            ny0 = np.array( [[0, 0, z],
-                             [h, 0, 0],
-                             [0, w, 0],
-                             [0, 0,-z],
-                             [-h,0, 0],
-                             [0,-w, 0]])
-
-            nx0 = batched_convert_model_to_world_coordinate_no_bias(nx0, self.rot_matrices[cube_id,:,:])
-            ny0 = batched_convert_model_to_world_coordinate_no_bias(ny0, self.rot_matrices[cube_id,:,:])
-
-            x0 = np.append(x0,
-                           nx0,
-                           axis=0)
-
-            y0 = np.append(y0,
-                           ny0,
-                           axis=0)
-            p_tex_t = np.append(p_tex_t, [2]*6)
-            p_cube = np.append(p_cube, [1]*6)
-
-
-
-
-
-        #   build a list with n's, p0's, x0's, y0's
-
 
         # step 2c: intersect the rays with the planes
-        n =  np.append(n, np.array([[0,0,1]]),axis=0)
-        p0 = np.append(p0,np.array([[0,0,0]]),axis=0)
+        p_relevant = np.ones(shape=(px_ver, px_hor, self.face_normal.shape[0]))
 
-        x0 = np.append(x0,np.array([[1,0,0]]),axis=0)
-        y0 = np.append(y0,np.array([[0,1,0]]),axis=0)
+        fn = self.face_normal[:,:]
+        fp = self.face_point[:,:]
+        ftx = self.face_texture_x[:,:]
+        fty = self.face_texture_y[:,:]
+        hasparent = [i for i,par in enumerate(self.face_parent) if par is not None]
+        parents = [parent for parent in self.face_parent if parent is not None]
+        print parents
+        fn[hasparent,:] = batched_convert_model_to_world_coordinate_no_bias(fn[hasparent,:], self.rot_matrices[parents,:,:])
+        fp[hasparent,:] = batched_convert_model_to_world_coordinate(fp[hasparent,:], self.rot_matrices[parents,:,:], self.positionVectors[parents,:])
+        ftx[hasparent,:] = batched_convert_model_to_world_coordinate_no_bias(ftx[hasparent,:], self.rot_matrices[parents,:,:])
+        fty[hasparent,:] = batched_convert_model_to_world_coordinate_no_bias(fty[hasparent,:], self.rot_matrices[parents,:,:])
 
-        p_relevant = np.ones(shape=(px_ver, px_hor, n.shape[0]))
 
-        print n.shape
-        denom = np.sum(n[None,None,:,:] * ray_dir[:,:,None,:],axis=3)
-        p0l0 = p0[None,None,:,:] - ray_offset[:,:,None,:]
-        p_t0 = np.sum(p0l0 * n[None,None,:,:], axis=3) / (denom + 1e-9)
+        denom = np.sum(fn[None,None,:,:] * ray_dir[:,:,None,:],axis=3)
+        p0l0 = fp[None,None,:,:] - ray_offset[:,:,None,:]
+        p_t0 = np.sum(p0l0 * fn[None,None,:,:], axis=3) / (denom + 1e-9)
         p_relevant *= (p_t0 > 0)  #only planes in front of us
 
         Phit = ray_offset[:,:,None,:] + p_t0[:,:,:,None]*ray_dir[:,:,None,:]
 
-        p_tex_x = np.sum(x0[None,None,:,:] * (Phit-p0), axis=3)
-        p_tex_y = np.sum(y0[None,None,:,:] * (Phit-p0), axis=3)
-        p_tex_t = np.append(p_tex_t,1)
-        p_cube = np.append(p_cube, 0)
+        pd = Phit-fp
+        p_tex_x = np.sum(ftx[None,None,:,:] * pd, axis=3)
+        p_tex_y = np.sum(fty[None,None,:,:] * pd, axis=3)
 
-        # the following only on cubes
-        p_relevant *= 1 - (1-(-1 < p_tex_x) * (p_tex_x < 1) * (-1 < p_tex_y) * (p_tex_y < 1)) * p_cube
+        # the following only on limited textures
+        p_relevant *= 1 - (1-(-1 < p_tex_x) * (p_tex_x < 1) * (-1 < p_tex_y) * (p_tex_y < 1)) * self.face_texture_limited
 
         p_tex_x = ((p_tex_x+1)%2.)-1
         p_tex_y = ((p_tex_y+1)%2.)-1
-
-
-        print np.min(p_tex_x), np.max(p_tex_x)
-        print np.min(p_tex_y), np.max(p_tex_y)
 
         # step 3: find the closest point of intersection (z-culling) for all objects
         relevant = np.concatenate([s_relevant, p_relevant],axis=2)
         tex_x = np.concatenate([s_tex_x, p_tex_x],axis=2)
         tex_y = np.concatenate([s_tex_y, p_tex_y],axis=2)
-        tex_t = np.concatenate([s_tex_t, p_tex_t],axis=0)
-        print s_tex_t.shape, p_tex_t.shape
-        print "s:", tex_x.shape, tex_y.shape, tex_t.shape
+        tex_t = np.concatenate([self.sphere_texture_index, self.face_texture_index],axis=0)
 
         t = np.concatenate([s_t0, p_t0], axis=2)
 
         mint = np.min(t*relevant + (1-relevant)*1e9, axis=-1)
         relevant *= (t==mint[:,:,None])  #only use the closest object
-        print "rel?", np.sum(relevant[:,:,-1])
-
 
         # step 4: go into the object's texture and get the corresponding value (see image transform)
-        tex_x = tex_x*63 + 63
-        tex_y = tex_y*63 + 63
+        x_size, y_size = self.textures.shape[1] - 1, self.textures.shape[2] - 1
+
+        tex_x = (tex_x + 1)*x_size/2.
+        tex_y = (tex_y + 1)*y_size/2.
         x_idx = np.floor(tex_x).astype('int32')
-        print x_idx.shape
         x_wgh = tex_x - x_idx
         y_idx = np.floor(tex_y).astype('int32')
         y_wgh = tex_y - y_idx
 
         #print np.min(tex_x), np.max(tex_x)
         #print np.min(x_idx), np.max(x_idx)
-        #print np.min(y_idx), np.max(y_idx)
+        print np.min(self.textures), np.max(self.textures)
 
-
-        sample= (   x_wgh  *    y_wgh )[:,:,:,None] * textures[tex_t[None,None,:],x_idx+1,y_idx+1,:] + \
-                (   x_wgh  * (1-y_wgh))[:,:,:,None] * textures[tex_t[None,None,:],x_idx+1,y_idx  ,:] + \
-                ((1-x_wgh) *    y_wgh )[:,:,:,None] * textures[tex_t[None,None,:],x_idx  ,y_idx+1,:] + \
-                ((1-x_wgh) * (1-y_wgh))[:,:,:,None] * textures[tex_t[None,None,:],x_idx  ,y_idx  ,:]
+        sample= (   x_wgh  *    y_wgh )[:,:,:,None] * self.textures[tex_t[None,None,:],x_idx+1,y_idx+1,:] + \
+                (   x_wgh  * (1-y_wgh))[:,:,:,None] * self.textures[tex_t[None,None,:],x_idx+1,y_idx  ,:] + \
+                ((1-x_wgh) *    y_wgh )[:,:,:,None] * self.textures[tex_t[None,None,:],x_idx  ,y_idx+1,:] + \
+                ((1-x_wgh) * (1-y_wgh))[:,:,:,None] * self.textures[tex_t[None,None,:],x_idx  ,y_idx  ,:]
 
 
         #print sample.shape
         # multiply with color of object
-        sample = self.colors[None,None,:,:] * sample
+        colors = np.concatenate([self.sphere_colors, self.face_colors],axis=0)
+        if np.min(colors)!=1:  # if the colors are actually used
+            sample = colors[None,None,:,:] * sample
+
+        print colors
 
         # step 5: return this value
+
+        image = np.sum(sample * relevant[:,:,:,None],axis=2)
+
         background_color = camera["background_color"]
-        background = background_color[None,None,:] * (1-np.max(relevant[:,:,:],axis=2))[:,:,None]
-        image = np.sum(sample * relevant[:,:,:,None],axis=2) + background
-        #print image.shape
+        if background_color is not None:
+            # find the rays for which no object was relevant. Make them background color
+            background = background_color[None,None,:] * (1-np.max(relevant[:,:,:],axis=2))[:,:,None]
+            image += background
+
         return image
 
 
@@ -758,6 +708,12 @@ class Rigid3DBodyEngine(object):
                         motorparameters.update(robot_dict["default_constraint_parameters"]["motor"])
                     motorparameters.update(motor)
                     self.addMotorConstraint(joint["object1"], joint["object2"], **motorparameters)
+
+        for cameraname, camera in robot_dict["cameras"].iteritems():
+            primitive = element[0]
+            parameters = dict(robot_dict["default_camera_parameters"])  # copy
+            parameters.update(camera)
+            self.addCamera(cameraname, **camera)
 
         for sensor in robot_dict["sensors"]:
             self.addSensor(**sensor)

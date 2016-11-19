@@ -35,7 +35,7 @@ BATCH_SIZE = 1
 engine.compile()
 
 t = time.time()
-image = engine.getCameraImage()
+image = engine.getCameraImage("front_camera")
 print "time taken =", time.time() - t
 
 import matplotlib.pyplot as plt
