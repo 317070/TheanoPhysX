@@ -58,6 +58,9 @@
         "texture":"textures/square_128.png",
         "color": [0,1,0]
       }
+    },
+    "plane": {
+      "texture": "textures/grass_128.png"
     }
   },
   "default_camera_parameters": {
@@ -73,6 +76,13 @@
     }
   },
   "model": {
+    "ground": [
+      {
+        "shape": "plane",
+        "position": [0,0,0],
+        "normal": [0,0,1]
+      }
+    ],
     "camera": [
       {
         "shape": "sphere",

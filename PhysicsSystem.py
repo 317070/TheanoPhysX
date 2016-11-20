@@ -284,14 +284,14 @@ class Rigid3DBodyEngine(object):
             self.sphere_colors = np.append(self.sphere_colors, [color], axis=0)
 
 
-    def addPlane(self, reference, normal, point, visible=True, parent=None, **kwargs):
+    def addPlane(self, reference, normal, position, visible=True, parent=None, **kwargs):
         self.objects[reference] = None
         self.planes[reference] = reference
         self.planeNormals = np.append(self.planeNormals, np.array([normal]), axis=0)
-        self.planePoints = np.append(self.planePoints, np.array([point]), axis=0)
+        self.planePoints = np.append(self.planePoints, np.array([position]), axis=0)
 
         if visible:
-            self.addFace(normal=normal, point=point, parent=parent, **kwargs)
+            self.addFace(normal=normal, point=position, parent=parent, **kwargs)
 
 
     def addFace(self,
@@ -315,7 +315,7 @@ class Rigid3DBodyEngine(object):
 
         self.face_normal = np.append(self.face_normal, [normal], axis=0)
         self.face_point = np.append(self.face_point, [point], axis=0)
-        self.face_parent.append(self.objects[parent])
+        self.face_parent.append(self.objects[parent] if parent is not None else parent)
         self.face_texture_x = np.append(self.face_texture_x, [face_x], axis=0)
         self.face_texture_y = np.append(self.face_texture_y, [face_y], axis=0)
         self.face_texture_limited = np.append(self.face_texture_limited, [1 if limited else 0], axis=0)
@@ -675,6 +675,8 @@ class Rigid3DBodyEngine(object):
                 self.addCube(elementname, **parameters)
             elif primitive["shape"] == "sphere":
                 self.addSphere(elementname, **parameters)
+            elif primitive["shape"] == "plane":
+                self.addPlane(elementname, **parameters)
 
         for jointname, joint in robot_dict["joints"].iteritems():
             parameters = dict(robot_dict["default_constraint_parameters"]["default"])  # copy
