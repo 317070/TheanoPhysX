@@ -110,7 +110,7 @@ class Rigid3DBodyEngine(object):
         self.rot_matrices = np.zeros(shape=(0,3,3), dtype='float32')
         self.velocityVectors = np.zeros(shape=(0,6), dtype=DTYPE)
         self.massMatrices = np.zeros(shape=(0,6,6), dtype=DTYPE)
-        self.objects = dict()
+        self.objects = {None:None}
         self.shapes = []
         self.constraints = []
         self.sensors = []
@@ -188,9 +188,10 @@ class Rigid3DBodyEngine(object):
                 rotation=[1,0,0,0],
                 velocity=[0,0,0,0,0,0],
                 visible=True,
-                default_textures={
+                default_faces={
                     "texture": None,
-                    "color": [1,1,1]
+                    "color": [1,1,1],
+                    "visible": True
                                  },
                 faces = {},
                 **kwargs):
@@ -212,13 +213,14 @@ class Rigid3DBodyEngine(object):
 
         if visible:
             for i,tag in enumerate(["right", "left", "front", "back", "top", "bottom"]):
-                dt = dict(default_textures)  # take a copy, don't mute original
+                dt = dict(default_faces)  # take a copy, don't mute original
                 if tag in faces:
                     face = faces[tag]
                     if face is None:
                         continue
                     dt.update(face)
-
+                if "visible" in dt and not dt["visible"]:
+                    continue
                 # This is all in model coordinates
                 nn = [[1, 0, 0],
                      [-1, 0, 0],
@@ -236,7 +238,6 @@ class Rigid3DBodyEngine(object):
                        [0, 0, z],
                        [0, 0, -z]][i]
 
-                h, w, z = 1./h,1./w,1./z
                 nx0 = [[0, w, 0],
                      [0,-w, 0],
                      [0, 0, z],
@@ -284,19 +285,19 @@ class Rigid3DBodyEngine(object):
             self.sphere_colors = np.append(self.sphere_colors, [color], axis=0)
 
 
-    def addPlane(self, reference, normal, position, visible=True, parent=None, **kwargs):
+    def addPlane(self, reference, normal, position, visible=True, **kwargs):
         self.objects[reference] = None
         self.planes[reference] = reference
         self.planeNormals = np.append(self.planeNormals, np.array([normal]), axis=0)
         self.planePoints = np.append(self.planePoints, np.array([position]), axis=0)
 
         if visible:
-            self.addFace(normal=normal, point=position, parent=parent, **kwargs)
+            self.addFace(normal=normal, point=position, parent=None, **kwargs)
 
 
     def addFace(self,
-                normal=np.array([0,0,1]),
-                point=np.array([0,0,0]),
+                normal=[0,0,1],
+                point=[0,0,0],
                 parent=None,
                 face_x=None,
                 face_y=None,
@@ -312,6 +313,12 @@ class Rigid3DBodyEngine(object):
             else:
                 face_x = np.array([0,-normal[2],normal[1]])
                 face_y = np.cross(normal, face_x)
+        else:
+            face_x, face_y = np.array(face_x, dtype=DTYPE), np.array(face_y, dtype=DTYPE)
+            print face_x,face_y
+            face_x = np.divide(np.ones_like(face_x), face_x, out=np.zeros_like(face_x), where=(face_x!=0))
+            face_y = np.divide(np.ones_like(face_y), face_y, out=np.zeros_like(face_y), where=(face_y!=0))
+            print face_x,face_y
 
         self.face_normal = np.append(self.face_normal, [normal], axis=0)
         self.face_point = np.append(self.face_point, [point], axis=0)
@@ -336,7 +343,8 @@ class Rigid3DBodyEngine(object):
             else:
                 self.textures = np.append(self.textures, [np.zeros(shape=self.textures.shape[1:])], axis=0)
         else:
-            tex = scipy.ndimage.imread(filename) / 255.
+            tex = scipy.ndimage.imread(filename).transpose(1,0,2)[:,::-1,:3] / 255.
+
             assert tex.ndim==3 and tex.shape[2]==3, "Make sure the texture is in RGB-space"
             assert (0.0<=tex).all() and (tex<=1.0).all()
             if self.textures is None:
@@ -358,8 +366,8 @@ class Rigid3DBodyEngine(object):
                   position=[0,0,0],  # position of the lens
                   orientation=[1,0,0,0],  # orientation of the camera, by default, camera looks according to the x-axis
                   focal_length=0.043,
-                  camera_width=0.035,  # width of the sensor in meters
-                  camera_height=0.035,  # height of the sensor in meters
+                  width=0.035,  # width of the sensor in meters
+                  height=0.035,  # height of the sensor in meters
                   horizontal_pixels=128,
                   vertical_pixels=128,
                   background_color=[0.0, 191.0/255.0, 1.0],  # color of the sky
@@ -376,12 +384,12 @@ class Rigid3DBodyEngine(object):
 
         camera["parent"] = parent
 
-        dcw = camera_width/(horizontal_pixels*2)
-        dch = camera_height/(vertical_pixels*2)
+        dcw = width/(horizontal_pixels*2)
+        dch = height/(vertical_pixels*2)
 
         ray_dir = np.array(np.meshgrid([focal_length],
-                                       np.linspace(-0.5*camera_width+dcw, 0.5*camera_width-dcw, horizontal_pixels),
-                                       np.linspace(-0.5*camera_height+dch,0.5*camera_height-dch,vertical_pixels),
+                                       np.linspace(-0.5*width+dcw, 0.5*width-dcw, horizontal_pixels),
+                                       np.linspace(-0.5*height+dch,0.5*height-dch,vertical_pixels),
                                        ))[:,:,0,:].T
 
         # add the inital orientation
@@ -465,8 +473,8 @@ class Rigid3DBodyEngine(object):
 
         N = batched_convert_world_to_model_coordinate_no_bias(N, s_rot_matrices)
 
-        s_tex_x = -1+2*np.arccos(N[:,:,:,1]*s_relevant)/np.pi
-        s_tex_y = np.arctan2(N[:,:,:,2], N[:,:,:,0])/np.pi
+        s_tex_x = np.arctan2(N[:,:,:,2], N[:,:,:,0])/np.pi
+        s_tex_y = -1+2*np.arccos(N[:,:,:,1]*s_relevant)/np.pi
         # tex_y en tex_x in [-1,1]
 
 
@@ -475,10 +483,10 @@ class Rigid3DBodyEngine(object):
         # step 2c: intersect the rays with the planes
         p_relevant = np.ones(shape=(px_ver, px_hor, self.face_normal.shape[0]))
 
-        fn = self.face_normal[:,:]
-        fp = self.face_point[:,:]
-        ftx = self.face_texture_x[:,:]
-        fty = self.face_texture_y[:,:]
+        fn = np.array(self.face_normal[:,:])
+        fp = np.array(self.face_point[:,:])
+        ftx = np.array(self.face_texture_x[:,:])
+        fty = np.array(self.face_texture_y[:,:])
         hasparent = [i for i,par in enumerate(self.face_parent) if par is not None]
         parents = [parent for parent in self.face_parent if parent is not None]
         print parents
@@ -599,9 +607,9 @@ class Rigid3DBodyEngine(object):
             forbidden_axis_2 = np.cross(axis, forbidden_axis_1)
 
         parameters['axis'] = axis
-        parameters['axis1_in_model1_coordinates'] = convert_world_to_model_coordinate_no_bias(forbidden_axis_1, self.rot_matrices[idx1,:,:], self.positionVectors[idx1,:])
-        parameters['axis2_in_model1_coordinates'] = convert_world_to_model_coordinate_no_bias(forbidden_axis_2, self.rot_matrices[idx1,:,:], self.positionVectors[idx1,:])
-        parameters['axis_in_model2_coordinates'] = convert_world_to_model_coordinate_no_bias(axis, self.rot_matrices[idx2,:,:], self.positionVectors[idx2,:])
+        parameters['axis1_in_model1_coordinates'] = convert_world_to_model_coordinate_no_bias(forbidden_axis_1, self.rot_matrices[idx1,:,:])
+        parameters['axis2_in_model1_coordinates'] = convert_world_to_model_coordinate_no_bias(forbidden_axis_2, self.rot_matrices[idx1,:,:])
+        parameters['axis_in_model2_coordinates'] = convert_world_to_model_coordinate_no_bias(axis, self.rot_matrices[idx2,:,:])
 
         self.addConstraint("hinge", [object1, object2], parameters)
 
@@ -627,13 +635,13 @@ class Rigid3DBodyEngine(object):
 
     def addMotorConstraint(self, object1, object2, axis, **parameters):
         idx1 = self.objects[object1]
-        idx2 = self.objects[object2]
+        idx2 = self.objects[object2] if object2 else None
 
         # create two forbidden axis:
         axis = np.array(axis)
         axis = axis / np.linalg.norm(axis)
         parameters['axis'] = axis
-        parameters['axis_in_model2_coordinates'] = convert_world_to_model_coordinate_no_bias(axis, self.rot_matrices[idx2,:,:], self.positionVectors[idx2,:])
+        parameters['axis_in_model2_coordinates'] = convert_world_to_model_coordinate_no_bias(axis, self.rot_matrices[idx2,:,:])
 
         self.addConstraint("motor", [object1, object2], parameters)
 
@@ -648,7 +656,7 @@ class Rigid3DBodyEngine(object):
         axis = np.array(axis)
         axis = axis / np.linalg.norm(axis)
         parameters['axis'] = axis
-        parameters['axis_in_model1_coordinates'] = convert_world_to_model_coordinate_no_bias(axis, self.rot_matrices[idx1,:,:], self.positionVectors[idx1,:])
+        parameters['axis_in_model1_coordinates'] = convert_world_to_model_coordinate_no_bias(axis, self.rot_matrices[idx1,:,:])
 
         self.addConstraint("limit", [object1, object2], parameters)
 
@@ -677,6 +685,8 @@ class Rigid3DBodyEngine(object):
                 self.addSphere(elementname, **parameters)
             elif primitive["shape"] == "plane":
                 self.addPlane(elementname, **parameters)
+            elif primitive["shape"] == "face":
+                self.addFace(**parameters)
 
         for jointname, joint in robot_dict["joints"].iteritems():
             parameters = dict(robot_dict["default_constraint_parameters"]["default"])  # copy

@@ -29,7 +29,7 @@ np.random.seed(0)
 
 # step 1: load the physics model
 engine = Rigid3DBodyEngine()
-jsonfile = "robotmodel/abstract_art.json"
+jsonfile = "robotmodel/pendulum.json"
 engine.load_robot_model(jsonfile)
 BATCH_SIZE = 1
 engine.compile()

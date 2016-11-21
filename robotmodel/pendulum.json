@@ -1,0 +1,168 @@
+{
+  "name": "abstract art",
+  "integration_parameters": {
+    "time_step": 0.01,
+    "projected_gauss_seidel_iterations": 1,
+    "rotation_reorthogonalization_iterations": 1,
+    "warm_start": 0.85
+  },
+  "default_constraint_parameters": {
+    "default": {
+      "f": 1.0,
+      "zeta": 0.0
+    }
+  },
+  "default_model_parameters": {
+    "default": {
+      "velocity": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "rotation": [
+        1,
+        0,
+        0,
+        0
+      ],
+      "mass_density": 1000.0
+    },
+    "sphere": {
+      "radius": 0.5,
+      "texture": "textures/soccer_128.png"
+    },
+    "cube": {
+      "dimensions": [
+        1,
+        1,
+        1
+      ],
+      "default_textures":{
+        "texture":"textures/square_128.png",
+        "color": [0,1,0]
+      }
+    }
+  },
+  "default_camera_parameters": {
+
+  },
+  "cameras": {
+    "front_camera": {
+      "position": [0,2,0],
+      "orientation": [0.7071,0,0,0.7071],
+      "parent": null,
+      "vertical_pixels": 128,
+      "horizontal_pixels": 256,
+      "focal_length": 0.01,
+      "width": 0.036,
+      "height": 0.018,
+      "focal_length": 0.018
+    }
+  },
+  "model": {
+    "background": [
+      {
+        "shape": "face",
+        "position": [0,-1,0],
+        "normal": [0,1,0],
+        "texture": "textures/pendulum_128.png",
+        "face_x": [2,0,0],
+        "face_y": [0,0,1],
+        "limited": true
+      }
+    ],
+    "train": [
+      {
+        "shape": "cube",
+        "position": [0,0,0.3],
+        "dimensions": [0.15, 0.15, 0.15],
+        "default_faces": {
+          "visible": false
+        },
+        "faces": {
+          "front": {
+            "visible": true,
+            "texture": "textures/front_128.png"
+          }
+        }
+      }
+    ],
+    "bar": [
+      {
+        "shape": "cube",
+        "position": [0,0,0.6],
+        "dimensions": [0.07, 0.1, 0.6],
+        "default_faces": {
+          "visible": false
+        },
+        "faces": {
+          "front": {
+            "visible": true,
+            "texture": "textures/back_128.png"
+          }
+        }
+      }
+    ],
+    "top": [
+      {
+        "shape": "cube",
+        "position": [0,0,0.9],
+        "dimensions": [0.15, 0.15, 0.15],
+        "default_faces": {
+          "visible": false
+        },
+        "faces": {
+          "front": {
+            "visible": true,
+            "texture": "textures/top_128.png"
+          }
+        }
+      }
+    ]
+  },
+  "joints":{
+    "rail":{
+      "type": "slider",
+      "object1": "train",
+      "object2": null,
+      "axis": [
+        1,
+        0,
+        0
+      ],
+      "motors": [
+        {
+          "type": "pusher",
+          "motor_id": 0,
+          "axis": [1,0,0]
+        }
+      ]
+    },
+    "bottom":{
+      "type": "hinge",
+      "object1": "train",
+      "object2": "bar",
+      "point": [
+        0.15,
+        0.15,
+        0.15
+      ],
+      "axis": [
+        0,
+        1,
+        0
+      ]
+    },
+    "top":{
+      "type": "fixed",
+      "object1": "bar",
+      "object2": "top",
+      "point": [0,0,0.9]
+    }
+
+  },
+  "sensors": []
+}

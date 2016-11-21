@@ -70,9 +70,9 @@
     "front_camera": {
       "position": [0,0,0.5],
       "parent": null,
-      "vertical_pixels": 1024,
-      "horizontal_pixels": 1024,
-      "focal_length":0.01
+      "vertical_pixels": 128,
+      "horizontal_pixels": 128,
+      "focal_length": 0.01
     }
   },
   "model": {
