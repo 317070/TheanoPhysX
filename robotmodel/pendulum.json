@@ -135,7 +135,7 @@
       ],
       "motors": [
         {
-          "type": "pusher",
+          "type": "piston",
           "motor_id": 0,
           "axis": [1,0,0]
         }
