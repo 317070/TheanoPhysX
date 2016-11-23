@@ -2,14 +2,18 @@
   "name": "abstract art",
   "integration_parameters": {
     "time_step": 0.01,
-    "projected_gauss_seidel_iterations": 1,
+    "projected_gauss_seidel_iterations": 100,
     "rotation_reorthogonalization_iterations": 1,
     "warm_start": 0.85
   },
   "default_constraint_parameters": {
     "default": {
-      "f": 1.0,
-      "zeta": 0.0
+      "f": 2,
+      "zeta": 0.1
+    },
+    "motor": {
+      "servo": "position",
+      "motor_gain": 100
     }
   },
   "default_model_parameters": {
@@ -51,14 +55,14 @@
   },
   "cameras": {
     "front_camera": {
-      "position": [0,2,0],
+      "position": [0,2,0.3],
       "orientation": [0.7071,0,0,0.7071],
       "parent": null,
-      "vertical_pixels": 128,
-      "horizontal_pixels": 256,
+      "vertical_pixels": 96,
+      "horizontal_pixels": 288,
       "focal_length": 0.01,
       "width": 0.036,
-      "height": 0.018,
+      "height": 0.012,
       "focal_length": 0.018
     }
   },
@@ -74,7 +78,7 @@
         "limited": true
       }
     ],
-    "train": [
+    "sled": [
       {
         "shape": "cube",
         "position": [0,0,0.3],
@@ -110,6 +114,7 @@
       {
         "shape": "cube",
         "position": [0,0,0.9],
+        "velocity": [0.1,0,0,0,0,0],
         "dimensions": [0.15, 0.15, 0.15],
         "default_faces": {
           "visible": false
@@ -126,7 +131,7 @@
   "joints":{
     "rail":{
       "type": "slider",
-      "object1": "train",
+      "object1": "sled",
       "object2": null,
       "axis": [
         1,
@@ -135,25 +140,31 @@
       ],
       "motors": [
         {
-          "type": "piston",
-          "motor_id": 0,
-          "axis": [1,0,0]
+          "motor_id": 0
         }
       ]
     },
     "bottom":{
       "type": "hinge",
-      "object1": "train",
+      "object1": "sled",
       "object2": "bar",
       "point": [
-        0.15,
-        0.15,
-        0.15
+        0,
+        0,
+        0.3
       ],
       "axis": [
         0,
         1,
         0
+      ],
+      "limits":[
+        {
+          "angle": 150
+        },
+        {
+          "angle": -135
+        }
       ]
     },
     "top":{

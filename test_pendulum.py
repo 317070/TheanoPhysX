@@ -43,7 +43,7 @@ frame = plt.imshow(image, interpolation='nearest')
 plt.gca().invert_yaxis()
 plt.pause(0.01)
 while plt.get_fignums():
-    engine.do_time_step(dt=0.01)
+    engine.do_time_step(dt=0.01, motor_signals=[1])
     image = engine.getCameraImage("front_camera")
     frame.set_data(image)
     plt.draw()
