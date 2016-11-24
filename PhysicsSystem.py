@@ -101,6 +101,7 @@ def skew_symmetric(x):
 
 
 class Rigid3DBodyEngine(object):
+
     def __init__(self):
         self.radii = np.zeros(shape=(0,), dtype=DTYPE)
         self.dimensions = np.zeros(shape=(0,3), dtype=DTYPE)
@@ -608,13 +609,15 @@ class Rigid3DBodyEngine(object):
             forbidden_axis_2 = np.cross(axis, forbidden_axis_1)
 
         parameters['axis'] = axis
-        parameters['axis1_in_model2_coordinates'] = convert_world_to_model_coordinate_no_bias(forbidden_axis_1, self.rot_matrices[idx2,:,:])
-        parameters['axis2_in_model2_coordinates'] = convert_world_to_model_coordinate_no_bias(forbidden_axis_2, self.rot_matrices[idx2,:,:])
 
         if idx1 is not None:
+            parameters['axis1_in_model1_coordinates'] = convert_world_to_model_coordinate_no_bias(forbidden_axis_1, self.rot_matrices[idx1,:,:])
+            parameters['axis2_in_model1_coordinates'] = convert_world_to_model_coordinate_no_bias(forbidden_axis_2, self.rot_matrices[idx1,:,:])
             parameters['trans_init_in_model2'] = convert_world_to_model_coordinate_no_bias(self.positionVectors[idx2,:] - self.positionVectors[idx1,:],
                                                                                                self.rot_matrices[idx2,:,:])
         else:
+            parameters['axis1_in_model1_coordinates'] = forbidden_axis_1
+            parameters['axis2_in_model1_coordinates'] = forbidden_axis_2
             parameters['trans_init'] = np.array(self.positionVectors[idx2,:])
 
         self.addConstraint("slider", [object1, object2], parameters)
@@ -700,9 +703,22 @@ class Rigid3DBodyEngine(object):
     def addLinearLimitConstraint(self, object1, object2, axis, **parameters):
         idx1 = self.objects[object1]
         idx2 = self.objects[object2]
+        if idx2 is None:
+            idx1, idx2 = None, idx1
 
-        #TODO
-        self.addConstraint("angular limit", [object1, object2], parameters)
+        axis = np.array(axis, dtype=DTYPE)
+        parameters['axis'] = axis
+        if idx1 is not None:
+            parameters['axis_in_model1_coordinates'] = convert_world_to_model_coordinate_no_bias(axis, self.rot_matrices[idx1,:,:])
+        else:
+            parameters['axis_in_model1_coordinates'] = axis
+
+        if idx1 is not None:
+            parameters['pos_init'] = self.positionVectors[idx2,:] - self.positionVectors[idx1,:]
+        else:
+            parameters['pos_init'] = np.array(self.positionVectors[idx2,:])
+
+        self.addConstraint("linear limit", [object1, object2], parameters)
 
 
     def addSensor(self, **kwargs):
@@ -1088,7 +1104,10 @@ class Rigid3DBodyEngine(object):
                 c_idx += 3
 
             if constraint == "plane" or constraint == "slider":
-                n1 = convert_model_to_world_coordinate_no_bias(parameters['axis1_in_model2_coordinates'], self.rot_matrices[idx2,:,:])
+                if follows_Newtons_third_law:
+                    n1 = convert_model_to_world_coordinate_no_bias(parameters['axis1_in_model1_coordinates'], self.rot_matrices[idx2,:,:])
+                else:
+                    n1 = parameters['axis1_in_model1_coordinates']
 
                 if follows_Newtons_third_law:
                     J[c_idx,0,:] = np.concatenate([-n1, np.zeros((3,), dtype=DTYPE)])
@@ -1106,7 +1125,10 @@ class Rigid3DBodyEngine(object):
                 c_idx += 1
 
             if constraint == "slider":
-                n2 = convert_model_to_world_coordinate_no_bias(parameters['axis2_in_model2_coordinates'], self.rot_matrices[idx2,:,:])
+                if follows_Newtons_third_law:
+                    n2 = convert_model_to_world_coordinate_no_bias(parameters['axis2_in_model1_coordinates'], self.rot_matrices[idx1,:,:])
+                else:
+                    n2 = parameters['axis2_in_model1_coordinates']
 
                 if follows_Newtons_third_law:
                     J[c_idx,0,:] = np.concatenate([-n2, np.zeros((3,), dtype=DTYPE)])
@@ -1192,6 +1214,9 @@ class Rigid3DBodyEngine(object):
                     position = self.positionVectors[idx2,:] - parameters['pos_init']
 
                 motor_signal = motor_signals[parameters["motor_id"]]
+                if "min" in parameters and "max" in parameters:
+                    motor_signal = np.clip(motor_signal, parameters["min"], parameters["max"])
+
                 error_signal = np.dot(position - motor_signal, a)
 
                 if parameters["servo"] == "velocity":
@@ -1240,7 +1265,39 @@ class Rigid3DBodyEngine(object):
 
 
             if constraint == "linear limit":
-                pass
+                offset = parameters["offset"]
+                if follows_Newtons_third_law:
+                    ac = parameters['axis_in_model1_coordinates']
+                    a = convert_model_to_world_coordinate_no_bias(ac, self.rot_matrices[idx1,:,:])
+                else:
+                    a = parameters['axis_in_model1_coordinates']
+
+                if offset < 0:
+                    if follows_Newtons_third_law:
+                        J[c_idx,0,:] = np.concatenate([-a,np.zeros((3,), dtype=DTYPE)])
+                    J[c_idx,1,:] = np.concatenate([a,np.zeros((3,), dtype=DTYPE)])
+                else:
+                    if follows_Newtons_third_law:
+                        J[c_idx,0,:] = np.concatenate([a,np.zeros((3,), dtype=DTYPE)])
+                    J[c_idx,1,:] = np.concatenate([-a,np.zeros((3,), dtype=DTYPE)])
+
+                if follows_Newtons_third_law:
+                    position = self.positionVectors[idx2,:] - self.positionVectors[idx1,:] - parameters['pos_init']
+                else:
+                    position = self.positionVectors[idx2,:] - parameters['pos_init']
+
+                current_offset = np.dot(position, a)
+
+                if parameters["offset"] > 0:
+                    b_error[c_idx] = offset - current_offset
+                    self.C[c_idx] = (current_offset > offset)
+                else:
+                    b_error[c_idx] = offset - current_offset
+                    self.C[c_idx] = (current_offset < offset)
+
+                print current_offset, offset
+                c_idx += 1
+
 
             if constraint == "ground":
                 r = self.radii[idx1]
@@ -1338,7 +1395,7 @@ class Rigid3DBodyEngine(object):
         return A
 
     def getState(self):
-        return self.positionVectors[:,:3], self.velocityVectors, self.rot_matrices
+        return self.positionVectors, self.velocityVectors, self.rot_matrices
 
     def getPosition(self, reference):
         idx = self.objects[reference]
@@ -1366,28 +1423,4 @@ class Rigid3DBodyEngine(object):
         #result = result.flatten() + self.C[self.only_when_positive==1]
 
         return result
-
-
-def q_mult(q1, q2):
-    w1, x1, y1, z1 = q1
-    w2, x2, y2, z2 = q2
-    w = w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2
-    x = w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2
-    y = w1 * y2 + y1 * w2 + z1 * x2 - x1 * z2
-    z = w1 * z2 + z1 * w2 + x1 * y2 - y1 * x2
-    res = np.array([w, x, y, z]).T
-    return res
-
-def q_inv(q):
-    w, x, y, z = q
-    return [w,-x,-y,-z]
-
-
-def q_div(q1, q2):
-    w, x, y, z = q2
-    return q_mult([w,-x,-y,-z], q1)
-
-def normalize(q):
-    return q/np.linalg.norm(q, axis=-1, keepdims=True)
-
 

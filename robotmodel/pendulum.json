@@ -2,18 +2,19 @@
   "name": "abstract art",
   "integration_parameters": {
     "time_step": 0.01,
-    "projected_gauss_seidel_iterations": 100,
+    "projected_gauss_seidel_iterations": 20,
     "rotation_reorthogonalization_iterations": 1,
     "warm_start": 0.85
   },
   "default_constraint_parameters": {
     "default": {
-      "f": 2,
-      "zeta": 0.1
+      "f": 1,
+      "zeta": 0.8
     },
     "motor": {
       "servo": "position",
-      "motor_gain": 100
+      "motor_gain": 100,
+      "zeta": 0
     }
   },
   "default_model_parameters": {
@@ -114,7 +115,7 @@
       {
         "shape": "cube",
         "position": [0,0,0.9],
-        "velocity": [0.1,0,0,0,0,0],
+        "velocity": [1.0,0,0,0,0,0],
         "dimensions": [0.15, 0.15, 0.15],
         "default_faces": {
           "visible": false
@@ -140,7 +141,9 @@
       ],
       "motors": [
         {
-          "motor_id": 0
+          "motor_id": 0,
+          "min": -1,
+          "max": 1
         }
       ]
     },
@@ -157,14 +160,6 @@
         0,
         1,
         0
-      ],
-      "limits":[
-        {
-          "angle": 150
-        },
-        {
-          "angle": -135
-        }
       ]
     },
     "top":{

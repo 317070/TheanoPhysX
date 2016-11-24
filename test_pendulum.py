@@ -41,12 +41,14 @@ print "time taken =", time.time() - t
 import matplotlib.pyplot as plt
 frame = plt.imshow(image, interpolation='nearest')
 plt.gca().invert_yaxis()
-plt.pause(0.01)
+plt.pause(engine.DT)
+t = 0
 while plt.get_fignums():
-    engine.do_time_step(dt=0.01, motor_signals=[1])
+    t+=engine.DT
+    engine.do_time_step(dt=engine.DT, motor_signals=[2*np.sin(t)])
     image = engine.getCameraImage("front_camera")
     frame.set_data(image)
     plt.draw()
-    plt.pause(0.01)
+    plt.pause(engine.DT)
 
 print "done"
