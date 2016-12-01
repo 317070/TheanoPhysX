@@ -2,6 +2,7 @@ from collections import namedtuple
 import json
 from math import pi
 from PhysicsSystem import Rigid3DBodyEngine
+from aux_theano import batch_skew_symmetric
 
 __author__ = 'jonas'
 import numpy as np
@@ -28,6 +29,9 @@ class TheanoRigid3DBodyEngine(Rigid3DBodyEngine):
     def compile(self, *args,**kwargs):
         super(TheanoRigid3DBodyEngine,self).compile(*args,**kwargs)
 
+
+    
+
     def getSharedVariables(self):
         return [
             self.positionVectors,
@@ -38,7 +42,7 @@ class TheanoRigid3DBodyEngine(Rigid3DBodyEngine):
         ]
 
     def getCameraImage(self, camera_name, *args, **kwargs):
-        super(TheanoRigid3DBodyEngine,self).getCameraImage(camera_name, *args,**kwargs)
+        pass
 
     def evaluate(self, *args, **kwargs):
         pass
