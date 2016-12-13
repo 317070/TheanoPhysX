@@ -5,8 +5,11 @@ from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
 from collections import namedtuple
 import json
 from math import pi
-from PhysicsSystem import Rigid3DBodyEngine
-from aux_theano import batch_skew_symmetric
+from PhysicsSystem import Rigid3DBodyEngine, EngineState
+from aux import numpy_repeat_new_axis
+from aux_theano import batch_skew_symmetric, theano_convert_model_to_world_coordinate_no_bias, \
+    theano_stack_batched_integers_mixed_numpy, single_skew_symmetric, theano_dot_last_dimension_vector_matrix, \
+    theano_dot_last_dimension_vectors, theano_dot_last_dimension_matrices
 
 __author__ = 'jonas degrave'
 
@@ -16,15 +19,22 @@ X = 0
 Y = 1
 Z = 2
 
-EngineState = namedtuple(typename='EngineState', field_names=["positions", "velocities", "rotations"])
-
 
 class TheanoRigid3DBodyEngine(Rigid3DBodyEngine):
     def __init__(self, *args, **kwargs):
         super(TheanoRigid3DBodyEngine, self).__init__(*args, **kwargs)
+        self.batch_size = None
+        self.initial_positions = None
+        self.initial_velocities = None
+        self.initial_rotations = None
+        self.lower_inertia_inv = None
+        self.upper_inertia_inv = None
+        self.impulses_P = None
 
-    def compile(self, *args,**kwargs):
-        super(TheanoRigid3DBodyEngine,self).compile(*args,**kwargs)
+    def compile(self, batch_size, *args,**kwargs):
+        super(TheanoRigid3DBodyEngine, self).compile(*args,**kwargs)
+
+        self.batch_size = batch_size
         self.initial_positions = theano.shared(numpy_repeat_new_axis(self.positionVectors, self.batch_size).astype('float32'), name="initial_positions")
         self.initial_velocities = theano.shared(numpy_repeat_new_axis(self.velocityVectors, self.batch_size).astype('float32'), name="initial_velocities")
         self.initial_rotations = theano.shared(numpy_repeat_new_axis(self.rot_matrices, self.batch_size).astype('float32'), name="initial_rotations", )
@@ -136,7 +146,8 @@ class TheanoRigid3DBodyEngine(Rigid3DBodyEngine):
     def getCameraImage(self, camera_name, *args, **kwargs):
         pass
 
-    def evaluate(dt, positions, velocities, rotations, motor_signals=motor_signals):
+    def evaluate(self, dt, state, motor_signals=[]):
+        positions, velocities, rotations = state.positions, state.velocities, state.positions
         # ALL CONSTRAINTS CAN BE TRANSFORMED TO VELOCITY CONSTRAINTS!
         ##################
         # --- Step 1 --- #
@@ -162,7 +173,7 @@ class TheanoRigid3DBodyEngine(Rigid3DBodyEngine):
         M00 = self.lower_inertia_inv
         M01 = T.zeros(shape=(self.batch_size,self.num_bodies,3,3))
         M10 = M01
-        M11 = T.sum(rot_matrices[:,:,:,None,:,None] * self.upper_inertia_inv[:,:,:,:,None,None] * rot_matrices[:,:,None,:,None,:], axis=(2,3))
+        M11 = T.sum(rotations[:,:,:,None,:,None] * self.upper_inertia_inv[:,:,:,:,None,None] * rotations[:,:,None,:,None,:], axis=(2,3))
         M0 = T.concatenate([M00,M01],axis=3)
         M1 = T.concatenate([M10,M11],axis=3)
         M = T.concatenate([M0,M1],axis=2)
@@ -186,8 +197,8 @@ class TheanoRigid3DBodyEngine(Rigid3DBodyEngine):
                 idx1,idx2 = idx2,idx2
 
             if constraint == "ball-and-socket" or constraint == "hinge" or constraint == "fixed":
-                r1x = theano_convert_model_to_world_coordinate_no_bias(parameters["joint_in_model1_coordinates"][None,:], rot_matrices[:,idx1,:,:])
-                r2x = theano_convert_model_to_world_coordinate_no_bias(parameters["joint_in_model2_coordinates"][None,:], rot_matrices[:,idx2,:,:])
+                r1x = theano_convert_model_to_world_coordinate_no_bias(parameters["joint_in_model1_coordinates"][None,:], rotations[:,idx1,:,:])
+                r2x = theano_convert_model_to_world_coordinate_no_bias(parameters["joint_in_model2_coordinates"][None,:], rotations[:,idx2,:,:])
                 ss_r1x = single_skew_symmetric(r1x)
                 ss_r2x = single_skew_symmetric(r2x)
                 batched_eye = numpy_repeat_new_axis(np.eye(3, dtype='float32'), self.batch_size)
@@ -205,7 +216,6 @@ class TheanoRigid3DBodyEngine(Rigid3DBodyEngine):
                 batched_eye = numpy_repeat_new_axis(np.eye(3, dtype='float32'), self.batch_size)
                 batched_zeros = numpy_repeat_new_axis(np.zeros((3,3), dtype='float32'), self.batch_size)
 
-
                 complete_J1 = np.concatenate([batched_zeros,-batched_eye],axis=1)
                 complete_J2 = np.concatenate([batched_zeros, batched_eye],axis=1)
 
@@ -213,9 +223,11 @@ class TheanoRigid3DBodyEngine(Rigid3DBodyEngine):
                     J[2*(c_idx+i)+0] = complete_J1[:,:,i]
                     J[2*(c_idx+i)+1] = complete_J2[:,:,i]
 
-                rot_current = np.dot(rot_matrices[idx2,:,:], rot_matrices[idx1,:,:].T)
-                rot_diff = np.dot(rot_current, parameters['rot_init'].T)
-                cross = rot_diff.T - rot_diff
+                #TODO: this is np?
+                #rot_current = theano_dot_last_dimension_matrices(rotations[:,idx2,:,:], rotations[:,idx1,:,:].dimshuffle(0,2,1))
+                #rot_diff = np.dot(rot_current, parameters['rot_init'].T)
+                #cross = rot_diff.T - rot_diff
+
                 # TODO: add stabilization of this constraint
                 b_error[c_idx] = np.zeros(shape=(self.batch_size,))  #cross[1,2]
                 b_error[c_idx+1] = np.zeros(shape=(self.batch_size,))  #cross[2,0]
@@ -246,8 +258,7 @@ class TheanoRigid3DBodyEngine(Rigid3DBodyEngine):
                     orig_error = numpy_repeat_new_axis(orig_error, self.batch_size)
                     pos_error = positions[:,idx2,:] - orig_error
 
-                # TODO: make batch dot product
-                b_error[c_idx] = T.dot(pos_error, n1)
+                b_error[c_idx] = theano_dot_last_dimension_vectors(pos_error, n1)
 
                 c_idx += 1
 
@@ -275,16 +286,15 @@ class TheanoRigid3DBodyEngine(Rigid3DBodyEngine):
                     orig_error = numpy_repeat_new_axis(orig_error, self.batch_size)
                     pos_error = positions[:,idx2,:] - orig_error
 
-                # TODO: make batch dot product
-                b_error[c_idx] = T.dot(pos_error, n1)
+                b_error[c_idx] = theano_dot_last_dimension_vectors(pos_error, n2)
 
                 c_idx += 1
 
 
             if constraint == "hinge":
-                a2x = theano_convert_model_to_world_coordinate_no_bias(parameters['axis_in_model2_coordinates'][None,:], rot_matrices[:,idx2,:,:])
-                b1x = theano_convert_model_to_world_coordinate_no_bias(parameters['axis1_in_model1_coordinates'][None,:], rot_matrices[:,idx1,:,:])
-                c1x = theano_convert_model_to_world_coordinate_no_bias(parameters['axis2_in_model1_coordinates'][None,:], rot_matrices[:,idx1,:,:])
+                a2x = theano_convert_model_to_world_coordinate_no_bias(parameters['axis_in_model2_coordinates'][None,:], rotations[:,idx2,:,:])
+                b1x = theano_convert_model_to_world_coordinate_no_bias(parameters['axis1_in_model1_coordinates'][None,:], rotations[:,idx1,:,:])
+                c1x = theano_convert_model_to_world_coordinate_no_bias(parameters['axis2_in_model1_coordinates'][None,:], rotations[:,idx1,:,:])
                 ss_a2x = single_skew_symmetric(a2x)
 
                 batched_zeros = numpy_repeat_new_axis(np.zeros((3,), dtype='float32'), self.batch_size)
@@ -300,10 +310,10 @@ class TheanoRigid3DBodyEngine(Rigid3DBodyEngine):
 
             if constraint == "angular motor":
                 ac = parameters['axis_in_model2_coordinates'][None,:]
-                a = theano_convert_model_to_world_coordinate_no_bias(ac, rot_matrices[:,idx2,:,:])
+                a = theano_convert_model_to_world_coordinate_no_bias(ac, rotations[:,idx2,:,:])
 
                 # TODO: remove dimshuffle(0,2,1) by using batched_dot
-                rot_current = theano_dot_last_dimension_matrices(rot_matrices[:,idx2,:,:], rot_matrices[:,idx1,:,:].dimshuffle(0,2,1))
+                rot_current = theano_dot_last_dimension_matrices(rotations[:,idx2,:,:], rotations[:,idx1,:,:].dimshuffle(0,2,1))
                 rot_init = numpy_repeat_new_axis(parameters['rot_init'].T, self.batch_size)
                 rot_diff = theano_dot_last_dimension_matrices(rot_current, rot_init)
 
@@ -349,7 +359,7 @@ class TheanoRigid3DBodyEngine(Rigid3DBodyEngine):
             if constraint == "linear motor":
 
                 ac = parameters['axis_in_model2_coordinates']
-                a = convert_model_to_world_coordinate_no_bias(ac, rotations[:,idx2,:,:])
+                a = theano_convert_model_to_world_coordinate_no_bias(ac, rotations[:,idx2,:,:])
 
                 # WORKPOINT
                 batched_zeros = numpy_repeat_new_axis(np.zeros((3,), dtype='float32'), self.batch_size)
@@ -390,7 +400,7 @@ class TheanoRigid3DBodyEngine(Rigid3DBodyEngine):
                 ac = parameters['axis_in_model2_coordinates']
                 a = theano_convert_model_to_world_coordinate_no_bias(parameters['axis_in_model2_coordinates'], rotations[:,idx2,:,:])
 
-                rot_current = theano_dot_last_dimension_matrices(rot_matrices[:,idx2,:,:], rot_matrices[:,idx1,:,:].dimshuffle(0,2,1))
+                rot_current = theano_dot_last_dimension_matrices(rotations[:,idx2,:,:], rotations[:,idx1,:,:].dimshuffle(0,2,1))
                 rot_init = numpy_repeat_new_axis(parameters['rot_init'].T, self.batch_size)
                 rot_diff = theano_dot_last_dimension_matrices(rot_current, rot_init)
                 
@@ -424,7 +434,7 @@ class TheanoRigid3DBodyEngine(Rigid3DBodyEngine):
                 offset = parameters["offset"]
                 if follows_Newtons_third_law:
                     ac = parameters['axis_in_model1_coordinates']
-                    a = convert_model_to_world_coordinate_no_bias(ac, self.rot_matrices[idx1,:,:])
+                    a = theano_convert_model_to_world_coordinate_no_bias(ac, self.rot_matrices[idx1,:,:])
                 else:
                     a = parameters['axis_in_model1_coordinates']
 

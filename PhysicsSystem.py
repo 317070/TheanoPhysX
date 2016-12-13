@@ -1,3 +1,4 @@
+from collections import namedtuple
 import json
 
 __author__ = 'jonas'
@@ -98,6 +99,11 @@ def skew_symmetric(x):
                     np.concatenate(( c, z,-a),axis=-1),
                     np.concatenate((-b, a, z),axis=-1)
                             ],axis=-2)
+
+
+
+EngineState = namedtuple(typename='EngineState', field_names=["positions", "velocities", "rotations"])
+
 
 
 class Rigid3DBodyEngine(object):
@@ -809,7 +815,7 @@ class Rigid3DBodyEngine(object):
 
 
     def compile(self):
-
+        self.num_bodies = len(self.objects)
         self.inertia_inv = np.linalg.inv(self.massMatrices)
         self.num_constraints = 0
         for (constraint,references,parameters) in self.constraints:
@@ -1018,8 +1024,10 @@ class Rigid3DBodyEngine(object):
 
 
 
-    def evaluate(self, dt, positions, velocities, motor_signals):
+    def evaluate(self, dt, state, motor_signals=[]):
 
+
+        positions, velocities, rotations = state.positions, state.velocities, state.positions
         # ALL CONSTRAINTS CAN BE TRANSFORMED TO VELOCITY CONSTRAINTS!
         ##################
         # --- Step 1 --- #
