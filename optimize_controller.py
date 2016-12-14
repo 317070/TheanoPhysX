@@ -11,7 +11,7 @@ sys.setrecursionlimit(10**6)
 # step 1: load the physics model
 engine = TheanoRigid3DBodyEngine()
 engine.load_robot_model("robotmodel/full_predator.json")
-spine_id = engine.getObjectIndex("spine")
+spine_id = engine.get_object_index("spine")
 
 engine.compile()
 
@@ -45,7 +45,7 @@ def build_model():
 
     def control_loop(state):
         positions, velocities, rot_matrices = state
-        sensor_values = engine.getSensorValues(state=(positions, velocities, rot_matrices))
+        sensor_values = engine.get_sensor_values(state=(positions, velocities, rot_matrices))
         controller = build_controller(sensor_values)
         motor_signals = lasagne.layers.helper.get_output(controller)
         controller_parameters[:] = lasagne.layers.helper.get_all_params(controller)

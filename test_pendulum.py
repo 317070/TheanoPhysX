@@ -35,7 +35,8 @@ BATCH_SIZE = 1
 engine.compile()
 
 t = time.time()
-image = engine.getCameraImage("front_camera")
+state = engine.get_initial_state()
+image = engine.get_camera_image(state,"front_camera")
 print "time taken =", time.time() - t
 
 import matplotlib.pyplot as plt
@@ -45,8 +46,9 @@ plt.pause(engine.DT)
 t = 0
 while plt.get_fignums():
     t+=engine.DT
-    engine.do_time_step(dt=engine.DT, motor_signals=[2*np.sin(t)])
-    image = engine.getCameraImage("front_camera")
+    print t,
+    state = engine.do_time_step(state, dt=engine.DT, motor_signals=[np.sin(2*t)])
+    image = engine.get_camera_image(state,"front_camera")
     frame.set_data(image)
     plt.draw()
     plt.pause(engine.DT)

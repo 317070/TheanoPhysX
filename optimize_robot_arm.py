@@ -118,7 +118,7 @@ def build_model(engine, controller, controller_parameters, deterministic = False
 
     def control_loop(state, memory):
         positions, velocities, rot_matrices = state
-        #sensor_values = engine.getSensorValues(state=(positions, velocities, rot_matrices))
+        #sensor_values = engine.get_sensor_values(state=(positions, velocities, rot_matrices))
         #objective_sensor = T.sum((target - positions[:,grapper_id,:])**2,axis=1)[:,None]
         ALPHA = 0.95
         if "recurrent" in controller:

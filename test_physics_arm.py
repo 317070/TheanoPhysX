@@ -109,7 +109,7 @@ class MyApp(ShowBase):
         smiley.setQuat(self.render, fixQuat(rotation))
 
         self.objects[name] = smiley
-        self.physics.addSphere(name, radius, mass_density, position+rotation, velocity)
+        self.physics.add_sphere(name, radius, mass_density, position+rotation, velocity)
 
 
     def addCube(self, name, dimensions, mass_density, position, rotation, velocity, **parameters):
@@ -132,7 +132,7 @@ class MyApp(ShowBase):
         cube.setQuat(self.render, fixQuat(rotation))
 
         self.objects[name] = cube
-        self.physics.addCube(name, dimensions, mass_density, position + rotation, velocity)
+        self.physics.add_cube(name, dimensions, mass_density, position + rotation, velocity)
 
 
     def load_robot_model(self, filename):
@@ -157,16 +157,16 @@ class MyApp(ShowBase):
                 parameters.update(robot_dict["default_constraint_parameters"][joint["type"]])
             parameters.update(joint)
             if joint["type"] == "hinge":
-                self.physics.addHingeConstraint(jointname, **parameters)
+                self.physics.add_hinge_constraint(jointname, **parameters)
 
             elif joint["type"] == "ground":
-                self.physics.addGroundConstraint(jointname, **parameters)
+                self.physics.add_ground_constraint(jointname, **parameters)
 
             elif joint["type"] == "fixed":
-                self.physics.addFixedConstraint(jointname, **parameters)
+                self.physics.add_fixed_constraint(jointname, **parameters)
 
             elif joint["type"] == "ball":
-                self.physics.addBallAndSocketConstraint(jointname, **parameters)
+                self.physics.add_ball_and_socket_constraint(jointname, **parameters)
 
             if "limits" in parameters:
                 for limit in parameters["limits"]:
@@ -192,7 +192,7 @@ class MyApp(ShowBase):
     def spinCameraTask(self, task):
         self.t += self.physics.DT
         ph = self.t*np.float32(2*np.pi*1.5)/15
-        #sensors = self.physics.getSensorValues("spine").flatten()
+        #sensors = self.physics.get_sensor_values("spine").flatten()
         #print sensors.shape
         #self.physics.do_time_step(motor_signals=[-sin(ph),sin(ph),-1,1,0,0,0,0,0,0,0,0,0,0,0,0])
         ALPHA = 1.00

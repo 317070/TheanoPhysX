@@ -35,7 +35,7 @@ BATCH_SIZE = 1
 engine.compile()
 
 t = time.time()
-image = engine.getCameraImage("front_camera")
+image = engine.get_camera_image("front_camera")
 print "time taken =", time.time() - t
 
 import matplotlib.pyplot as plt
@@ -44,7 +44,7 @@ plt.gca().invert_yaxis()
 plt.pause(0.01)
 while plt.get_fignums():
     engine.do_time_step(dt=0.01)
-    image = engine.getCameraImage("front_camera")
+    image = engine.get_camera_image("front_camera")
     frame.set_data(image)
     plt.draw()
     plt.pause(0.01)

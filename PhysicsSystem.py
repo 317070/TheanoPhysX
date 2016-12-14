@@ -111,9 +111,9 @@ class Rigid3DBodyEngine(object):
     def __init__(self):
         self.radii = np.zeros(shape=(0,), dtype=DTYPE)
         self.dimensions = np.zeros(shape=(0,3), dtype=DTYPE)
-        self.positionVectors = np.zeros(shape=(0,3), dtype=DTYPE)
-        self.rot_matrices = np.zeros(shape=(0,3,3), dtype='float32')
-        self.velocityVectors = np.zeros(shape=(0,6), dtype=DTYPE)
+        self.initial_positions = np.zeros(shape=(0,3), dtype=DTYPE)
+        self.initial_rotations = np.zeros(shape=(0,3,3), dtype='float32')
+        self.initial_velocities = np.zeros(shape=(0,6), dtype=DTYPE)
         self.massMatrices = np.zeros(shape=(0,6,6), dtype=DTYPE)
         self.objects = {None:None}
         self.shapes = []
@@ -172,7 +172,7 @@ class Rigid3DBodyEngine(object):
         self.warm_start = warm_start
 
 
-    def addCube(self,
+    def add_cube(self,
                 reference,
                 dimensions=[1,1,1],
                 mass_density=1000.0,
@@ -187,14 +187,14 @@ class Rigid3DBodyEngine(object):
                                  },
                 faces = {},
                 **kwargs):
-        self.objects[reference] = self.positionVectors.shape[0]
+        self.objects[reference] = self.initial_positions.shape[0]
         self.shapes += ["cube"]
         self.radii = np.append(self.radii, -1)
         self.dimensions = np.append(self.dimensions, [dimensions], axis=0)
 
-        self.positionVectors = np.append(self.positionVectors, np.array([position], dtype=DTYPE), axis=0)
-        self.rot_matrices = np.append(self.rot_matrices, np.array([quat_to_rot_matrix(rotation)], dtype='float32'), axis=0)
-        self.velocityVectors = np.append(self.velocityVectors, np.array([velocity], dtype=DTYPE), axis=0)
+        self.initial_positions = np.append(self.initial_positions, np.array([position], dtype=DTYPE), axis=0)
+        self.initial_rotations = np.append(self.initial_rotations, np.array([quat_to_rot_matrix(rotation)], dtype='float32'), axis=0)
+        self.initial_velocities = np.append(self.initial_velocities, np.array([velocity], dtype=DTYPE), axis=0)
 
         mass = mass_density*np.prod(dimensions)
         I1 = 1./12. * (dimensions[1]**2 + dimensions[2]**2)
@@ -245,10 +245,10 @@ class Rigid3DBodyEngine(object):
 
                 texture_file = dt["texture"]
                 color = dt["color"] if "color" in dt else [1,1,1]
-                self.addFace(normal=nn, point=np0, parent=reference, face_x=nx0, face_y=ny0, texture=texture_file, color=color, limited=True)
+                self.add_face(normal=nn, point=np0, parent=reference, face_x=nx0, face_y=ny0, texture=texture_file, color=color, limited=True)
 
 
-    def addSphere(self,
+    def add_sphere(self,
                   reference,
                   radius=1.0,
                   mass_density=1000.0,
@@ -259,13 +259,13 @@ class Rigid3DBodyEngine(object):
                   texture=None,
                   color=[1,1,1],
                   **kwargs):
-        self.objects[reference] = self.positionVectors.shape[0]
+        self.objects[reference] = self.initial_positions.shape[0]
         self.shapes += ["sphere"]
         self.radii = np.append(self.radii, radius)
         self.dimensions = np.append(self.dimensions, [[-1,-1,-1]], axis=0)
-        self.positionVectors = np.append(self.positionVectors, np.array([position], dtype=DTYPE), axis=0)
-        self.rot_matrices = np.append(self.rot_matrices, np.array([quat_to_rot_matrix(rotation)], dtype='float32'), axis=0)
-        self.velocityVectors = np.append(self.velocityVectors, np.array([velocity], dtype=DTYPE), axis=0)
+        self.initial_positions = np.append(self.initial_positions, np.array([position], dtype=DTYPE), axis=0)
+        self.initial_rotations = np.append(self.initial_rotations, np.array([quat_to_rot_matrix(rotation)], dtype='float32'), axis=0)
+        self.initial_velocities = np.append(self.initial_velocities, np.array([velocity], dtype=DTYPE), axis=0)
         mass = mass_density*4./3.*np.pi*radius**3
         self.massMatrices = np.append(self.massMatrices, mass*np.diag([1,1,1,0.4,0.4,0.4])[None,:,:], axis=0)
 
@@ -277,17 +277,17 @@ class Rigid3DBodyEngine(object):
             self.sphere_colors = np.append(self.sphere_colors, [color], axis=0)
 
 
-    def addPlane(self, reference, normal, position, visible=True, **kwargs):
+    def add_plane(self, reference, normal, position, visible=True, **kwargs):
         self.objects[reference] = None
         self.planes[reference] = reference
         self.planeNormals = np.append(self.planeNormals, np.array([normal]), axis=0)
         self.planePoints = np.append(self.planePoints, np.array([position]), axis=0)
 
         if visible:
-            self.addFace(normal=normal, point=position, parent=None, **kwargs)
+            self.add_face(normal=normal, point=position, parent=None, **kwargs)
 
 
-    def addFace(self,
+    def add_face(self,
                 normal=[0,0,1],
                 point=[0,0,0],
                 parent=None,
@@ -350,7 +350,7 @@ class Rigid3DBodyEngine(object):
         return self.textures.shape[0]-1
 
 
-    def addCamera(self,
+    def add_camera(self,
                   reference,
                   parent=None,
                   position=[0,0,0],  # position of the lens
@@ -368,7 +368,7 @@ class Rigid3DBodyEngine(object):
         position = np.array(position)
         if parent is not None:
             parent_id = self.objects[parent]
-            camera_position = position - self.positionVectors[parent_id,:] # in model coordinates
+            camera_position = position - self.initial_positions[parent_id,:] # in model coordinates
         else:
             camera_position = position
 
@@ -407,7 +407,7 @@ class Rigid3DBodyEngine(object):
 
 
 
-    def getCameraImage(self, camera_name):
+    def get_camera_image(self, state, camera_name):
 
         # get camera image
         # do ray-sphere and ray-plane intersections
@@ -419,6 +419,7 @@ class Rigid3DBodyEngine(object):
         # ray_offset (px_hor, px_ver, 3)
 
         camera = self.cameras[camera_name]
+        positions, velocities, rotations = state.positions, state.velocities, state.rotations
 
         ray_dir = camera["ray_direction"]
         ray_offset = camera["ray_offset"]
@@ -429,13 +430,13 @@ class Rigid3DBodyEngine(object):
         if parent:
             pid = self.objects[parent]
             # rotate and move the camera according to its parent
-            ray_dir = batched_convert_model_to_world_coordinate_no_bias(ray_dir, self.rot_matrices[pid,:,:])
-            ray_offset = batched_convert_model_to_world_coordinate(ray_offset, self.rot_matrices[pid,:,:], self.positionVectors[pid,:])
+            ray_dir = batched_convert_model_to_world_coordinate_no_bias(ray_dir, rotations[pid,:,:])
+            ray_offset = batched_convert_model_to_world_coordinate(ray_offset, rotations[pid,:,:], positions[pid,:])
 
         # step 2a: intersect the rays with all the spheres
         s_relevant = np.ones(shape=(px_ver, px_hor, self.sphere_parent.shape[0]))
-        s_pos_vectors = self.positionVectors[None,None,self.sphere_parent,:]
-        s_rot_matrices = self.rot_matrices[self.sphere_parent,:,:]
+        s_pos_vectors = positions[None,None,self.sphere_parent,:]
+        s_rot_matrices = rotations[self.sphere_parent,:,:]
 
         L = s_pos_vectors - ray_offset[:,:,None,:]
         tca = np.sum(L * ray_dir[:,:,None,:],axis=3)  # L.dotProduct(ray_dir);
@@ -471,10 +472,10 @@ class Rigid3DBodyEngine(object):
         hasparent = [i for i,par in enumerate(self.face_parent) if par is not None]
         parents = [parent for parent in self.face_parent if parent is not None]
 
-        fn[hasparent,:] = batched_convert_model_to_world_coordinate_no_bias(fn[hasparent,:], self.rot_matrices[parents,:,:])
-        fp[hasparent,:] = batched_convert_model_to_world_coordinate(fp[hasparent,:], self.rot_matrices[parents,:,:], self.positionVectors[parents,:])
-        ftx[hasparent,:] = batched_convert_model_to_world_coordinate_no_bias(ftx[hasparent,:], self.rot_matrices[parents,:,:])
-        fty[hasparent,:] = batched_convert_model_to_world_coordinate_no_bias(fty[hasparent,:], self.rot_matrices[parents,:,:])
+        fn[hasparent,:] = batched_convert_model_to_world_coordinate_no_bias(fn[hasparent,:], rotations[parents,:,:])
+        fp[hasparent,:] = batched_convert_model_to_world_coordinate(fp[hasparent,:], rotations[parents,:,:], positions[parents,:])
+        ftx[hasparent,:] = batched_convert_model_to_world_coordinate_no_bias(ftx[hasparent,:], rotations[parents,:,:])
+        fty[hasparent,:] = batched_convert_model_to_world_coordinate_no_bias(fty[hasparent,:], rotations[parents,:,:])
 
         denom = np.sum(fn[None,None,:,:] * ray_dir[:,:,None,:],axis=3)
         p0l0 = fp[None,None,:,:] - ray_offset[:,:,None,:]
@@ -543,39 +544,39 @@ class Rigid3DBodyEngine(object):
 
         return image
 
-    def getObjectIndex(self, reference):
+    def get_object_index(self, reference):
         if reference is None:
             return None
         return self.objects[reference]
 
-    def addConstraint(self, constraint, references, parameters):
+    def add_constraint(self, constraint, references, parameters):
         references = [self.objects[reference] for reference in references]
         parameters["w"] = parameters["f"] * 2*np.pi
 
         self.constraints.append([constraint, references, parameters])
 
-    def addGroundConstraint(self, jointname, object1, **parameters):
-        self.addConstraint("ground", [object1, object1], parameters)
+    def add_ground_constraint(self, jointname, object1, **parameters):
+        self.add_constraint("ground", [object1, object1], parameters)
 
-    def addTouchConstraint(self, jointname, object1, object2, **parameters):
-        self.addConstraint("touch", [object1, object2], parameters)
+    def add_touch_constraint(self, jointname, object1, object2, **parameters):
+        self.add_constraint("touch", [object1, object2], parameters)
 
-    def addBallAndSocketConstraint(self, jointname, object1, object2, point, **parameters):
-        idx1 = self.getObjectIndex(object1)
-        idx2 = self.getObjectIndex(object2)
+    def add_ball_and_socket_constraint(self, jointname, object1, object2, point, **parameters):
+        idx1 = self.get_object_index(object1)
+        idx2 = self.get_object_index(object2)
 
-        parameters['joint_in_model1_coordinates'] = convert_world_to_model_coordinate(point, self.rot_matrices[idx1,:,:], self.positionVectors[idx1,:])
-        parameters['joint_in_model2_coordinates'] = convert_world_to_model_coordinate(point, self.rot_matrices[idx2,:,:], self.positionVectors[idx2,:])
+        parameters['joint_in_model1_coordinates'] = convert_world_to_model_coordinate(point, self.initial_rotations[idx1,:,:], self.initial_positions[idx1,:])
+        parameters['joint_in_model2_coordinates'] = convert_world_to_model_coordinate(point, self.initial_rotations[idx2,:,:], self.initial_positions[idx2,:])
 
-        self.addConstraint("ball-and-socket", [object1, object2], parameters)
+        self.add_constraint("ball-and-socket", [object1, object2], parameters)
 
 
-    def addHingeConstraint(self, jointname, object1, object2, point, axis, **parameters):
-        idx1 = self.getObjectIndex(object1)
-        idx2 = self.getObjectIndex(object2)
+    def add_hinge_constraint(self, jointname, object1, object2, point, axis, **parameters):
+        idx1 = self.get_object_index(object1)
+        idx2 = self.get_object_index(object2)
 
-        parameters['joint_in_model1_coordinates'] = convert_world_to_model_coordinate(point, self.rot_matrices[idx1,:,:], self.positionVectors[idx1,:])
-        parameters['joint_in_model2_coordinates'] = convert_world_to_model_coordinate(point, self.rot_matrices[idx2,:,:], self.positionVectors[idx2,:])
+        parameters['joint_in_model1_coordinates'] = convert_world_to_model_coordinate(point, self.initial_rotations[idx1,:,:], self.initial_positions[idx1,:])
+        parameters['joint_in_model2_coordinates'] = convert_world_to_model_coordinate(point, self.initial_rotations[idx2,:,:], self.initial_positions[idx2,:])
 
         # create two forbidden axis:
         axis = np.array(axis)
@@ -588,18 +589,18 @@ class Rigid3DBodyEngine(object):
             forbidden_axis_2 = np.cross(axis, forbidden_axis_1)
 
         parameters['axis'] = axis
-        parameters['axis1_in_model1_coordinates'] = convert_world_to_model_coordinate_no_bias(forbidden_axis_1, self.rot_matrices[idx1,:,:])
-        parameters['axis2_in_model1_coordinates'] = convert_world_to_model_coordinate_no_bias(forbidden_axis_2, self.rot_matrices[idx1,:,:])
-        parameters['axis_in_model2_coordinates'] = convert_world_to_model_coordinate_no_bias(axis, self.rot_matrices[idx2,:,:])
+        parameters['axis1_in_model1_coordinates'] = convert_world_to_model_coordinate_no_bias(forbidden_axis_1, self.initial_rotations[idx1,:,:])
+        parameters['axis2_in_model1_coordinates'] = convert_world_to_model_coordinate_no_bias(forbidden_axis_2, self.initial_rotations[idx1,:,:])
+        parameters['axis_in_model2_coordinates'] = convert_world_to_model_coordinate_no_bias(axis, self.initial_rotations[idx2,:,:])
 
-        self.addConstraint("hinge", [object1, object2], parameters)
+        self.add_constraint("hinge", [object1, object2], parameters)
 
 
-    def addSliderConstraint(self, jointname, object1, object2, axis, **parameters):
+    def add_slider_constraint(self, jointname, object1, object2, axis, **parameters):
         # TODO: strictly speaking, we can choose a point on each object. We choose the center of mass for now
 
-        idx1 = self.getObjectIndex(object1)
-        idx2 = self.getObjectIndex(object2)
+        idx1 = self.get_object_index(object1)
+        idx2 = self.get_object_index(object2)
 
         if idx2 is None:
             idx1, idx2 = None, idx1
@@ -617,96 +618,102 @@ class Rigid3DBodyEngine(object):
         parameters['axis'] = axis
 
         if idx1 is not None:
-            parameters['axis1_in_model1_coordinates'] = convert_world_to_model_coordinate_no_bias(forbidden_axis_1, self.rot_matrices[idx1,:,:])
-            parameters['axis2_in_model1_coordinates'] = convert_world_to_model_coordinate_no_bias(forbidden_axis_2, self.rot_matrices[idx1,:,:])
-            parameters['trans_init_in_model2'] = convert_world_to_model_coordinate_no_bias(self.positionVectors[idx2,:] - self.positionVectors[idx1,:],
-                                                                                               self.rot_matrices[idx2,:,:])
+            parameters['axis1_in_model1_coordinates'] = convert_world_to_model_coordinate_no_bias(forbidden_axis_1, self.initial_rotations[idx1,:,:])
+            parameters['axis2_in_model1_coordinates'] = convert_world_to_model_coordinate_no_bias(forbidden_axis_2, self.initial_rotations[idx1,:,:])
+            parameters['trans_init_in_model2'] = convert_world_to_model_coordinate_no_bias(self.initial_positions[idx2,:] - self.initial_positions[idx1,:],
+                                                                                               self.initial_rotations[idx2,:,:])
+            parameters['rot_init'] = np.dot(self.initial_rotations[idx2,:,:], self.initial_rotations[idx1,:,:].T)
+
         else:
             parameters['axis1_in_model1_coordinates'] = forbidden_axis_1
             parameters['axis2_in_model1_coordinates'] = forbidden_axis_2
-            parameters['trans_init'] = np.array(self.positionVectors[idx2,:])
+            parameters['trans_init'] = np.array(self.initial_positions[idx2,:])
+            parameters['rot_init'] = self.initial_rotations[idx2,:,:]
 
-        self.addConstraint("slider", [object1, object2], parameters)
+        self.add_constraint("slider", [object1, object2], parameters)
 
 
-    def addPlaneConstraint(self, jointname, object1, object2, normal, **parameters):
+    def add_plane_constraint(self, jointname, object1, object2, normal, **parameters):
         # TODO: strictly speaking, we can choose a point on each object. We choose the center of mass for now
-        idx1 = self.getObjectIndex(object1)
-        idx2 = self.getObjectIndex(object2)
+        idx1 = self.get_object_index(object1)
+        idx2 = self.get_object_index(object2)
 
         normal = np.array(normal)
         parameters['normal'] = normal
-        parameters['axis1_in_model2_coordinates'] = convert_world_to_model_coordinate_no_bias(normal, self.rot_matrices[idx2,:,:])
+        parameters['axis1_in_model2_coordinates'] = convert_world_to_model_coordinate_no_bias(normal, self.initial_rotations[idx2,:,:])
 
-        parameters['trans_init_in_model2'] = convert_world_to_model_coordinate_no_bias(self.positionVectors[idx2,:] - self.positionVectors[idx1,:],
-                                                                                               self.rot_matrices[idx2,:,:])
+        parameters['trans_init_in_model2'] = convert_world_to_model_coordinate_no_bias(self.initial_positions[idx2,:] - self.initial_positions[idx1,:],
+                                                                                               self.initial_rotations[idx2,:,:])
+        parameters['rot_init'] = np.dot(self.initial_rotations[idx2,:,:], self.initial_rotations[idx1,:,:].T)
 
-        self.addConstraint("plane", [object1, object2], parameters)
-
-
-    def addParallelConstraint(self, jointname, object1, object2, **parameters):
-        idx1 = self.getObjectIndex(object1)
-        idx2 = self.getObjectIndex(object2)
-
-        self.addConstraint("parallel", [object1, object2], parameters)
+        self.add_constraint("plane", [object1, object2], parameters)
 
 
-    def addFixedConstraint(self, jointname, object1, object2, point, **parameters):
-        idx1 = self.getObjectIndex(object1)
-        idx2 = self.getObjectIndex(object2)
+    def add_parallel_constraint(self, jointname, object1, object2, **parameters):
+        idx1 = self.get_object_index(object1)
+        idx2 = self.get_object_index(object2)
+        parameters['rot_init'] = np.dot(self.initial_rotations[idx2,:,:], self.initial_rotations[idx1,:,:].T)
 
-        parameters['joint_in_model1_coordinates'] = convert_world_to_model_coordinate(point, self.rot_matrices[idx1,:,:], self.positionVectors[idx1,:])
-        parameters['joint_in_model2_coordinates'] = convert_world_to_model_coordinate(point, self.rot_matrices[idx2,:,:], self.positionVectors[idx2,:])
-
-        self.addConstraint("fixed", [object1, object2], parameters)
+        self.add_constraint("parallel", [object1, object2], parameters)
 
 
-    def addAngularMotorConstraint(self, object1, object2, axis, **parameters):
-        idx1 = self.getObjectIndex(object1)
-        idx2 = self.getObjectIndex(object2)
+    def add_fixed_constraint(self, jointname, object1, object2, point, **parameters):
+        idx1 = self.get_object_index(object1)
+        idx2 = self.get_object_index(object2)
+
+        parameters['joint_in_model1_coordinates'] = convert_world_to_model_coordinate(point, self.initial_rotations[idx1,:,:], self.initial_positions[idx1,:])
+        parameters['joint_in_model2_coordinates'] = convert_world_to_model_coordinate(point, self.initial_rotations[idx2,:,:], self.initial_positions[idx2,:])
+        parameters['rot_init'] = np.dot(self.initial_rotations[idx2,:,:], self.initial_rotations[idx1,:,:].T)
+
+        self.add_constraint("fixed", [object1, object2], parameters)
+
+
+    def add_angular_motor_constraint(self, object1, object2, axis, **parameters):
+        idx1 = self.get_object_index(object1)
+        idx2 = self.get_object_index(object2)
 
         axis = np.array(axis)
         axis = axis / np.linalg.norm(axis)
         parameters['axis'] = axis
-        parameters['axis_in_model2_coordinates'] = convert_world_to_model_coordinate_no_bias(axis, self.rot_matrices[idx2,:,:])
+        parameters['axis_in_model2_coordinates'] = convert_world_to_model_coordinate_no_bias(axis, self.initial_rotations[idx2,:,:])
 
-        parameters['rot_init'] = np.dot(self.rot_matrices[idx2,:,:], self.rot_matrices[idx1,:,:].T)
+        parameters['rot_init'] = np.dot(self.initial_rotations[idx2,:,:], self.initial_rotations[idx1,:,:].T)
         print idx2
-        self.addConstraint("angular motor", [object1, object2], parameters)
+        self.add_constraint("angular motor", [object1, object2], parameters)
 
 
-    def addLinearMotorConstraint(self, object1, object2, axis, **parameters):
-        idx1 = self.getObjectIndex(object1)
-        idx2 = self.getObjectIndex(object2)
+    def add_linear_motor_constraint(self, object1, object2, axis, **parameters):
+        idx1 = self.get_object_index(object1)
+        idx2 = self.get_object_index(object2)
 
         if idx2 is None:
             idx1, idx2 = None, idx1
 
         parameters['axis'] = axis
-        parameters['axis_in_model2_coordinates'] = convert_world_to_model_coordinate_no_bias(axis, self.rot_matrices[idx2,:,:])
+        parameters['axis_in_model2_coordinates'] = convert_world_to_model_coordinate_no_bias(axis, self.initial_rotations[idx2,:,:])
 
         if idx1 is not None:
-            parameters['pos_init'] = self.positionVectors[idx2,:] - self.positionVectors[idx1,:]
+            parameters['pos_init'] = self.initial_positions[idx2,:] - self.initial_positions[idx1,:]
         else:
-            parameters['pos_init'] = np.array(self.positionVectors[idx2,:])
+            parameters['pos_init'] = np.array(self.initial_positions[idx2,:])
 
-        self.addConstraint("linear motor", [object1, object2], parameters)
+        self.add_constraint("linear motor", [object1, object2], parameters)
 
 
-    def addAngularLimitConstraint(self, object1, object2, axis, **parameters):
+    def add_angular_limit_constraint(self, object1, object2, axis, **parameters):
         idx1 = self.objects[object1]
         idx2 = self.objects[object2]
 
         axis = np.array(axis)
         axis = axis / np.linalg.norm(axis)
         parameters['axis'] = axis
-        parameters['axis_in_model2_coordinates'] = convert_world_to_model_coordinate_no_bias(axis, self.rot_matrices[idx2,:,:])
-        parameters['rot_init'] = np.dot(self.rot_matrices[idx2,:,:], self.rot_matrices[idx1,:,:].T)
+        parameters['axis_in_model2_coordinates'] = convert_world_to_model_coordinate_no_bias(axis, self.initial_rotations[idx2,:,:])
+        parameters['rot_init'] = np.dot(self.initial_rotations[idx2,:,:], self.initial_rotations[idx1,:,:].T)
 
-        self.addConstraint("angular limit", [object1, object2], parameters)
+        self.add_constraint("angular limit", [object1, object2], parameters)
 
 
-    def addLinearLimitConstraint(self, object1, object2, axis, **parameters):
+    def add_linear_limit_constraint(self, object1, object2, axis, **parameters):
         idx1 = self.objects[object1]
         idx2 = self.objects[object2]
         if idx2 is None:
@@ -715,21 +722,21 @@ class Rigid3DBodyEngine(object):
         axis = np.array(axis, dtype=DTYPE)
         parameters['axis'] = axis
         if idx1 is not None:
-            parameters['axis_in_model1_coordinates'] = convert_world_to_model_coordinate_no_bias(axis, self.rot_matrices[idx1,:,:])
+            parameters['axis_in_model1_coordinates'] = convert_world_to_model_coordinate_no_bias(axis, self.initial_rotations[idx1,:,:])
         else:
             parameters['axis_in_model1_coordinates'] = axis
 
         if idx1 is not None:
-            parameters['pos_init'] = self.positionVectors[idx2,:] - self.positionVectors[idx1,:]
+            parameters['pos_init'] = self.initial_positions[idx2,:] - self.initial_positions[idx1,:]
         else:
-            parameters['pos_init'] = np.array(self.positionVectors[idx2,:])
+            parameters['pos_init'] = np.array(self.initial_positions[idx2,:])
 
-        self.addConstraint("linear limit", [object1, object2], parameters)
+        self.add_constraint("linear limit", [object1, object2], parameters)
 
 
-    def addSensor(self, **kwargs):
+    def add_sensor(self, **kwargs):
         if "axis" in kwargs and "reference" in kwargs:
-            kwargs["axis"] = convert_world_to_model_coordinate_no_bias(kwargs["axis"], self.rot_matrices[self.getObjectIndex(kwargs["reference"]),:,:])
+            kwargs["axis"] = convert_world_to_model_coordinate_no_bias(kwargs["axis"], self.initial_rotations[self.get_object_index(kwargs["reference"]),:,:])
         kwargs["axis"] = np.array(kwargs["axis"], dtype='float32')
         self.sensors.append(kwargs)
 
@@ -746,13 +753,13 @@ class Rigid3DBodyEngine(object):
                 parameters.update(robot_dict["default_model_parameters"][primitive["shape"]])
             parameters.update(primitive)
             if primitive["shape"] == "cube":
-                self.addCube(elementname, **parameters)
+                self.add_cube(elementname, **parameters)
             elif primitive["shape"] == "sphere":
-                self.addSphere(elementname, **parameters)
+                self.add_sphere(elementname, **parameters)
             elif primitive["shape"] == "plane":
-                self.addPlane(elementname, **parameters)
+                self.add_plane(elementname, **parameters)
             elif primitive["shape"] == "face":
-                self.addFace(**parameters)
+                self.add_face(**parameters)
 
         for jointname, joint in robot_dict["joints"].iteritems():
             parameters = dict(robot_dict["default_constraint_parameters"]["default"])  # copy
@@ -760,25 +767,25 @@ class Rigid3DBodyEngine(object):
                 parameters.update(robot_dict["default_constraint_parameters"][joint["type"]])
             parameters.update(joint)
             if joint["type"] == "hinge":
-                self.addHingeConstraint(jointname, **parameters)
+                self.add_hinge_constraint(jointname, **parameters)
 
             elif joint["type"] == "ground":
-                self.addGroundConstraint(jointname, **parameters)
+                self.add_ground_constraint(jointname, **parameters)
 
             elif joint["type"] == "fixed":
-                self.addFixedConstraint(jointname, **parameters)
+                self.add_fixed_constraint(jointname, **parameters)
 
             elif joint["type"] == "ball":
-                self.addBallAndSocketConstraint(jointname, **parameters)
+                self.add_ball_and_socket_constraint(jointname, **parameters)
 
             elif joint["type"] == "slider":
-                self.addSliderConstraint(jointname, **parameters)
+                self.add_slider_constraint(jointname, **parameters)
 
             elif joint["type"] == "plane":
-                self.addPlaneConstraint(jointname, **parameters)
+                self.add_plane_constraint(jointname, **parameters)
 
             elif joint["type"] == "parallel":
-                self.addParallelConstraint(jointname, **parameters)
+                self.add_parallel_constraint(jointname, **parameters)
 
             if "limits" in parameters:
                 for limit in parameters["limits"]:
@@ -789,9 +796,9 @@ class Rigid3DBodyEngine(object):
                     limitparameters.update(limit)
                     print limitparameters
                     if limitparameters["type"] in ["angular","hinge","ball"]:
-                        self.addAngularLimitConstraint(**limitparameters)
+                        self.add_angular_limit_constraint(**limitparameters)
                     if limitparameters["type"] in ["linear","slider","plane","parallel"]:
-                        self.addLinearLimitConstraint(**limitparameters)
+                        self.add_linear_limit_constraint(**limitparameters)
 
             if "motors" in parameters:
                 for motor in parameters["motors"]:
@@ -801,17 +808,17 @@ class Rigid3DBodyEngine(object):
                     motorparameters.update(parameters)
                     motorparameters.update(motor)
                     if motorparameters["type"] in ["angular","hinge","ball"]:
-                        self.addAngularMotorConstraint(**motorparameters)
+                        self.add_angular_motor_constraint(**motorparameters)
                     if motorparameters["type"] in ["linear","slider","plane","parallel"]:
-                        self.addLinearMotorConstraint(**motorparameters)
+                        self.add_linear_motor_constraint(**motorparameters)
 
         for cameraname, camera in robot_dict["cameras"].iteritems():
             parameters = dict(robot_dict["default_camera_parameters"])  # copy
             parameters.update(camera)
-            self.addCamera(cameraname, **camera)
+            self.add_camera(cameraname, **camera)
 
         for sensor in robot_dict["sensors"]:
-            self.addSensor(**sensor)
+            self.add_sensor(**sensor)
 
 
     def compile(self):
@@ -867,7 +874,6 @@ class Rigid3DBodyEngine(object):
             if idx2 is None:
                 idx1, idx2 = None, idx1
 
-
             if constraint == "ball-and-socket" or constraint == "hinge" or constraint == "fixed":
                 for i in xrange(3):
                     self.map_object_to_constraint[idx1].append(2*(c_idx+i) + 0)
@@ -880,8 +886,6 @@ class Rigid3DBodyEngine(object):
                 c_idx += 3
 
             if constraint == "slider" or constraint == "fixed" or constraint == "parallel" or constraint == "plane":
-                parameters['rot_init'] = np.dot(self.rot_matrices[idx2,:,:], self.rot_matrices[idx1,:,:].T)
-
                 for i in xrange(3):
                     if idx1 is not None:
                         self.map_object_to_constraint[idx1].append(2*(c_idx+i) + 0)
@@ -907,7 +911,6 @@ class Rigid3DBodyEngine(object):
                 self.w[c_idx] = parameters["f"] * 2*np.pi
                 self.zeta[c_idx] = parameters["zeta"]
                 c_idx += 1
-
 
             if constraint == "slider":
                 if idx1 is not None:
@@ -1023,11 +1026,9 @@ class Rigid3DBodyEngine(object):
                 c_idx += 1
 
 
-
     def evaluate(self, dt, state, motor_signals=[]):
 
-
-        positions, velocities, rotations = state.positions, state.velocities, state.positions
+        positions, velocities, rotations = state.positions, state.velocities, state.rotations
         # ALL CONSTRAINTS CAN BE TRANSFORMED TO VELOCITY CONSTRAINTS!
         ##################
         # --- Step 1 --- #
@@ -1040,8 +1041,6 @@ class Rigid3DBodyEngine(object):
         newv = velocities + dt * (np.dot(self.massMatrices, totalforce) + acceleration[None,:])
         originalv = newv.copy()
 
-        interesting = []
-
         ##################
         # --- Step 2 --- #
         ##################
@@ -1050,7 +1049,7 @@ class Rigid3DBodyEngine(object):
         M = np.zeros_like(self.inertia_inv, dtype=DTYPE)
 
         M[:,:3,:3] = self.inertia_inv[:,:3,:3]
-        M[:,3:,3:] = np.sum(self.rot_matrices[:,:,None,:,None] * self.inertia_inv[:,3:,3:,None,None] * self.rot_matrices[:,None,:,None,:], axis=(1,2))
+        M[:,3:,3:] = np.sum(rotations[:,:,None,:,None] * self.inertia_inv[:,3:,3:,None,None] * rotations[:,None,:,None,:], axis=(1,2))
 
         #"""
         # changes every timestep
@@ -1071,8 +1070,8 @@ class Rigid3DBodyEngine(object):
                 idx1,idx2 = idx2,idx2
 
             if constraint == "ball-and-socket" or constraint == "hinge" or constraint == "fixed":
-                r1x = convert_model_to_world_coordinate_no_bias(parameters["joint_in_model1_coordinates"], self.rot_matrices[idx1,:,:])
-                r2x = convert_model_to_world_coordinate_no_bias(parameters["joint_in_model2_coordinates"], self.rot_matrices[idx2,:,:])
+                r1x = convert_model_to_world_coordinate_no_bias(parameters["joint_in_model1_coordinates"], rotations[idx1,:,:])
+                r2x = convert_model_to_world_coordinate_no_bias(parameters["joint_in_model2_coordinates"], rotations[idx2,:,:])
                 ss_r1x = skew_symmetric(r1x)
                 ss_r2x = skew_symmetric(r2x)
                 for i in xrange(3):
@@ -1093,27 +1092,22 @@ class Rigid3DBodyEngine(object):
                     #J[c_idx+i,1,:] = np.concatenate([np.zeros((3,3), dtype=DTYPE), self.rot_matrices[idx2,:,:].T])[:,i]
 
                 if follows_Newtons_third_law:
-                    rot_current = np.dot(self.rot_matrices[idx2,:,:], self.rot_matrices[idx1,:,:].T)
+                    rot_current = np.dot(rotations[idx2,:,:], rotations[idx1,:,:].T)
                 else:
-                    rot_current = self.rot_matrices[idx2,:,:]
+                    rot_current = rotations[idx2,:,:]
 
                 rot_diff = np.dot(rot_current, parameters['rot_init'].T)
                 cross = rot_diff.T - rot_diff
 
-                # TODO: find b_error for rotational matrices!
-                #q_current = q_div(positions[idx2,3:], positions[idx1,3:])
-                #q_diff = q_div(q_current, parameters['q_init'])
-                #b_error[c_idx:c_idx+3] = 2*q_diff[1:]
-                # TODO: THIS ACTUALLY WORKS! (NOT STABLE ENOUGH)
-                b_error[c_idx] = 0#cross[1,2]
-                b_error[c_idx+1] = 0#cross[2,0]
-                b_error[c_idx+2] = 0#cross[0,1]
-                #print b_error[c_idx:c_idx+3]
+                b_error[c_idx] = cross[1,2]
+                b_error[c_idx+1] = cross[2,0]
+                b_error[c_idx+2] = cross[0,1]
+                print b_error[c_idx:c_idx+3]
                 c_idx += 3
 
             if constraint == "plane" or constraint == "slider":
                 if follows_Newtons_third_law:
-                    n1 = convert_model_to_world_coordinate_no_bias(parameters['axis1_in_model1_coordinates'], self.rot_matrices[idx2,:,:])
+                    n1 = convert_model_to_world_coordinate_no_bias(parameters['axis1_in_model1_coordinates'], rotations[idx2,:,:])
                 else:
                     n1 = parameters['axis1_in_model1_coordinates']
 
@@ -1123,18 +1117,18 @@ class Rigid3DBodyEngine(object):
 
                 if follows_Newtons_third_law:
                     orig_error = convert_model_to_world_coordinate_no_bias(parameters['trans_init_in_model2'],
-                                                                           self.rot_matrices[idx2,:,:])
-                    pos_error = self.positionVectors[idx2,:] - self.positionVectors[idx1,:] - orig_error
+                                                                           rotations[idx2,:,:])
+                    pos_error = positions[idx2,:] - positions[idx1,:] - orig_error
                 else:
                     orig_error = parameters['trans_init']
-                    pos_error = self.positionVectors[idx2,:] - orig_error
+                    pos_error = positions[idx2,:] - orig_error
                 b_error[c_idx] = np.dot(pos_error, n1)
 
                 c_idx += 1
 
             if constraint == "slider":
                 if follows_Newtons_third_law:
-                    n2 = convert_model_to_world_coordinate_no_bias(parameters['axis2_in_model1_coordinates'], self.rot_matrices[idx1,:,:])
+                    n2 = convert_model_to_world_coordinate_no_bias(parameters['axis2_in_model1_coordinates'], rotations[idx1,:,:])
                 else:
                     n2 = parameters['axis2_in_model1_coordinates']
 
@@ -1144,11 +1138,11 @@ class Rigid3DBodyEngine(object):
 
                 if follows_Newtons_third_law:
                     orig_error = convert_model_to_world_coordinate_no_bias(parameters['trans_init_in_model2'],
-                                                                           self.rot_matrices[idx2,:,:])
-                    pos_error = self.positionVectors[idx2,:] - self.positionVectors[idx1,:] - orig_error
+                                                                           rotations[idx2,:,:])
+                    pos_error = positions[idx2,:] - positions[idx1,:] - orig_error
                 else:
                     orig_error = parameters['trans_init']
-                    pos_error = self.positionVectors[idx2,:] - orig_error
+                    pos_error = positions[idx2,:] - orig_error
 
                 b_error[c_idx] = np.dot(pos_error, n2)
 
@@ -1156,9 +1150,9 @@ class Rigid3DBodyEngine(object):
 
             if constraint == "hinge":
 
-                a2x = convert_model_to_world_coordinate_no_bias(parameters['axis_in_model2_coordinates'], self.rot_matrices[idx2,:,:])
-                b1x = convert_model_to_world_coordinate_no_bias(parameters['axis1_in_model1_coordinates'], self.rot_matrices[idx1,:,:])
-                c1x = convert_model_to_world_coordinate_no_bias(parameters['axis2_in_model1_coordinates'], self.rot_matrices[idx1,:,:])
+                a2x = convert_model_to_world_coordinate_no_bias(parameters['axis_in_model2_coordinates'], rotations[idx2,:,:])
+                b1x = convert_model_to_world_coordinate_no_bias(parameters['axis1_in_model1_coordinates'], rotations[idx1,:,:])
+                c1x = convert_model_to_world_coordinate_no_bias(parameters['axis2_in_model1_coordinates'], rotations[idx1,:,:])
 
                 ss_a2x = skew_symmetric(a2x)
 
@@ -1172,9 +1166,9 @@ class Rigid3DBodyEngine(object):
 
             if constraint == "angular motor":
                 ac = parameters['axis_in_model2_coordinates']
-                a = convert_model_to_world_coordinate_no_bias(ac, self.rot_matrices[idx2,:,:])
+                a = convert_model_to_world_coordinate_no_bias(ac, rotations[idx2,:,:])
 
-                rot_current = np.dot(self.rot_matrices[idx2,:,:], self.rot_matrices[idx1,:,:].T)
+                rot_current = np.dot(rotations[idx2,:,:], rotations[idx1,:,:].T)
                 rot_diff = np.dot(rot_current, parameters['rot_init'].T)
                 theta2 = np.arccos(np.clip(0.5*(np.trace(rot_diff)-1),-1,1))
                 cross = rot_diff.T - rot_diff
@@ -1210,16 +1204,16 @@ class Rigid3DBodyEngine(object):
 
             if constraint == "linear motor":
                 ac = parameters['axis_in_model2_coordinates']
-                a = convert_model_to_world_coordinate_no_bias(ac, self.rot_matrices[idx2,:,:])
+                a = convert_model_to_world_coordinate_no_bias(ac, rotations[idx2,:,:])
 
                 if follows_Newtons_third_law:
                     J[c_idx,0,:] = np.concatenate([-a, np.zeros((3,), dtype=DTYPE)])
                 J[c_idx,1,:] = np.concatenate([ a, np.zeros((3,), dtype=DTYPE)])
 
                 if follows_Newtons_third_law:
-                    position = self.positionVectors[idx2,:] - self.positionVectors[idx1,:] - parameters['pos_init']
+                    position = positions[idx2,:] - positions[idx1,:] - parameters['pos_init']
                 else:
-                    position = self.positionVectors[idx2,:] - parameters['pos_init']
+                    position = positions[idx2,:] - parameters['pos_init']
 
                 motor_signal = motor_signals[parameters["motor_id"]]
                 if "min" in parameters and "max" in parameters:
@@ -1243,9 +1237,9 @@ class Rigid3DBodyEngine(object):
                 angle = parameters["angle"]/180. * np.pi
 
                 ac = parameters['axis_in_model2_coordinates']
-                a = convert_model_to_world_coordinate_no_bias(parameters['axis_in_model2_coordinates'], self.rot_matrices[idx2,:,:])
+                a = convert_model_to_world_coordinate_no_bias(parameters['axis_in_model2_coordinates'], rotations[idx2,:,:])
 
-                rot_current = np.dot(self.rot_matrices[idx2,:,:], self.rot_matrices[idx1,:,:].T)
+                rot_current = np.dot(rotations[idx2,:,:], rotations[idx1,:,:].T)
                 rot_diff = np.dot(rot_current, parameters['rot_init'].T)
                 theta2 = np.arccos(np.clip(0.5*(np.trace(rot_diff)-1),-1,1))
                 cross = rot_diff.T - rot_diff
@@ -1276,7 +1270,7 @@ class Rigid3DBodyEngine(object):
                 offset = parameters["offset"]
                 if follows_Newtons_third_law:
                     ac = parameters['axis_in_model1_coordinates']
-                    a = convert_model_to_world_coordinate_no_bias(ac, self.rot_matrices[idx1,:,:])
+                    a = convert_model_to_world_coordinate_no_bias(ac, rotations[idx1,:,:])
                 else:
                     a = parameters['axis_in_model1_coordinates']
 
@@ -1290,9 +1284,9 @@ class Rigid3DBodyEngine(object):
                     J[c_idx,1,:] = np.concatenate([-a,np.zeros((3,), dtype=DTYPE)])
 
                 if follows_Newtons_third_law:
-                    position = self.positionVectors[idx2,:] - self.positionVectors[idx1,:] - parameters['pos_init']
+                    position = positions[idx2,:] - positions[idx1,:] - parameters['pos_init']
                 else:
-                    position = self.positionVectors[idx2,:] - parameters['pos_init']
+                    position = positions[idx2,:] - parameters['pos_init']
 
                 current_offset = np.dot(position, a)
 
@@ -1381,10 +1375,11 @@ class Rigid3DBodyEngine(object):
         return newv
 
 
-    def do_time_step(self, dt=None, motor_signals=list()):
+    def do_time_step(self, state, dt=None, motor_signals=list()):
         if dt is None:
             dt = self.DT
 
+        positions, velocities, rotations = state.positions, state.velocities, state.rotations
         ##################
         # --- Step 3 --- #
         ##################
@@ -1392,35 +1387,40 @@ class Rigid3DBodyEngine(object):
         # v2 computed in the second step with : x2 = x1 + dt * v2.
 
         # semi-implicit Euler integration
-        self.velocityVectors = self.evaluate(dt, self.positionVectors, self.velocityVectors, motor_signals=motor_signals)
-        self.positionVectors[:,:3] = self.positionVectors[:,:3] + self.velocityVectors[:,:3] * dt
+        velocities = self.evaluate(dt, state, motor_signals=motor_signals)
+        positions = positions + velocities[:,:3] * dt
 
-        self.rot_matrices[:,:,:] = self.normalize_matrix(self.rot_matrices[:,:,:] + np.sum(self.rot_matrices[:,:,:,None] * skew_symmetric(dt * self.velocityVectors[:,3:])[:,None,:,:],axis=2) )
+        rotations = self.normalize_matrix(rotations[:,:,:] + np.sum(rotations[:,:,:,None] * skew_symmetric(dt * velocities[:,3:])[:,None,:,:],axis=2) )
+        return EngineState(positions=positions,
+                           velocities=velocities,
+                           rotations=rotations)
 
     def normalize_matrix(self, A):
         for i in xrange(self.rotation_reorthogonalization_iterations):
             A = (3*A - np.sum(A[...,:,None,:,None] * A[...,None,:,:,None] * A[...,None,:,None,:], axis=(-3,-2))) / 2
         return A
 
-    def getState(self):
-        return self.positionVectors, self.velocityVectors, self.rot_matrices
+    def get_initial_state(self):
+        return EngineState(positions=self.initial_positions,
+                           velocities=self.initial_velocities,
+                           rotations=self.initial_rotations)
 
-    def getPosition(self, reference):
+    def get_position(self, state, reference):
         idx = self.objects[reference]
-        return self.positionVectors[idx]
+        return state.positions[idx]
 
-    def getRotationMatrix(self, reference):
+    def get_rotation(self, state, reference):
         idx = self.objects[reference]
-        return self.rot_matrices[idx]
+        return state.rotations[idx]
 
-    def getSensorValues(self, reference):
+    def get_sensor_values(self, state, reference):
         # make positionvectors neutral according to reference object
         idx = self.objects[reference]
-        rot_matrix = self.rot_matrices[idx]
+        rot_matrix = state.rotations[idx]
 
-        ref_position = self.positionVectors[idx,:]
+        ref_position = state.positions[idx,:]
 
-        result = self.positionVectors
+        result = state.positions
         # step 1: flatten rot_matrix
 
 

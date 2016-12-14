@@ -84,7 +84,7 @@ def build_model():
 
     def control_loop(state, t):
         positions, velocities, rot_matrices = state
-        #sensor_values = engine.getSensorValues(state=(positions, velocities, rot_matrices))
+        #sensor_values = engine.get_sensor_values(state=(positions, velocities, rot_matrices))
         t = t + engine.DT
         sine = T.tile(T.sin(np.float32(2*np.pi*1.5) * t), BATCH_SIZE)
         cosine = T.tile(T.cos(np.float32(2*np.pi*1.5) * t), BATCH_SIZE)

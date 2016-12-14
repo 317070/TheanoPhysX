@@ -44,7 +44,7 @@ class TheanoRigid3DBodyEngine(Rigid3DBodyEngine):
         self.impulses_P = theano.shared(T.zeros((self.batch_size, self.num_constraints,)), name="impulses_P")
 
 
-    def getAllSharedVariables(self):
+    def get_all_shared_variables(self):
         return [
             self.initial_positions,
             self.initial_velocities,
@@ -54,7 +54,7 @@ class TheanoRigid3DBodyEngine(Rigid3DBodyEngine):
             self.impulses_P,
         ]
 
-    def doTimeStep(self, state=None, dt=None, motor_signals=list()):
+    def do_time_step(self, state=None, dt=None, motor_signals=list()):
         if dt is None:
             dt = self.DT
 
@@ -74,31 +74,31 @@ class TheanoRigid3DBodyEngine(Rigid3DBodyEngine):
             velocities=velocities, 
             rotations=rotations)
 
-    def getInitialState(self):
+    def get_initial_state(self):
         return EngineState(positions=self.initial_positions,
                            velocities=self.initial_velocities,
                            rotations=self.initial_rotations)
 
-    def getInitialPosition(self, reference):
-        idx = self.getObjectIndex(reference)
+    def get_initial_position(self, reference):
+        idx = self.get_object_index(reference)
         return self.initial_positions[:,idx,:]
 
-    def getInitialRotation(self, reference):
-        idx = self.getObjectIndex(reference)
+    def get_initial_rotation(self, reference):
+        idx = self.get_object_index(reference)
         return self.initial_rotations[:,idx,:,:]
 
-    def getObjectIndex(self, reference):
+    def get_object_index(self, reference):
         return self.objects[reference]
 
-    def getSensorValues(self, state):
+    def get_sensor_values(self, state):
         # make positionvectors neutral according to reference object
         positions, velocities, rot_matrices = state.positions, state.velocities, state.rotations
 
         r = []
         for sensor in self.sensors:
-            idx = self.getObjectIndex(sensor["object"])
+            idx = self.get_object_index(sensor["object"])
             if "reference" in sensor:
-                ref_idx = self.getObjectIndex(sensor["reference"])
+                ref_idx = self.get_object_index(sensor["reference"])
             else:
                 ref_idx = None
             if sensor["type"] == "position":
@@ -143,10 +143,13 @@ class TheanoRigid3DBodyEngine(Rigid3DBodyEngine):
         result = theano_stack_batched_integers_mixed_numpy(r)
         return result
 
-    def getCameraImage(self, camera_name, *args, **kwargs):
+    def get_camera_image(self, camera_name, *args, **kwargs):
         pass
 
-    def evaluate(self, dt, state, motor_signals=[]):
+    def evaluate(self, state, dt=None, motor_signals=list()):
+        if dt is None:
+            dt = self.DT
+
         positions, velocities, rotations = state.positions, state.velocities, state.positions
         # ALL CONSTRAINTS CAN BE TRANSFORMED TO VELOCITY CONSTRAINTS!
         ##################
@@ -361,7 +364,6 @@ class TheanoRigid3DBodyEngine(Rigid3DBodyEngine):
                 ac = parameters['axis_in_model2_coordinates']
                 a = theano_convert_model_to_world_coordinate_no_bias(ac, rotations[:,idx2,:,:])
 
-                # WORKPOINT
                 batched_zeros = numpy_repeat_new_axis(np.zeros((3,), dtype='float32'), self.batch_size)
                 
                 if follows_Newtons_third_law:
@@ -379,7 +381,7 @@ class TheanoRigid3DBodyEngine(Rigid3DBodyEngine):
                     motor_max = (parameters["max"]/180. * np.pi)
                     motor_signal = T.clip(motor_signal, motor_min, motor_max)
 
-                error_signal = np.dot(position - motor_signal, a)
+                error_signal = theano_dot_last_dimension_vectors(position - motor_signal, a)
 
                 if parameters["servo"] == "velocity":
                     b_error[c_idx] = motor_signal
@@ -394,30 +396,35 @@ class TheanoRigid3DBodyEngine(Rigid3DBodyEngine):
 
 
             if constraint == "angular limit":
-                # TODO: convert to Theano
                 angle = parameters["angle"]/180. * np.pi
 
                 ac = parameters['axis_in_model2_coordinates']
                 a = theano_convert_model_to_world_coordinate_no_bias(parameters['axis_in_model2_coordinates'], rotations[:,idx2,:,:])
 
                 rot_current = theano_dot_last_dimension_matrices(rotations[:,idx2,:,:], rotations[:,idx1,:,:].dimshuffle(0,2,1))
-                rot_init = numpy_repeat_new_axis(parameters['rot_init'].T, self.batch_size)
+                rot_init = parameters['rot_init'].T
                 rot_diff = theano_dot_last_dimension_matrices(rot_current, rot_init)
-                
+
+                traces = rot_diff[:,0,0] + rot_diff[:,1,1] + rot_diff[:,2,2]
+
                 theta2 = T.arccos(T.clip(0.5*(traces-1),-1+eps,1-eps))
                 cross = rot_diff.dimshuffle(0,2,1) - rot_diff
                 dot2 = cross[:,1,2] * ac[:,0] + cross[:,2,0] * ac[:,1] + cross[:,0,1] * ac[:,2]
 
                 theta = ((dot2>0) * 2 - 1) * theta2
 
-                if parameters["angle"] < 0:
-                    J[c_idx,0,:] = np.concatenate([np.zeros((3,), dtype=DTYPE),-a])
-                    J[c_idx,1,:] = np.concatenate([np.zeros((3,), dtype=DTYPE), a])
-                else:
-                    J[c_idx,0,:] = np.concatenate([np.zeros((3,), dtype=DTYPE), a])
-                    J[c_idx,1,:] = np.concatenate([np.zeros((3,), dtype=DTYPE),-a])
+                batched_zeros = numpy_repeat_new_axis(np.zeros((3,), dtype='float32'), self.batch_size)
 
-                b_error[c_idx] = np.abs(angle - theta)
+                if parameters["angle"] < 0:
+                    if follows_Newtons_third_law:
+                        J[2*c_idx+0] = T.concatenate([batched_zeros, -a])
+                    J[2*c_idx+1] = T.concatenate([batched_zeros, a])
+                else:
+                    if follows_Newtons_third_law:
+                        J[2*c_idx+0] = T.concatenate([batched_zeros, a])
+                    J[2*c_idx+1] = T.concatenate([batched_zeros, -a])
+
+                b_error[c_idx] = T.abs_(angle - theta)
 
                 if parameters["angle"] > 0:
                     b_error[c_idx] = angle - theta
@@ -430,29 +437,29 @@ class TheanoRigid3DBodyEngine(Rigid3DBodyEngine):
 
 
             if constraint == "linear limit":
-                # TODO: convert to Theano
+
                 offset = parameters["offset"]
                 if follows_Newtons_third_law:
                     ac = parameters['axis_in_model1_coordinates']
-                    a = theano_convert_model_to_world_coordinate_no_bias(ac, self.rot_matrices[idx1,:,:])
+                    a = theano_convert_model_to_world_coordinate_no_bias(ac, rotations[:,idx1,:,:])
                 else:
                     a = parameters['axis_in_model1_coordinates']
 
                 if offset < 0:
                     if follows_Newtons_third_law:
-                        J[c_idx,0,:] = np.concatenate([-a,np.zeros((3,), dtype=DTYPE)])
-                    J[c_idx,1,:] = np.concatenate([a,np.zeros((3,), dtype=DTYPE)])
+                        J[2*c_idx+0] = T.concatenate([-a, batched_zeros])
+                    J[2*c_idx+1] = T.concatenate([a, batched_zeros])
                 else:
                     if follows_Newtons_third_law:
-                        J[c_idx,0,:] = np.concatenate([a,np.zeros((3,), dtype=DTYPE)])
-                    J[c_idx,1,:] = np.concatenate([-a,np.zeros((3,), dtype=DTYPE)])
+                        J[2*c_idx+0] = T.concatenate([a, batched_zeros])
+                    J[2*c_idx+1] = T.concatenate([-a, batched_zeros])
 
                 if follows_Newtons_third_law:
-                    position = self.positionVectors[idx2,:] - self.positionVectors[idx1,:] - parameters['pos_init']
+                    position = positions[:,idx2,:] - positions[:,idx1,:] - parameters['pos_init']
                 else:
-                    position = self.positionVectors[idx2,:] - parameters['pos_init']
+                    position = positions[:,idx2,:] - parameters['pos_init']
 
-                current_offset = np.dot(position, a)
+                current_offset = theano_dot_last_dimension_vectors(position, a)
 
                 if parameters["offset"] > 0:
                     b_error[c_idx] = offset - current_offset

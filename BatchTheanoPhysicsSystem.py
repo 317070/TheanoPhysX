@@ -924,7 +924,7 @@ class BatchedTheanoRigid3DBodyEngine(object):
         # rotate around
         # TODO: rotate velocities
         """
-        rot_index = self.getObjectIndex(rotate_around)
+        rot_index = self.get_object_index(rotate_around)
         rot_point = self.positionVectors[:,rot_index,:]
         r_x = srng.uniform(size=(self.batch_size,1), low=-0.05, high=0.05)
         r_y = srng.uniform(size=(self.batch_size,1), low=-0.05, high=0.05)

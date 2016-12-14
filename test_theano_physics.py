@@ -104,9 +104,9 @@ class MyApp(ShowBase):
         smiley.setQuat(self.render, fixQuat(rotation))
 
         self.objects[name] = smiley
-        self.physics.addSphere(name, radius, position, rotation, velocity)
+        self.physics.add_sphere(name, radius, position, rotation, velocity)
         if self.benchmark_physics:
-            self.benchmark_physics.addSphere(name, radius, position + rotation, velocity)
+            self.benchmark_physics.add_sphere(name, radius, position + rotation, velocity)
 
 
     def addCube(self, name, dimensions, position, rotation, velocity, **parameters):
@@ -129,9 +129,9 @@ class MyApp(ShowBase):
         cube.setQuat(self.render, fixQuat(rotation))
 
         self.objects[name] = cube
-        self.physics.addCube(name, dimensions, position, rotation, velocity)
+        self.physics.add_cube(name, dimensions, position, rotation, velocity)
         if self.benchmark_physics:
-            self.benchmark_physics.addCube(name, dimensions, position + rotation, velocity)
+            self.benchmark_physics.add_cube(name, dimensions, position + rotation, velocity)
 
 
 
@@ -154,24 +154,24 @@ class MyApp(ShowBase):
                 parameters.update(robot_dict["default_constraint_parameters"][joint["type"]])
             parameters.update(joint)
             if joint["type"] == "hinge":
-                self.physics.addHingeConstraint(jointname, **parameters)
+                self.physics.add_hinge_constraint(jointname, **parameters)
                 if self.benchmark_physics:
-                    self.benchmark_physics.addHingeConstraint(jointname, **parameters)
+                    self.benchmark_physics.add_hinge_constraint(jointname, **parameters)
 
             elif joint["type"] == "ground":
-                self.physics.addGroundConstraint(jointname, **parameters)
+                self.physics.add_ground_constraint(jointname, **parameters)
                 if self.benchmark_physics:
-                    self.benchmark_physics.addGroundConstraint(jointname, **parameters)
+                    self.benchmark_physics.add_ground_constraint(jointname, **parameters)
 
             elif joint["type"] == "fixed":
-                self.physics.addFixedConstraint(jointname, **parameters)
+                self.physics.add_fixed_constraint(jointname, **parameters)
                 if self.benchmark_physics:
-                    self.benchmark_physics.addFixedConstraint(jointname, **parameters)
+                    self.benchmark_physics.add_fixed_constraint(jointname, **parameters)
 
             elif joint["type"] == "ball":
-                self.physics.addBallAndSocketConstraint(jointname, **parameters)
+                self.physics.add_ball_and_socket_constraint(jointname, **parameters)
                 if self.benchmark_physics:
-                    self.benchmark_physics.addBallAndSocketConstraint(jointname, **parameters)
+                    self.benchmark_physics.add_ball_and_socket_constraint(jointname, **parameters)
 
             if "limits" in parameters:
                 for limit in parameters["limits"]:
@@ -210,7 +210,7 @@ class MyApp(ShowBase):
         for obj_name, obj in self.objects.iteritems():
             sc = obj.getScale()
 
-            idx = self.physics.getObjectIndex(obj_name)
+            idx = self.physics.get_object_index(obj_name)
             obj.setMat(self.render, LMatrix4f(LMatrix3f(*self.rotations[idx,:,:].flatten())))
             obj.setPos(*self.positions[idx,:])
             obj.setScale(sc)
@@ -218,7 +218,7 @@ class MyApp(ShowBase):
         # change camera movement
         self.camera.setPos(0,2,0.3)
         #self.camera.lookAt(0,0,3)
-        self.camera.lookAt(*self.positions[self.physics.getObjectIndex("spine"),:])
+        self.camera.lookAt(*self.positions[self.physics.get_object_index("spine"),:])
 
         real_time = time.time() - self.starttime
 
