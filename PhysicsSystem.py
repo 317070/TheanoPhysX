@@ -405,6 +405,8 @@ class Rigid3DBodyEngine(object):
         camera["background_color"] = np.array(background_color)
 
 
+    def get_camera_image_size(self, camera_name):
+        return self.cameras[camera_name].ray_dir.shape + (3,)
 
 
     def get_camera_image(self, state, camera_name):
@@ -452,6 +454,7 @@ class Rigid3DBodyEngine(object):
         s_t0 = tca - thc
         Phit = ray_offset[:,:,None,:] + s_t0[:,:,:,None]*ray_dir[:,:,None,:]
         N = (Phit-s_pos_vectors) / self.sphere_radius[None,None,:,None]
+        print s_t0.shape
 
         N = batched_convert_world_to_model_coordinate_no_bias(N, s_rot_matrices)
 
@@ -502,7 +505,7 @@ class Rigid3DBodyEngine(object):
 
         t = np.concatenate([s_t0, p_t0], axis=2)
 
-        mint = np.min(t*relevant + (1-relevant)*1e9, axis=-1)
+        mint = np.min(t*relevant + (1-relevant)*1e9, axis=2)
         relevant *= (t==mint[:,:,None])  #only use the closest object
 
         # step 4: go into the object's texture and get the corresponding value (see image transform)
@@ -678,7 +681,7 @@ class Rigid3DBodyEngine(object):
         parameters['axis_in_model2_coordinates'] = convert_world_to_model_coordinate_no_bias(axis, self.initial_rotations[idx2,:,:])
 
         parameters['rot_init'] = np.dot(self.initial_rotations[idx2,:,:], self.initial_rotations[idx1,:,:].T)
-        print idx2
+
         self.add_constraint("angular motor", [object1, object2], parameters)
 
 
@@ -1102,7 +1105,7 @@ class Rigid3DBodyEngine(object):
                 b_error[c_idx] = cross[1,2]
                 b_error[c_idx+1] = cross[2,0]
                 b_error[c_idx+2] = cross[0,1]
-                print b_error[c_idx:c_idx+3]
+                #print b_error[c_idx:c_idx+3]
                 c_idx += 3
 
             if constraint == "plane" or constraint == "slider":

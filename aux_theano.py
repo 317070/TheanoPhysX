@@ -3,10 +3,6 @@ import theano
 import theano.tensor as T
 
 
-def theano_convert_model_to_world_coordinate_no_bias(coor, rot_matrix):
-    return theano_dot_last_dimension_vector_matrix(coor, rot_matrix)
-    #return T.sum(rot_matrix * coor[:,:,None], axis=1)
-
 def theano_dot_last_dimension_matrices(x, y):
     if x.ndim==3 and y.ndim==3:
         if ("theano" in str(type(x)) and x.broadcastable[0] == False)\
@@ -82,3 +78,15 @@ def batch_skew_symmetric(x):
                     T.concatenate(( c, z,-a),axis=-1),
                     T.concatenate((-b, a, z),axis=-1)
                             ],axis=-2)
+
+
+def theano_convert_model_to_world_coordinate_no_bias(coor, rot_matrix):
+    return theano_dot_last_dimension_vector_matrix(coor, rot_matrix)
+    #return T.sum(rot_matrix * coor[:,:,None], axis=1)
+
+def theano_convert_model_to_world_coordinate(coor, rot_matrix, pos_vectors):
+    return theano_dot_last_dimension_vector_matrix(coor, rot_matrix) + pos_vectors
+    #return T.sum(rot_matrix * coor[:,:,None], axis=1)
+
+def theano_convert_world_to_model_coordinate_no_bias(N, s_rot_matrices):
+    raise NotImplementedError()
