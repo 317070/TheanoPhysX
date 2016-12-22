@@ -24,6 +24,7 @@ def theano_dot_last_dimension_vector_matrix(x, y):
         else:
             return T.tensordot(x[0,:], y, axes=[[0], [1]])
     else:
+        print "->", x.ndim, y.ndim
         return T.batched_tensordot(x, y, axes=[(x.ndim-1,),(y.ndim-2,)])
 
 def theano_dot_last_dimension_matrix_vector(x, y):
@@ -85,8 +86,15 @@ def theano_convert_model_to_world_coordinate_no_bias(coor, rot_matrix):
     #return T.sum(rot_matrix * coor[:,:,None], axis=1)
 
 def theano_convert_model_to_world_coordinate(coor, rot_matrix, pos_vectors):
-    return theano_dot_last_dimension_vector_matrix(coor, rot_matrix) + pos_vectors
+    return theano_convert_model_to_world_coordinate_no_bias(coor, rot_matrix) + pos_vectors
     #return T.sum(rot_matrix * coor[:,:,None], axis=1)
 
-def theano_convert_world_to_model_coordinate_no_bias(N, s_rot_matrices):
+def theano_convert_world_to_model_coordinate_no_bias(coor, rot_matrix):
+    ds = range(rot_matrix.ndim)
+    ds[-2], ds[-1] = ds[-1], ds[-2]
+    return theano_convert_model_to_world_coordinate_no_bias(coor, rot_matrix.dimshuffle(*ds))
+
+
+
+
     raise NotImplementedError()

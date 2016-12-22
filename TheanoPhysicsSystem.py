@@ -26,24 +26,32 @@ class TheanoRigid3DBodyEngine(Rigid3DBodyEngine):
     def __init__(self, *args, **kwargs):
         super(TheanoRigid3DBodyEngine, self).__init__(*args, **kwargs)
         self.batch_size = None
-        self.initial_positions = None
-        self.initial_velocities = None
-        self.initial_rotations = None
         self.lower_inertia_inv = None
         self.upper_inertia_inv = None
         self.impulses_P = None
+        self.face_normal_theano = None
+        self.face_point_theano = None
+        self.face_texture_x_theano = None
+        self.face_texture_y_theano = None
+
 
     def compile(self, batch_size, *args,**kwargs):
         super(TheanoRigid3DBodyEngine, self).compile(*args,**kwargs)
 
         self.batch_size = batch_size
-        self.initial_positions = theano.shared(numpy_repeat_new_axis(self.positionVectors, self.batch_size).astype('float32'), name="initial_positions")
-        self.initial_velocities = theano.shared(numpy_repeat_new_axis(self.velocityVectors, self.batch_size).astype('float32'), name="initial_velocities")
-        self.initial_rotations = theano.shared(numpy_repeat_new_axis(self.rot_matrices, self.batch_size).astype('float32'), name="initial_rotations", )
+        self.initial_positions = theano.shared(numpy_repeat_new_axis(self.initial_positions, self.batch_size).astype('float32'), name="initial_positions")
+        self.initial_velocities = theano.shared(numpy_repeat_new_axis(self.initial_velocities, self.batch_size).astype('float32'), name="initial_velocities")
+        self.initial_rotations = theano.shared(numpy_repeat_new_axis(self.initial_rotations, self.batch_size).astype('float32'), name="initial_rotations", )
         self.lower_inertia_inv = theano.shared(numpy_repeat_new_axis(np.linalg.inv(self.massMatrices[:,:3,:3]), self.batch_size).astype('float32'), name="lower_inertia_inv", )
         self.upper_inertia_inv = theano.shared(numpy_repeat_new_axis(np.linalg.inv(self.massMatrices[:,3:,3:]), self.batch_size).astype('float32'), name="upper_inertia_inv", )
+
+        self.face_normal_theano = theano.shared(numpy_repeat_new_axis(self.face_normal[:,:], self.batch_size).astype('float32'), name="face_normal")
+        self.face_point_theano = theano.shared(numpy_repeat_new_axis(self.face_point[:,:], self.batch_size).astype('float32'), name="face_point")
+        self.face_texture_x_theano = theano.shared(numpy_repeat_new_axis(self.face_texture_x[:,:], self.batch_size).astype('float32'), name="face_texture_x")
+        self.face_texture_y_theano = theano.shared(numpy_repeat_new_axis(self.face_texture_y[:,:], self.batch_size).astype('float32'), name="face_texture_y")
+
         # For the warm start, keep the impuls of the previous timestep
-        self.impulses_P = theano.shared(T.zeros((self.batch_size, self.num_constraints,)), name="impulses_P")
+        self.impulses_P = theano.shared(np.zeros(shape=(self.batch_size, self.num_constraints,)), name="impulses_P")
 
 
     def get_all_shared_variables(self):
@@ -54,6 +62,10 @@ class TheanoRigid3DBodyEngine(Rigid3DBodyEngine):
             self.lower_inertia_inv,
             self.upper_inertia_inv,
             self.impulses_P,
+            self.face_normal_theano,
+            self.face_point_theano,
+            self.face_texture_x_theano,
+            self.face_texture_y_theano,
         ]
 
     def do_time_step(self, state=None, dt=None, motor_signals=list()):
@@ -176,30 +188,33 @@ class TheanoRigid3DBodyEngine(Rigid3DBodyEngine):
             # rotate and move the camera according to its parent
             ray_dir = theano_convert_model_to_world_coordinate_no_bias(ray_dir, rotations[:,pid,:,:])
             ray_offset = theano_convert_model_to_world_coordinate(ray_offset, rotations[:,pid,:,:], positions[:,pid,:])
+        else:
+            ray_dir = ray_dir[None,:,:,:]
+            ray_offset = ray_offset[None,:,:,:]
 
         # step 2a: intersect the rays with all the spheres
-        s_relevant = np.ones(shape=(self.batch_size, px_ver, px_hor, self.sphere_parent.shape[0]))
+        #s_relevant = np.ones(shape=(self.batch_size, px_ver, px_hor, self.sphere_parent.shape[0]))
         s_pos_vectors = positions[:,None,None,self.sphere_parent,:]
         s_rot_matrices = rotations[:,self.sphere_parent,:,:]
 
-        L = s_pos_vectors - ray_offset[None,:,:,None,:]
-        tca = np.sum(L * ray_dir[:,:,:,None,:],axis=3)  # L.dotProduct(ray_dir)
+        L = s_pos_vectors - ray_offset[:,:,:,None,:]
+        tca = T.sum(L * ray_dir[:,:,:,None,:],axis=4)  # L.dotProduct(ray_dir)
         #// if (tca < 0) return false;
-        s_relevant *= (tca > 0)
-        d2 = np.sum(L * L, axis=3) - tca*tca
+        s_relevant = (tca > 0)
+        d2 = T.sum(L * L, axis=3) - tca*tca
         r2 = self.sphere_radius**2
         #if (d2 > radius2) return false;
+        s_relevant *= (d2[:,:,:,:] <= r2[None,None,None,:])
 
-        s_relevant *= (d2[:,:,:,:] <= r2[:,None,None,:])
-
-        thc = np.sqrt(s_relevant * (r2[:,None,None,:] - d2[:,:,:,:]))
+        thc = T.sqrt(s_relevant * (r2[None,None,None,:] - d2[:,:,:,:]))
         s_t0 = tca - thc
         Phit = ray_offset[:,:,:,None,:] + s_t0[:,:,:,:,None]*ray_dir[:,:,:,None,:]
-        N = (Phit-s_pos_vectors) / self.sphere_radius[:,None,None,:,None]
-
+        N = (Phit-s_pos_vectors) / self.sphere_radius[None,None,None,:,None]
+        print "A",N.ndim
         N = theano_convert_world_to_model_coordinate_no_bias(N, s_rot_matrices)
+        print "B",N.ndim
 
-        s_tex_x = np.arctan2(N[:,:,:,:,2], N[:,:,:,:,0])/np.pi
+        s_tex_x = T.arctan2(N[:,:,:,:,2], N[:,:,:,:,0])/np.pi
         s_tex_y = -1+2*np.arccos(N[:,:,:,:,1]*s_relevant)/np.pi
         # tex_y en tex_x in [-1,1]
 
@@ -207,42 +222,60 @@ class TheanoRigid3DBodyEngine(Rigid3DBodyEngine):
         # step 2b: intersect the rays with the cubes
 
         # step 2c: intersect the rays with the planes
-        p_relevant = np.ones(shape=(px_ver, px_hor, self.face_normal.shape[0]))
+        #p_relevant = np.ones(shape=(px_ver, px_hor, self.face_normal.shape[0]))
 
-        fn = np.array(self.face_normal[:,:])
-        fp = np.array(self.face_point[:,:])
-        ftx = np.array(self.face_texture_x[:,:])
-        fty = np.array(self.face_texture_y[:,:])
+
         hasparent = [i for i,par in enumerate(self.face_parent) if par is not None]
+        hasnoparent = [i for i,par in enumerate(self.face_parent) if par is None]
         parents = [parent for parent in self.face_parent if parent is not None]
+        """
+        fp[:,hasparent,:] = theano_convert_model_to_world_coordinate(self.face_point[hasparent,:], rotations[parents,:,:], positions[:,parents,:])
+        ftx[:,hasparent,:] = theano_convert_model_to_world_coordinate_no_bias(self.face_texture_x[hasparent,:], rotations[:,parents,:,:])
+        fty[:,hasparent,:] = theano_convert_model_to_world_coordinate_no_bias(self.face_texture_y[hasparent,:], rotations[:,parents,:,:])
+        """
 
-        fn[:,hasparent,:] = theano_convert_model_to_world_coordinate_no_bias(fn[hasparent,:], rotations[:,parents,:,:])
-        fp[:,hasparent,:] = theano_convert_model_to_world_coordinate(fp[hasparent,:], rotations[parents,:,:], positions[:,parents,:])
-        ftx[:,hasparent,:] = theano_convert_model_to_world_coordinate_no_bias(ftx[hasparent,:], rotations[:,parents,:,:])
-        fty[:,hasparent,:] = theano_convert_model_to_world_coordinate_no_bias(fty[hasparent,:], rotations[:,parents,:,:])
+        fn = theano_convert_model_to_world_coordinate_no_bias(self.face_normal[hasparent,:], rotations[:,parents,:,:])
+        fn = T.concatenate([self.face_normal[None,hasnoparent,:], fn], axis=1)
 
-        denom = np.sum(fn[:,None,None,:,:] * ray_dir[:,:,:,None,:],axis=4)
+        fp = theano_convert_model_to_world_coordinate(self.face_point[hasparent,:], rotations[parents,:,:], positions[:,parents,:])
+        fp = T.concatenate([self.face_point[None,hasnoparent,:], fp], axis=1)
+
+        ftx = theano_convert_model_to_world_coordinate_no_bias(self.face_texture_x[hasparent,:], rotations[:,parents,:,:])
+        ftx = T.concatenate([self.face_texture_x[None,hasnoparent,:], ftx], axis=1)
+
+        fty = theano_convert_model_to_world_coordinate_no_bias(self.face_texture_y[hasparent,:], rotations[:,parents,:,:])
+        fty = T.concatenate([self.face_texture_y[None,hasnoparent,:], fty], axis=1)
+
+        # reshuffle the face_texture_indexes to match the reshuffling we did above
+        face_indices = hasnoparent + hasparent
+        face_texture_index = self.face_texture_index[face_indices]
+        face_texture_limited = self.face_texture_limited[face_indices]
+
+        denom = T.sum(fn[:,None,None,:,:] * ray_dir[:,:,:,None,:],axis=4)
         p0l0 = fp[:,None,None,:,:] - ray_offset[:,:,:,None,:]
-        p_t0 = np.sum(p0l0 * fn[:,None,None,:,:], axis=4) / (denom + 1e-9)
-        p_relevant *= (p_t0 > 0)  #only planes in front of us
+        p_t0 = T.sum(p0l0 * fn[:,None,None,:,:], axis=4) / (denom + 1e-9)
+        p_relevant = (p_t0 > 0)  #only planes in front of us
 
         Phit = ray_offset[:,:,:,None,:] + p_t0[:,:,:,:,None]*ray_dir[:,:,:,None,:]
 
         pd = Phit-fp
-        p_tex_x = np.sum(ftx[:,None,None,:,:] * pd, axis=4)
-        p_tex_y = np.sum(fty[:,None,None,:,:] * pd, axis=4)
+        p_tex_x = T.sum(ftx[:,None,None,:,:] * pd, axis=4)
+        p_tex_y = T.sum(fty[:,None,None,:,:] * pd, axis=4)
 
         # the following only on limited textures
-        p_relevant *= 1 - (1-(-1 < p_tex_x) * (p_tex_x < 1) * (-1 < p_tex_y) * (p_tex_y < 1)) * self.face_texture_limited
+        p_relevant *= 1 - (1-(-1 < p_tex_x) * (p_tex_x < 1) * (-1 < p_tex_y) * (p_tex_y < 1)) * face_texture_limited
 
         p_tex_x = ((p_tex_x+1)%2.)-1
         p_tex_y = ((p_tex_y+1)%2.)-1
 
         # step 3: find the closest point of intersection (z-culling) for all objects
         relevant = T.concatenate([s_relevant, p_relevant],axis=3)
+        print s_tex_x.ndim, p_tex_x.ndim
+        print s_tex_y.ndim, p_tex_y.ndim
+
         tex_x = T.concatenate([s_tex_x, p_tex_x],axis=3)
         tex_y = T.concatenate([s_tex_y, p_tex_y],axis=3)
-        tex_t = np.concatenate([self.sphere_texture_index, self.face_texture_index],axis=0)
+        tex_t = np.concatenate([self.sphere_texture_index, face_texture_index],axis=0)
 
         t = T.concatenate([s_t0, p_t0], axis=2)
 

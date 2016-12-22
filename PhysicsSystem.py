@@ -518,22 +518,16 @@ class Rigid3DBodyEngine(object):
         y_idx = np.floor(tex_y).astype('int32')
         y_wgh = tex_y - y_idx
 
-        #print np.min(tex_x), np.max(tex_x)
-        #print np.min(x_idx), np.max(x_idx)
-
-
         sample= (   x_wgh  *    y_wgh )[:,:,:,None] * self.textures[tex_t[None,None,:],x_idx+1,y_idx+1,:] + \
                 (   x_wgh  * (1-y_wgh))[:,:,:,None] * self.textures[tex_t[None,None,:],x_idx+1,y_idx  ,:] + \
                 ((1-x_wgh) *    y_wgh )[:,:,:,None] * self.textures[tex_t[None,None,:],x_idx  ,y_idx+1,:] + \
                 ((1-x_wgh) * (1-y_wgh))[:,:,:,None] * self.textures[tex_t[None,None,:],x_idx  ,y_idx  ,:]
-
 
         #print sample.shape
         # multiply with color of object
         colors = np.concatenate([self.sphere_colors, self.face_colors],axis=0)
         if np.min(colors)!=1:  # if the colors are actually used
             sample = colors[None,None,:,:] * sample
-
 
         # step 5: return this value
 
