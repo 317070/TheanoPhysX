@@ -11,6 +11,7 @@ import datetime
 import cPickle as pickle
 import argparse
 from PhysicsSystem import Rigid3DBodyEngine
+from TheanoPhysicsSystem import TheanoRigid3DBodyEngine
 from custom_ops import mulgrad
 import time
 
@@ -28,15 +29,19 @@ random.seed(0)
 np.random.seed(0)
 
 # step 1: load the physics model
-engine = Rigid3DBodyEngine()
+engine = TheanoRigid3DBodyEngine()
 jsonfile = "robotmodel/pendulum.json"
 engine.load_robot_model(jsonfile)
 BATCH_SIZE = 1
-engine.compile()
+engine.compile(batch_size=3)
 
 t = time.time()
 state = engine.get_initial_state()
 image = engine.get_camera_image(state,"front_camera")
+
+f = theano.function([state],[state,image])
+
+
 print "time taken =", time.time() - t
 
 import matplotlib.pyplot as plt
@@ -46,8 +51,8 @@ plt.pause(engine.DT)
 t = 0
 while plt.get_fignums():
     t+=engine.DT
-    print t
-    engine.do_time_step(state,dt=engine.DT, motor_signals=[2*np.sin(t)])
+    print t,
+    state = engine.do_time_step(state, dt=engine.DT, motor_signals=[np.sin(2*t)])
     image = engine.get_camera_image(state,"front_camera")
     frame.set_data(image)
     plt.draw()
