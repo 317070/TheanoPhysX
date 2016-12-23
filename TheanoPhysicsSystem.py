@@ -34,6 +34,21 @@ class TheanoRigid3DBodyEngine(Rigid3DBodyEngine):
         self.face_texture_x_theano = None
         self.face_texture_y_theano = None
 
+    def get_state_variables(self):
+        variables = self.get_initial_state()
+        res = []
+        for var in variables:
+            if var.ndim==0:
+                res.append(T.fscalar())
+            if var.ndim==1:
+                res.append(T.fvector())
+            if var.ndim==2:
+                res.append(T.fmatrix())
+            if var.ndim==3:
+                res.append(T.ftensor3())
+            if var.ndim==4:
+                res.append(T.ftensor4())
+        return EngineState(*res)
 
     def compile(self, batch_size, *args,**kwargs):
         super(TheanoRigid3DBodyEngine, self).compile(*args,**kwargs)
@@ -42,16 +57,20 @@ class TheanoRigid3DBodyEngine(Rigid3DBodyEngine):
         self.initial_positions = theano.shared(numpy_repeat_new_axis(self.initial_positions, self.batch_size).astype('float32'), name="initial_positions")
         self.initial_velocities = theano.shared(numpy_repeat_new_axis(self.initial_velocities, self.batch_size).astype('float32'), name="initial_velocities")
         self.initial_rotations = theano.shared(numpy_repeat_new_axis(self.initial_rotations, self.batch_size).astype('float32'), name="initial_rotations", )
+        # For the warm start, keep the impuls of the previous timestep
+        self.impulses_P = theano.shared(np.zeros(shape=(self.batch_size, self.num_constraints,)), name="impulses_P")
+
+        # TODO: make these constants instead of shared,
+        # when not needed for randomization
         self.lower_inertia_inv = theano.shared(numpy_repeat_new_axis(np.linalg.inv(self.massMatrices[:,:3,:3]), self.batch_size).astype('float32'), name="lower_inertia_inv", )
         self.upper_inertia_inv = theano.shared(numpy_repeat_new_axis(np.linalg.inv(self.massMatrices[:,3:,3:]), self.batch_size).astype('float32'), name="upper_inertia_inv", )
 
+        print
         self.face_normal_theano = theano.shared(numpy_repeat_new_axis(self.face_normal[:,:], self.batch_size).astype('float32'), name="face_normal")
         self.face_point_theano = theano.shared(numpy_repeat_new_axis(self.face_point[:,:], self.batch_size).astype('float32'), name="face_point")
         self.face_texture_x_theano = theano.shared(numpy_repeat_new_axis(self.face_texture_x[:,:], self.batch_size).astype('float32'), name="face_texture_x")
         self.face_texture_y_theano = theano.shared(numpy_repeat_new_axis(self.face_texture_y[:,:], self.batch_size).astype('float32'), name="face_texture_y")
 
-        # For the warm start, keep the impuls of the previous timestep
-        self.impulses_P = theano.shared(np.zeros(shape=(self.batch_size, self.num_constraints,)), name="impulses_P")
 
 
     def get_all_shared_variables(self):
@@ -210,9 +229,7 @@ class TheanoRigid3DBodyEngine(Rigid3DBodyEngine):
         s_t0 = tca - thc
         Phit = ray_offset[:,:,:,None,:] + s_t0[:,:,:,:,None]*ray_dir[:,:,:,None,:]
         N = (Phit-s_pos_vectors) / self.sphere_radius[None,None,None,:,None]
-        print "A",N.ndim
-        N = theano_convert_world_to_model_coordinate_no_bias(N, s_rot_matrices)
-        print "B",N.ndim
+        N = theano_convert_world_to_model_coordinate_no_bias(N, s_rot_matrices[:,None,None,:,:,:])
 
         s_tex_x = T.arctan2(N[:,:,:,:,2], N[:,:,:,:,0])/np.pi
         s_tex_y = -1+2*np.arccos(N[:,:,:,:,1]*s_relevant)/np.pi
@@ -234,16 +251,16 @@ class TheanoRigid3DBodyEngine(Rigid3DBodyEngine):
         fty[:,hasparent,:] = theano_convert_model_to_world_coordinate_no_bias(self.face_texture_y[hasparent,:], rotations[:,parents,:,:])
         """
 
-        fn = theano_convert_model_to_world_coordinate_no_bias(self.face_normal[hasparent,:], rotations[:,parents,:,:])
+        fn = theano_convert_model_to_world_coordinate_no_bias(self.face_normal[None,hasparent,:], rotations[:,parents,:,:])
         fn = T.concatenate([self.face_normal[None,hasnoparent,:], fn], axis=1)
 
-        fp = theano_convert_model_to_world_coordinate(self.face_point[hasparent,:], rotations[parents,:,:], positions[:,parents,:])
+        fp = theano_convert_model_to_world_coordinate(self.face_point[None,hasparent,:], rotations[parents,:,:], positions[:,parents,:])
         fp = T.concatenate([self.face_point[None,hasnoparent,:], fp], axis=1)
 
-        ftx = theano_convert_model_to_world_coordinate_no_bias(self.face_texture_x[hasparent,:], rotations[:,parents,:,:])
+        ftx = theano_convert_model_to_world_coordinate_no_bias(self.face_texture_x[None,hasparent,:], rotations[:,parents,:,:])
         ftx = T.concatenate([self.face_texture_x[None,hasnoparent,:], ftx], axis=1)
 
-        fty = theano_convert_model_to_world_coordinate_no_bias(self.face_texture_y[hasparent,:], rotations[:,parents,:,:])
+        fty = theano_convert_model_to_world_coordinate_no_bias(self.face_texture_y[None,hasparent,:], rotations[:,parents,:,:])
         fty = T.concatenate([self.face_texture_y[None,hasnoparent,:], fty], axis=1)
 
         # reshuffle the face_texture_indexes to match the reshuffling we did above
@@ -270,8 +287,6 @@ class TheanoRigid3DBodyEngine(Rigid3DBodyEngine):
 
         # step 3: find the closest point of intersection (z-culling) for all objects
         relevant = T.concatenate([s_relevant, p_relevant],axis=3)
-        print s_tex_x.ndim, p_tex_x.ndim
-        print s_tex_y.ndim, p_tex_y.ndim
 
         tex_x = T.concatenate([s_tex_x, p_tex_x],axis=3)
         tex_y = T.concatenate([s_tex_y, p_tex_y],axis=3)
@@ -280,42 +295,43 @@ class TheanoRigid3DBodyEngine(Rigid3DBodyEngine):
         t = T.concatenate([s_t0, p_t0], axis=2)
 
         mint = T.min(t*relevant + (1-relevant)*1e9, axis=3)
-        relevant *= (t==mint[:,:,:,None])  #only use the closest object
+        relevant *= (t<=mint[:,:,:,None])  #only use the closest object
 
         # step 4: go into the object's texture and get the corresponding value (see image transform)
         x_size, y_size = self.textures.shape[1] - 1, self.textures.shape[2] - 1
 
         tex_x = (tex_x + 1)*x_size/2.
         tex_y = (tex_y + 1)*y_size/2.
-        x_idx = np.floor(tex_x).astype('int32')
+        x_idx = T.cast(T.floor(tex_x),'int64')
         x_wgh = tex_x - x_idx
-        y_idx = np.floor(tex_y).astype('int32')
+        y_idx = T.cast(T.floor(tex_y),'int64')
         y_wgh = tex_y - y_idx
 
         #print np.min(tex_x), np.max(tex_x)
         #print np.min(x_idx), np.max(x_idx)
 
+        textures = T.TensorConstant(type=T.ftensor4, data=self.textures.astype('float32'), name='textures')
 
-        sample= (   x_wgh  *    y_wgh )[:,:,:,:,None] * self.textures[tex_t[None,None,:],x_idx+1,y_idx+1,:] + \
-                (   x_wgh  * (1-y_wgh))[:,:,:,:,None] * self.textures[tex_t[None,None,:],x_idx+1,y_idx  ,:] + \
-                ((1-x_wgh) *    y_wgh )[:,:,:,:,None] * self.textures[tex_t[None,None,:],x_idx  ,y_idx+1,:] + \
-                ((1-x_wgh) * (1-y_wgh))[:,:,:,:,None] * self.textures[tex_t[None,None,:],x_idx  ,y_idx  ,:]
+        sample= (   x_wgh  *    y_wgh )[:,:,:,:,None] * textures[tex_t[None,None,None,:],x_idx+1,y_idx+1,:] + \
+                (   x_wgh  * (1-y_wgh))[:,:,:,:,None] * textures[tex_t[None,None,None,:],x_idx+1,y_idx  ,:] + \
+                ((1-x_wgh) *    y_wgh )[:,:,:,:,None] * textures[tex_t[None,None,None,:],x_idx  ,y_idx+1,:] + \
+                ((1-x_wgh) * (1-y_wgh))[:,:,:,:,None] * textures[tex_t[None,None,None,:],x_idx  ,y_idx  ,:]
 
 
         #print sample.shape
         # multiply with color of object
         colors = np.concatenate([self.sphere_colors, self.face_colors],axis=0)
-        if np.min(colors)!=1:  # if the colors are actually used
+        if np.min(colors)!=1.:  # if the colors are actually used
             sample = colors[None,None,None,:,:] * sample
 
         # step 5: return this value
 
-        image = np.sum(sample * relevant[:,:,:,:,None],axis=3)
+        image = T.sum(sample * relevant[:,:,:,:,None],axis=3)
 
         background_color = camera["background_color"]
         if background_color is not None:
             # find the rays for which no object was relevant. Make them background color
-            background = background_color[None,None,None,:] * (1-np.max(relevant[:,:,:,:],axis=3))[:,:,:,None]
+            background = background_color[None,None,None,:] * (1-T.max(relevant[:,:,:,:],axis=3))[:,:,:,None]
             image += background
 
         return image

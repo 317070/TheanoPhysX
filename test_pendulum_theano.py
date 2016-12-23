@@ -14,6 +14,7 @@ from PhysicsSystem import Rigid3DBodyEngine
 from TheanoPhysicsSystem import TheanoRigid3DBodyEngine
 from custom_ops import mulgrad
 import time
+import matplotlib.pyplot as plt
 
 
 parser = argparse.ArgumentParser(description='Process some integers.')
@@ -36,26 +37,30 @@ BATCH_SIZE = 1
 engine.compile(batch_size=3)
 
 t = time.time()
-state = engine.get_initial_state()
+state = engine.get_state_variables()
 image = engine.get_camera_image(state,"front_camera")
 
-f = theano.function([state],[state,image])
-
+f = theano.function(state,list(state)+[image])
 
 print "time taken =", time.time() - t
-
-import matplotlib.pyplot as plt
-frame = plt.imshow(image, interpolation='nearest')
-plt.gca().invert_yaxis()
-plt.pause(engine.DT)
+frame = None
 t = 0
-while plt.get_fignums():
+
+state = [i.get_value() for i in engine.get_initial_state()]
+
+while frame is None or plt.get_fignums():
     t+=engine.DT
     print t,
-    state = engine.do_time_step(state, dt=engine.DT, motor_signals=[np.sin(2*t)])
-    image = engine.get_camera_image(state,"front_camera")
-    frame.set_data(image)
-    plt.draw()
+    res = f(*state)
+    state = res[:3]
+    images = res[4]
+    image = images[0]
+    if frame is None:
+        frame = plt.imshow(image, interpolation='nearest')
+        plt.gca().invert_yaxis()
+    else:
+        frame.set_data(image)
+        plt.draw()
     plt.pause(engine.DT)
 
 print "done"

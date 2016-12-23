@@ -23,9 +23,14 @@ def theano_dot_last_dimension_vector_matrix(x, y):
             return T.batched_dot(x[:,None,:], y)[:,0,:]
         else:
             return T.tensordot(x[0,:], y, axes=[[0], [1]])
+    elif x.ndim==1:
+        return T.batched_tensordot(x, y, axes=[(x.ndim-1,),(y.ndim-2,)])
+    elif x.ndim==y.ndim-1:
+        idcs = [slice(None)] * x.ndim + [None]
+        return T.sum(x[idcs]*y, axis=x.ndim-1)
     else:
         print "->", x.ndim, y.ndim
-        return T.batched_tensordot(x, y, axes=[(x.ndim-1,),(y.ndim-2,)])
+        raise NotImplementedError()
 
 def theano_dot_last_dimension_matrix_vector(x, y):
     return T.batched_tensordot(x, y, axes=[(x.ndim-1,), (y.ndim-1,)])

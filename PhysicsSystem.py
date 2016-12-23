@@ -112,7 +112,7 @@ class Rigid3DBodyEngine(object):
         self.radii = np.zeros(shape=(0,), dtype=DTYPE)
         self.dimensions = np.zeros(shape=(0,3), dtype=DTYPE)
         self.initial_positions = np.zeros(shape=(0,3), dtype=DTYPE)
-        self.initial_rotations = np.zeros(shape=(0,3,3), dtype='float32')
+        self.initial_rotations = np.zeros(shape=(0,3,3), dtype=DTYPE)
         self.initial_velocities = np.zeros(shape=(0,6), dtype=DTYPE)
         self.massMatrices = np.zeros(shape=(0,6,6), dtype=DTYPE)
         self.objects = {None:None}
@@ -400,9 +400,9 @@ class Rigid3DBodyEngine(object):
         ray_offset = batched_convert_model_to_world_coordinate_no_bias(ray_offset, quat_to_rot_matrix(orientation))
         ray_offset = ray_offset + camera_position[None,None,:]
 
-        camera["ray_offset"] = ray_offset
-        camera["ray_direction"] = ray_dir
-        camera["background_color"] = np.array(background_color)
+        camera["ray_offset"] = ray_offset.astype(DTYPE)
+        camera["ray_direction"] = ray_dir.astype(DTYPE)
+        camera["background_color"] = np.array(background_color).astype(DTYPE)
 
 
     def get_camera_image_size(self, camera_name):
@@ -454,7 +454,6 @@ class Rigid3DBodyEngine(object):
         s_t0 = tca - thc
         Phit = ray_offset[:,:,None,:] + s_t0[:,:,:,None]*ray_dir[:,:,None,:]
         N = (Phit-s_pos_vectors) / self.sphere_radius[None,None,:,None]
-        print s_t0.shape
 
         N = batched_convert_world_to_model_coordinate_no_bias(N, s_rot_matrices)
 
@@ -506,7 +505,7 @@ class Rigid3DBodyEngine(object):
         t = np.concatenate([s_t0, p_t0], axis=2)
 
         mint = np.min(t*relevant + (1-relevant)*1e9, axis=2)
-        relevant *= (t==mint[:,:,None])  #only use the closest object
+        relevant *= (t<=mint[:,:,None])  #only use the closest object
 
         # step 4: go into the object's texture and get the corresponding value (see image transform)
         x_size, y_size = self.textures.shape[1] - 1, self.textures.shape[2] - 1
@@ -818,7 +817,9 @@ class Rigid3DBodyEngine(object):
             self.add_sensor(**sensor)
 
 
-    def compile(self):
+    def compile(self, *args, **kwargs):
+        if args or kwargs:
+            print "Got unexpected keywords in compile:", args, kwargs
         self.num_bodies = len(self.objects)
         self.inertia_inv = np.linalg.inv(self.massMatrices)
         self.num_constraints = 0
