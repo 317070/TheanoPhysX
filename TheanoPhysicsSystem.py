@@ -1,10 +1,6 @@
 import numpy as np
 import theano
 import theano.tensor as T
-from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
-from collections import namedtuple
-import json
-from math import pi
 from PhysicsSystem import Rigid3DBodyEngine, EngineState
 from aux import numpy_repeat_new_axis
 from aux_theano import batch_skew_symmetric, theano_convert_model_to_world_coordinate_no_bias, \
@@ -14,13 +10,11 @@ from aux_theano import batch_skew_symmetric, theano_convert_model_to_world_coord
 
 __author__ = 'jonas degrave'
 
-#np.seterr(all='raise')
 eps=1e-4
+
 X = 0
 Y = 1
 Z = 2
-
-
 
 class TheanoRigid3DBodyEngine(Rigid3DBodyEngine):
     def __init__(self, *args, **kwargs):
@@ -65,7 +59,6 @@ class TheanoRigid3DBodyEngine(Rigid3DBodyEngine):
         self.lower_inertia_inv = theano.shared(numpy_repeat_new_axis(np.linalg.inv(self.massMatrices[:,:3,:3]), self.batch_size).astype('float32'), name="lower_inertia_inv", )
         self.upper_inertia_inv = theano.shared(numpy_repeat_new_axis(np.linalg.inv(self.massMatrices[:,3:,3:]), self.batch_size).astype('float32'), name="upper_inertia_inv", )
 
-        print
         self.face_normal_theano = theano.shared(numpy_repeat_new_axis(self.face_normal[:,:], self.batch_size).astype('float32'), name="face_normal")
         self.face_point_theano = theano.shared(numpy_repeat_new_axis(self.face_point[:,:], self.batch_size).astype('float32'), name="face_point")
         self.face_texture_x_theano = theano.shared(numpy_repeat_new_axis(self.face_texture_x[:,:], self.batch_size).astype('float32'), name="face_texture_x")
@@ -212,89 +205,101 @@ class TheanoRigid3DBodyEngine(Rigid3DBodyEngine):
             ray_offset = ray_offset[None,:,:,:]
 
         # step 2a: intersect the rays with all the spheres
+        has_spheres = (0 != len(self.sphere_parent))
         #s_relevant = np.ones(shape=(self.batch_size, px_ver, px_hor, self.sphere_parent.shape[0]))
-        s_pos_vectors = positions[:,None,None,self.sphere_parent,:]
-        s_rot_matrices = rotations[:,self.sphere_parent,:,:]
+        if has_spheres:
+            s_pos_vectors = positions[:,None,None,self.sphere_parent,:]
+            s_rot_matrices = rotations[:,self.sphere_parent,:,:]
 
-        L = s_pos_vectors - ray_offset[:,:,:,None,:]
-        tca = T.sum(L * ray_dir[:,:,:,None,:],axis=4)  # L.dotProduct(ray_dir)
-        #// if (tca < 0) return false;
-        s_relevant = (tca > 0)
-        d2 = T.sum(L * L, axis=3) - tca*tca
-        r2 = self.sphere_radius**2
-        #if (d2 > radius2) return false;
-        s_relevant *= (d2[:,:,:,:] <= r2[None,None,None,:])
+            L = s_pos_vectors - ray_offset[:,:,:,None,:]
+            tca = T.sum(L * ray_dir[:,:,:,None,:],axis=4)  # L.dotProduct(ray_dir)
+            #// if (tca < 0) return false;
+            s_relevant = (tca > 0)
+            d2 = T.sum(L * L, axis=3) - tca*tca
+            r2 = self.sphere_radius**2
+            #if (d2 > radius2) return false;
+            s_relevant *= (d2[:,:,:,:] <= r2[None,None,None,:])
+            float_s_relevant = T.cast(s_relevant, 'float32')
+            thc = T.sqrt(float_s_relevant * (r2[None,None,None,:] - d2[:,:,:,:]))
+            s_t0 = tca - thc
+            Phit = ray_offset[:,:,:,None,:] + s_t0[:,:,:,:,None]*ray_dir[:,:,:,None,:]
+            N = (Phit-s_pos_vectors) / self.sphere_radius[None,None,None,:,None]
+            N = theano_convert_world_to_model_coordinate_no_bias(N, s_rot_matrices[:,None,None,:,:,:])
 
-        thc = T.sqrt(s_relevant * (r2[None,None,None,:] - d2[:,:,:,:]))
-        s_t0 = tca - thc
-        Phit = ray_offset[:,:,:,None,:] + s_t0[:,:,:,:,None]*ray_dir[:,:,:,None,:]
-        N = (Phit-s_pos_vectors) / self.sphere_radius[None,None,None,:,None]
-        N = theano_convert_world_to_model_coordinate_no_bias(N, s_rot_matrices[:,None,None,:,:,:])
-
-        s_tex_x = T.arctan2(N[:,:,:,:,2], N[:,:,:,:,0])/np.pi
-        s_tex_y = -1+2*np.arccos(N[:,:,:,:,1]*s_relevant)/np.pi
-        # tex_y en tex_x in [-1,1]
+            s_tex_x = T.arctan2(N[:,:,:,:,2], N[:,:,:,:,0])/np.pi
+            s_tex_y = -1+2*np.arccos(N[:,:,:,:,1]*float_s_relevant)/np.pi
+            # tex_y en tex_x in [-1,1]
 
 
-        # step 2b: intersect the rays with the cubes
-
+        # step 2b: intersect the rays with the cubes (cubes=planes)
         # step 2c: intersect the rays with the planes
-        #p_relevant = np.ones(shape=(px_ver, px_hor, self.face_normal.shape[0]))
+        has_faces = (0 != len(self.face_parent))
+        if has_faces:
+            hasparent = [i for i,par in enumerate(self.face_parent) if par is not None]
+            hasnoparent = [i for i,par in enumerate(self.face_parent) if par is None]
+            parents = [parent for parent in self.face_parent if parent is not None]
 
+            fn = theano_convert_model_to_world_coordinate_no_bias(self.face_normal[None,hasparent,:], rotations[:,parents,:,:])
+            static_fn = numpy_repeat_new_axis(self.face_normal[hasnoparent,:], self.batch_size)
+            fn = T.concatenate([static_fn, fn], axis=1)
 
-        hasparent = [i for i,par in enumerate(self.face_parent) if par is not None]
-        hasnoparent = [i for i,par in enumerate(self.face_parent) if par is None]
-        parents = [parent for parent in self.face_parent if parent is not None]
-        """
-        fp[:,hasparent,:] = theano_convert_model_to_world_coordinate(self.face_point[hasparent,:], rotations[parents,:,:], positions[:,parents,:])
-        ftx[:,hasparent,:] = theano_convert_model_to_world_coordinate_no_bias(self.face_texture_x[hasparent,:], rotations[:,parents,:,:])
-        fty[:,hasparent,:] = theano_convert_model_to_world_coordinate_no_bias(self.face_texture_y[hasparent,:], rotations[:,parents,:,:])
-        """
+            fp = theano_convert_model_to_world_coordinate(self.face_point[None,hasparent,:], rotations[:,parents,:,:], positions[:,parents,:])
+            static_fp = numpy_repeat_new_axis(self.face_normal[hasnoparent,:], self.batch_size)
+            fp = T.concatenate([static_fp, fp], axis=1)
 
-        fn = theano_convert_model_to_world_coordinate_no_bias(self.face_normal[None,hasparent,:], rotations[:,parents,:,:])
-        fn = T.concatenate([self.face_normal[None,hasnoparent,:], fn], axis=1)
+            ftx = theano_convert_model_to_world_coordinate_no_bias(self.face_texture_x[None,hasparent,:], rotations[:,parents,:,:])
+            static_ftx = numpy_repeat_new_axis(self.face_normal[hasnoparent,:], self.batch_size)
+            ftx = T.concatenate([static_ftx, ftx], axis=1)
 
-        fp = theano_convert_model_to_world_coordinate(self.face_point[None,hasparent,:], rotations[parents,:,:], positions[:,parents,:])
-        fp = T.concatenate([self.face_point[None,hasnoparent,:], fp], axis=1)
+            fty = theano_convert_model_to_world_coordinate_no_bias(self.face_texture_y[None,hasparent,:], rotations[:,parents,:,:])
+            static_fty = numpy_repeat_new_axis(self.face_normal[hasnoparent,:], self.batch_size)
+            fty = T.concatenate([static_fty, fty], axis=1)
 
-        ftx = theano_convert_model_to_world_coordinate_no_bias(self.face_texture_x[None,hasparent,:], rotations[:,parents,:,:])
-        ftx = T.concatenate([self.face_texture_x[None,hasnoparent,:], ftx], axis=1)
+            # reshuffle the face_texture_indexes to match the reshuffling we did above
+            face_indices = hasnoparent + hasparent
+            face_texture_index = self.face_texture_index[face_indices]
+            face_texture_limited = self.face_texture_limited[face_indices]
 
-        fty = theano_convert_model_to_world_coordinate_no_bias(self.face_texture_y[None,hasparent,:], rotations[:,parents,:,:])
-        fty = T.concatenate([self.face_texture_y[None,hasnoparent,:], fty], axis=1)
+            denom = T.sum(fn[:,None,None,:,:] * ray_dir[:,:,:,None,:],axis=4)
+            p0l0 = fp[:,None,None,:,:] - ray_offset[:,:,:,None,:]
+            p_t0 = T.sum(p0l0 * fn[:,None,None,:,:], axis=4) / (denom + 1e-9)
+            p_relevant = (p_t0 > 0)  #only planes in front of us
 
-        # reshuffle the face_texture_indexes to match the reshuffling we did above
-        face_indices = hasnoparent + hasparent
-        face_texture_index = self.face_texture_index[face_indices]
-        face_texture_limited = self.face_texture_limited[face_indices]
+            Phit = ray_offset[:,:,:,None,:] + p_t0[:,:,:,:,None]*ray_dir[:,:,:,None,:]
 
-        denom = T.sum(fn[:,None,None,:,:] * ray_dir[:,:,:,None,:],axis=4)
-        p0l0 = fp[:,None,None,:,:] - ray_offset[:,:,:,None,:]
-        p_t0 = T.sum(p0l0 * fn[:,None,None,:,:], axis=4) / (denom + 1e-9)
-        p_relevant = (p_t0 > 0)  #only planes in front of us
+            pd = Phit-fp[:,None,None,:,:]
+            p_tex_x = T.sum(ftx[:,None,None,:,:] * pd, axis=4)
+            p_tex_y = T.sum(fty[:,None,None,:,:] * pd, axis=4)
 
-        Phit = ray_offset[:,:,:,None,:] + p_t0[:,:,:,:,None]*ray_dir[:,:,:,None,:]
+            # the following only on limited textures
+            p_relevant *= 1 - (1-(-1 < p_tex_x) * (p_tex_x < 1) * (-1 < p_tex_y) * (p_tex_y < 1)) * face_texture_limited
 
-        pd = Phit-fp
-        p_tex_x = T.sum(ftx[:,None,None,:,:] * pd, axis=4)
-        p_tex_y = T.sum(fty[:,None,None,:,:] * pd, axis=4)
+            p_tex_x = ((p_tex_x+1)%2.)-1
+            p_tex_y = ((p_tex_y+1)%2.)-1
 
-        # the following only on limited textures
-        p_relevant *= 1 - (1-(-1 < p_tex_x) * (p_tex_x < 1) * (-1 < p_tex_y) * (p_tex_y < 1)) * face_texture_limited
+        # step 3: find the closest point of intersection for all objects (z-culling)
+        if has_spheres and has_faces:
+            relevant = T.concatenate([s_relevant, p_relevant],axis=3).astype('float32')
+            tex_x = T.concatenate([s_tex_x, p_tex_x],axis=3)
+            tex_y = T.concatenate([s_tex_y, p_tex_y],axis=3)
+            tex_t = np.concatenate([self.sphere_texture_index, face_texture_index],axis=0)
+            t = T.concatenate([s_t0, p_t0], axis=2)
+        elif has_spheres:
+            relevant = s_relevant.astype('float32')
+            tex_x = s_tex_x
+            tex_y = s_tex_y
+            tex_t = self.sphere_texture_index
+            t = s_t0
+        elif has_faces:
+            relevant = p_relevant.astype('float32')
+            tex_x = p_tex_x
+            tex_y = p_tex_y
+            tex_t = face_texture_index
+            t = p_t0
+        else:
+            raise NotImplementedError()
 
-        p_tex_x = ((p_tex_x+1)%2.)-1
-        p_tex_y = ((p_tex_y+1)%2.)-1
-
-        # step 3: find the closest point of intersection (z-culling) for all objects
-        relevant = T.concatenate([s_relevant, p_relevant],axis=3)
-
-        tex_x = T.concatenate([s_tex_x, p_tex_x],axis=3)
-        tex_y = T.concatenate([s_tex_y, p_tex_y],axis=3)
-        tex_t = np.concatenate([self.sphere_texture_index, face_texture_index],axis=0)
-
-        t = T.concatenate([s_t0, p_t0], axis=2)
-
-        mint = T.min(t*relevant + (1-relevant)*1e9, axis=3)
+        mint = T.min(t*relevant + (1-relevant)*np.float32(1e9), axis=3)
         relevant *= (t<=mint[:,:,:,None])  #only use the closest object
 
         # step 4: go into the object's texture and get the corresponding value (see image transform)
@@ -302,10 +307,12 @@ class TheanoRigid3DBodyEngine(Rigid3DBodyEngine):
 
         tex_x = (tex_x + 1)*x_size/2.
         tex_y = (tex_y + 1)*y_size/2.
-        x_idx = T.cast(T.floor(tex_x),'int64')
+        x_idx = T.floor(tex_x)
         x_wgh = tex_x - x_idx
-        y_idx = T.cast(T.floor(tex_y),'int64')
+        y_idx = T.floor(tex_y)
         y_wgh = tex_y - y_idx
+
+        x_idx, y_idx = T.cast(x_idx,'int64'), T.cast(y_idx,'int64')
 
         #print np.min(tex_x), np.max(tex_x)
         #print np.min(x_idx), np.max(x_idx)

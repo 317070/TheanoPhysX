@@ -270,11 +270,11 @@ class Rigid3DBodyEngine(object):
         self.massMatrices = np.append(self.massMatrices, mass*np.diag([1,1,1,0.4,0.4,0.4])[None,:,:], axis=0)
 
         if visible:
-            self.sphere_radius = np.append(self.sphere_radius, [radius], axis=0)
+            self.sphere_radius = np.append(self.sphere_radius, np.array([radius], dtype=DTYPE), axis=0)
             self.sphere_parent = np.append(self.sphere_parent, [self.objects[reference]], axis=0)
             texture_index = self.load_texture(texture)
             self.sphere_texture_index = np.append(self.sphere_texture_index, [texture_index], axis=0)
-            self.sphere_colors = np.append(self.sphere_colors, [color], axis=0)
+            self.sphere_colors = np.append(self.sphere_colors, np.array([color], dtype=DTYPE), axis=0)
 
 
     def add_plane(self, reference, normal, position, visible=True, **kwargs):
@@ -310,11 +310,11 @@ class Rigid3DBodyEngine(object):
             face_x = np.divide(np.ones_like(face_x), face_x, out=np.zeros_like(face_x), where=(face_x!=0))
             face_y = np.divide(np.ones_like(face_y), face_y, out=np.zeros_like(face_y), where=(face_y!=0))
 
-        self.face_normal = np.append(self.face_normal, [normal], axis=0)
-        self.face_point = np.append(self.face_point, [point], axis=0)
+        self.face_normal = np.append(self.face_normal, np.array([normal], dtype=DTYPE), axis=0)
+        self.face_point = np.append(self.face_point, np.array([point], dtype=DTYPE), axis=0)
         self.face_parent.append(self.objects[parent] if parent is not None else parent)
-        self.face_texture_x = np.append(self.face_texture_x, [face_x], axis=0)
-        self.face_texture_y = np.append(self.face_texture_y, [face_y], axis=0)
+        self.face_texture_x = np.append(self.face_texture_x, np.array([face_x], dtype=DTYPE), axis=0)
+        self.face_texture_y = np.append(self.face_texture_y, np.array([face_y], dtype=DTYPE), axis=0)
         self.face_texture_limited = np.append(self.face_texture_limited, [1 if limited else 0], axis=0)
 
         texture_index = self.load_texture(texture)
@@ -341,8 +341,8 @@ class Rigid3DBodyEngine(object):
                 self.textures = tex[None,:,:,:]
             elif np.min(self.textures)==1 and self.textures.shape[0]==1:
                 # we already added zeros and nothing else, reshape the texture to fit this textures shape
-                zeros = np.zeros(shape=tex.shape)
-                self.textures = np.append([zeros], [tex], axis=0)
+                zeros = np.zeros(shape=tex.shape, dtype=DTYPE)
+                self.textures = np.append([zeros], [tex.astype(DTYPE)], axis=0)
             else:
                 self.textures = np.append(self.textures, [tex], axis=0)
 
@@ -790,7 +790,6 @@ class Rigid3DBodyEngine(object):
                         limitparameters.update(robot_dict["default_constraint_parameters"]["limit"])
                     limitparameters.update(parameters)
                     limitparameters.update(limit)
-                    print limitparameters
                     if limitparameters["type"] in ["angular","hinge","ball"]:
                         self.add_angular_limit_constraint(**limitparameters)
                     if limitparameters["type"] in ["linear","slider","plane","parallel"]:

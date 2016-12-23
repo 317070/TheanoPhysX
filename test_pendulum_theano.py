@@ -31,7 +31,7 @@ np.random.seed(0)
 
 # step 1: load the physics model
 engine = TheanoRigid3DBodyEngine()
-jsonfile = "robotmodel/pendulum.json"
+jsonfile = "robotmodel/abstract_art.json"
 engine.load_robot_model(jsonfile)
 BATCH_SIZE = 1
 engine.compile(batch_size=3)
@@ -50,10 +50,10 @@ state = [i.get_value() for i in engine.get_initial_state()]
 
 while frame is None or plt.get_fignums():
     t+=engine.DT
-    print t,
+    print t
     res = f(*state)
     state = res[:3]
-    images = res[4]
+    images = res[3]
     image = images[0]
     if frame is None:
         frame = plt.imshow(image, interpolation='nearest')
