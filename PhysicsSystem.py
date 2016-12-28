@@ -319,7 +319,7 @@ class Rigid3DBodyEngine(object):
 
         texture_index = self.load_texture(texture)
         self.face_texture_index = np.append(self.face_texture_index, [texture_index], axis=0)
-        self.face_colors = np.append(self.face_colors, [color], axis=0)
+        self.face_colors = np.append(self.face_colors, np.array([color], dtype=DTYPE), axis=0)
 
 
     def load_texture(self, filename):
@@ -331,7 +331,7 @@ class Rigid3DBodyEngine(object):
             if self.textures is None:
                 self.textures = np.ones(shape=(1,128,128,3))
             else:
-                self.textures = np.append(self.textures, [np.zeros(shape=self.textures.shape[1:])], axis=0)
+                self.textures = np.append(self.textures, [np.ones(shape=self.textures.shape[1:])], axis=0)
         else:
             tex = scipy.ndimage.imread(filename).transpose(1,0,2)[:,::-1,:3] / 255.
 
@@ -340,9 +340,9 @@ class Rigid3DBodyEngine(object):
             if self.textures is None:
                 self.textures = tex[None,:,:,:]
             elif np.min(self.textures)==1 and self.textures.shape[0]==1:
-                # we already added zeros and nothing else, reshape the texture to fit this textures shape
-                zeros = np.zeros(shape=tex.shape, dtype=DTYPE)
-                self.textures = np.append([zeros], [tex.astype(DTYPE)], axis=0)
+                # we already added ones and nothing else, reshape the texture to fit this textures shape
+                ones = np.ones(shape=tex.shape, dtype=DTYPE)
+                self.textures = np.append([ones], [tex.astype(DTYPE)], axis=0)
             else:
                 self.textures = np.append(self.textures, [tex], axis=0)
 

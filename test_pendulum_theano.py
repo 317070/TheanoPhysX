@@ -10,7 +10,7 @@ from time import strftime, localtime
 import datetime
 import cPickle as pickle
 import argparse
-from PhysicsSystem import Rigid3DBodyEngine
+from PhysicsSystem import Rigid3DBodyEngine, EngineState
 from TheanoPhysicsSystem import TheanoRigid3DBodyEngine
 from custom_ops import mulgrad
 import time
@@ -38,9 +38,10 @@ engine.compile(batch_size=3)
 
 t = time.time()
 state = engine.get_state_variables()
+result_state = engine.do_time_step(state)
 image = engine.get_camera_image(state,"front_camera")
 
-f = theano.function(state,list(state)+[image])
+f = theano.function(list(state),list(result_state)+[image])
 
 print "time taken =", time.time() - t
 frame = None
@@ -50,9 +51,8 @@ state = [i.get_value() for i in engine.get_initial_state()]
 
 while frame is None or plt.get_fignums():
     t+=engine.DT
-    print t
     res = f(*state)
-    state = res[:3]
+    state = EngineState(*res[:3])
     images = res[3]
     image = images[0]
     if frame is None:

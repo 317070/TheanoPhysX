@@ -52,7 +52,7 @@ class TheanoRigid3DBodyEngine(Rigid3DBodyEngine):
         self.initial_velocities = theano.shared(numpy_repeat_new_axis(self.initial_velocities, self.batch_size).astype('float32'), name="initial_velocities")
         self.initial_rotations = theano.shared(numpy_repeat_new_axis(self.initial_rotations, self.batch_size).astype('float32'), name="initial_rotations", )
         # For the warm start, keep the impuls of the previous timestep
-        self.impulses_P = theano.shared(np.zeros(shape=(self.batch_size, self.num_constraints,)), name="impulses_P")
+        self.impulses_P = theano.shared(np.zeros(shape=(self.batch_size, self.num_constraints,), dtype='float32'), name="impulses_P")
 
         # TODO: make these constants instead of shared,
         # when not needed for randomization
@@ -89,7 +89,7 @@ class TheanoRigid3DBodyEngine(Rigid3DBodyEngine):
         # --- Step 3 --- #
         ##################
         # semi-implicit Euler integration
-        velocities = self.evaluate(dt, positions, velocities, rotations, motor_signals=motor_signals)
+        velocities = self.evaluate(state=state, dt=dt, motor_signals=motor_signals)
 
         positions = positions + velocities[:,:,:3] * dt
         # TODO: batch-dot-product
@@ -99,6 +99,12 @@ class TheanoRigid3DBodyEngine(Rigid3DBodyEngine):
             positions=positions, 
             velocities=velocities, 
             rotations=rotations)
+
+    def normalize_matrix(self, A):
+        for i in xrange(self.rotation_reorthogonalization_iterations):
+            # TODO: batch-dot-product
+            A = (3*A - T.sum(A[:,:,:,None,:,None] * A[:,:,None,:,:,None] * A[:,:,None,:,None,:], axis=(3,4))) / 2
+        return A
 
     def get_initial_state(self):
         return EngineState(positions=self.initial_positions,
@@ -214,21 +220,21 @@ class TheanoRigid3DBodyEngine(Rigid3DBodyEngine):
             L = s_pos_vectors - ray_offset[:,:,:,None,:]
             tca = T.sum(L * ray_dir[:,:,:,None,:],axis=4)  # L.dotProduct(ray_dir)
             #// if (tca < 0) return false;
-            s_relevant = (tca > 0)
-            d2 = T.sum(L * L, axis=3) - tca*tca
+            d2 = T.sum(L * L, axis=4) - tca*tca
             r2 = self.sphere_radius**2
             #if (d2 > radius2) return false;
-            s_relevant *= (d2[:,:,:,:] <= r2[None,None,None,:])
+            s_relevant = (tca > 0) * (d2[:,:,:,:] < r2[None,None,None,:])
             float_s_relevant = T.cast(s_relevant, 'float32')
-            thc = T.sqrt(float_s_relevant * (r2[None,None,None,:] - d2[:,:,:,:]))
+            thc = T.sqrt((r2[None,None,None,:] - float_s_relevant * d2[:,:,:,:]))
             s_t0 = tca - thc
             Phit = ray_offset[:,:,:,None,:] + s_t0[:,:,:,:,None]*ray_dir[:,:,:,None,:]
             N = (Phit-s_pos_vectors) / self.sphere_radius[None,None,None,:,None]
             N = theano_convert_world_to_model_coordinate_no_bias(N, s_rot_matrices[:,None,None,:,:,:])
 
-            s_tex_x = T.arctan2(N[:,:,:,:,2], N[:,:,:,:,0])/np.pi
-            s_tex_y = -1+2*np.arccos(N[:,:,:,:,1]*float_s_relevant)/np.pi
             # tex_y en tex_x in [-1,1]
+            s_tex_x = T.arctan2(N[:,:,:,:,2], N[:,:,:,:,0])/np.pi
+            s_tex_y = -1.+(2.-eps)*T.arccos(T.clip(N[:,:,:,:,1], -1.0, 1.0)) / np.pi
+
 
 
         # step 2b: intersect the rays with the cubes (cubes=planes)
@@ -239,31 +245,35 @@ class TheanoRigid3DBodyEngine(Rigid3DBodyEngine):
             hasnoparent = [i for i,par in enumerate(self.face_parent) if par is None]
             parents = [parent for parent in self.face_parent if parent is not None]
 
-            fn = theano_convert_model_to_world_coordinate_no_bias(self.face_normal[None,hasparent,:], rotations[:,parents,:,:])
             static_fn = numpy_repeat_new_axis(self.face_normal[hasnoparent,:], self.batch_size)
-            fn = T.concatenate([static_fn, fn], axis=1)
+            static_fp = numpy_repeat_new_axis(self.face_point[hasnoparent,:], self.batch_size)
+            static_ftx = numpy_repeat_new_axis(self.face_texture_x[hasnoparent,:], self.batch_size)
+            static_fty = numpy_repeat_new_axis(self.face_texture_y[hasnoparent,:], self.batch_size)
 
-            fp = theano_convert_model_to_world_coordinate(self.face_point[None,hasparent,:], rotations[:,parents,:,:], positions[:,parents,:])
-            static_fp = numpy_repeat_new_axis(self.face_normal[hasnoparent,:], self.batch_size)
-            fp = T.concatenate([static_fp, fp], axis=1)
-
-            ftx = theano_convert_model_to_world_coordinate_no_bias(self.face_texture_x[None,hasparent,:], rotations[:,parents,:,:])
-            static_ftx = numpy_repeat_new_axis(self.face_normal[hasnoparent,:], self.batch_size)
-            ftx = T.concatenate([static_ftx, ftx], axis=1)
-
-            fty = theano_convert_model_to_world_coordinate_no_bias(self.face_texture_y[None,hasparent,:], rotations[:,parents,:,:])
-            static_fty = numpy_repeat_new_axis(self.face_normal[hasnoparent,:], self.batch_size)
-            fty = T.concatenate([static_fty, fty], axis=1)
+            if hasparent:
+                fn = theano_convert_model_to_world_coordinate_no_bias(self.face_normal[None,hasparent,:], rotations[:,parents,:,:])
+                fn = T.concatenate([static_fn, fn], axis=1)
+                fp = theano_convert_model_to_world_coordinate(self.face_point[None,hasparent,:], rotations[:,parents,:,:], positions[:,parents,:])
+                fp = T.concatenate([static_fp, fp], axis=1)
+                ftx = theano_convert_model_to_world_coordinate_no_bias(self.face_texture_x[None,hasparent,:], rotations[:,parents,:,:])
+                ftx = T.concatenate([static_ftx, ftx], axis=1)
+                fty = theano_convert_model_to_world_coordinate_no_bias(self.face_texture_y[None,hasparent,:], rotations[:,parents,:,:])
+                fty = T.concatenate([static_fty, fty], axis=1)
+            else:
+                fn = static_fn
+                fp = static_fp
+                ftx = static_ftx
+                fty = static_fty
 
             # reshuffle the face_texture_indexes to match the reshuffling we did above
             face_indices = hasnoparent + hasparent
             face_texture_index = self.face_texture_index[face_indices]
             face_texture_limited = self.face_texture_limited[face_indices]
+            face_colors = self.face_colors[face_indices,:]
 
             denom = T.sum(fn[:,None,None,:,:] * ray_dir[:,:,:,None,:],axis=4)
             p0l0 = fp[:,None,None,:,:] - ray_offset[:,:,:,None,:]
             p_t0 = T.sum(p0l0 * fn[:,None,None,:,:], axis=4) / (denom + 1e-9)
-            p_relevant = (p_t0 > 0)  #only planes in front of us
 
             Phit = ray_offset[:,:,:,None,:] + p_t0[:,:,:,:,None]*ray_dir[:,:,:,None,:]
 
@@ -272,18 +282,19 @@ class TheanoRigid3DBodyEngine(Rigid3DBodyEngine):
             p_tex_y = T.sum(fty[:,None,None,:,:] * pd, axis=4)
 
             # the following only on limited textures
-            p_relevant *= 1 - (1-(-1 < p_tex_x) * (p_tex_x < 1) * (-1 < p_tex_y) * (p_tex_y < 1)) * face_texture_limited
+            p_relevant = (p_t0 > 0) * (1 - (1-(-1 < p_tex_x) * (p_tex_x < 1) * (-1 < p_tex_y) * (p_tex_y < 1)) * face_texture_limited)
 
             p_tex_x = ((p_tex_x+1)%2.)-1
             p_tex_y = ((p_tex_y+1)%2.)-1
 
         # step 3: find the closest point of intersection for all objects (z-culling)
+
         if has_spheres and has_faces:
             relevant = T.concatenate([s_relevant, p_relevant],axis=3).astype('float32')
             tex_x = T.concatenate([s_tex_x, p_tex_x],axis=3)
             tex_y = T.concatenate([s_tex_y, p_tex_y],axis=3)
             tex_t = np.concatenate([self.sphere_texture_index, face_texture_index],axis=0)
-            t = T.concatenate([s_t0, p_t0], axis=2)
+            t = T.concatenate([s_t0, p_t0], axis=3)
         elif has_spheres:
             relevant = s_relevant.astype('float32')
             tex_x = s_tex_x
@@ -299,7 +310,8 @@ class TheanoRigid3DBodyEngine(Rigid3DBodyEngine):
         else:
             raise NotImplementedError()
 
-        mint = T.min(t*relevant + (1-relevant)*np.float32(1e9), axis=3)
+
+        mint = T.min(t*relevant + (1.-relevant)*np.float32(1e9), axis=3)
         relevant *= (t<=mint[:,:,:,None])  #only use the closest object
 
         # step 4: go into the object's texture and get the corresponding value (see image transform)
@@ -312,6 +324,7 @@ class TheanoRigid3DBodyEngine(Rigid3DBodyEngine):
         y_idx = T.floor(tex_y)
         y_wgh = tex_y - y_idx
 
+        # if the following are -2,147,483,648 or -9,223,372,036,854,775,808, you have NaN's
         x_idx, y_idx = T.cast(x_idx,'int64'), T.cast(y_idx,'int64')
 
         #print np.min(tex_x), np.max(tex_x)
@@ -327,7 +340,7 @@ class TheanoRigid3DBodyEngine(Rigid3DBodyEngine):
 
         #print sample.shape
         # multiply with color of object
-        colors = np.concatenate([self.sphere_colors, self.face_colors],axis=0)
+        colors = np.concatenate([self.sphere_colors, face_colors],axis=0)
         if np.min(colors)!=1.:  # if the colors are actually used
             sample = colors[None,None,None,:,:] * sample
 
@@ -349,7 +362,7 @@ class TheanoRigid3DBodyEngine(Rigid3DBodyEngine):
         if dt is None:
             dt = self.DT
 
-        positions, velocities, rotations = state.positions, state.velocities, state.positions
+        positions, velocities, rotations = state.positions, state.velocities, state.rotations
         # ALL CONSTRAINTS CAN BE TRANSFORMED TO VELOCITY CONSTRAINTS!
         ##################
         # --- Step 1 --- #
@@ -667,7 +680,6 @@ class TheanoRigid3DBodyEngine(Rigid3DBodyEngine):
                     b_error[c_idx] = offset - current_offset
                     self.C[c_idx] = (current_offset < offset)
 
-                print current_offset, offset
                 c_idx += 1
 
             if constraint == "ground":
@@ -740,8 +752,9 @@ class TheanoRigid3DBodyEngine(Rigid3DBodyEngine):
             result = result.reshape((self.batch_size, 2*self.num_constraints, 6))
 
             r = []
-            for i in xrange(len(self.map_object_to_constraint)):
-                delta_v = T.sum(result[:,self.map_object_to_constraint[i],:], axis=1)
+            for constraint in self.map_object_to_constraint:
+                idx_list = np.array(constraint, dtype='int64')  # deal with empty lists
+                delta_v = T.sum(result[:,idx_list,:], axis=1)
                 r.append(delta_v)
             newv = newv + T.stack(r, axis=1)
         #print

@@ -29,7 +29,7 @@ np.random.seed(0)
 
 # step 1: load the physics model
 engine = Rigid3DBodyEngine()
-jsonfile = "robotmodel/pendulum.json"
+jsonfile = "robotmodel/abstract_art.json"
 engine.load_robot_model(jsonfile)
 BATCH_SIZE = 1
 engine.compile()
@@ -47,7 +47,7 @@ t = 0
 while plt.get_fignums():
     t+=engine.DT
     print t
-    engine.do_time_step(state,dt=engine.DT, motor_signals=[2*np.sin(t)])
+    state = engine.do_time_step(state,dt=engine.DT, motor_signals=[2*np.sin(t)])
     image = engine.get_camera_image(state,"front_camera")
     frame.set_data(image)
     plt.draw()

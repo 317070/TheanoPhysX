@@ -2,7 +2,7 @@
   "name": "abstract art",
   "integration_parameters": {
     "time_step": 0.01,
-    "projected_gauss_seidel_iterations": 1,
+    "projected_gauss_seidel_iterations": 10,
     "rotation_reorthogonalization_iterations": 1,
     "warm_start": 0.85
   },
@@ -54,7 +54,7 @@
         1,
         1
       ],
-      "default_textures":{
+      "default_faces":{
         "texture":"textures/square_128.png",
         "color": [0,1,0]
       }
