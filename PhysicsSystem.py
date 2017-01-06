@@ -115,16 +115,18 @@ class Rigid3DBodyEngine(object):
         self.initial_rotations = np.zeros(shape=(0,3,3), dtype=DTYPE)
         self.initial_velocities = np.zeros(shape=(0,6), dtype=DTYPE)
         self.massMatrices = np.zeros(shape=(0,6,6), dtype=DTYPE)
+        # TODO: why is this initialized None:None again?
         self.objects = {None:None}
         self.shapes = []
         self.constraints = []
         self.sensors = []
+        self.motors = set()
 
         self.planes = dict()
         self.planeNormals = np.zeros(shape=(0,3), dtype=DTYPE)
         self.planePoints = np.zeros(shape=(0,3), dtype=DTYPE)
 
-        self.P = None
+        self.inertia_inv = None
         self.w = None
         self.zeta = None
         self.only_when_positive = None
@@ -135,11 +137,15 @@ class Rigid3DBodyEngine(object):
         self.C = None
         self.zero_index = None
         self.one_index = None
+        self.impulses_P = None
 
         self.DT = None
         self.projected_gauss_seidel_iterations = None
         self.rotation_reorthogonalization_iterations = None
         self.warm_start = None
+        self.do_friction_clipping = False
+        self.do_impulse_clipping = False
+        self.has_conditional_constraints = False
 
         self.face_normal = np.zeros(shape=(0,3), dtype=DTYPE)
         self.face_point = np.zeros(shape=(0,3), dtype=DTYPE)
@@ -388,7 +394,6 @@ class Rigid3DBodyEngine(object):
         ray_dir = ray_dir / np.linalg.norm(ray_dir, axis=2, keepdims=True)   #normalize
         if focal_length<0: #support negative focal lengths
             ray_dir = -ray_dir
-
         # the following is useful for depth of field !
         """
         ray_offset = np.array(np.meshgrid([0],
@@ -406,8 +411,9 @@ class Rigid3DBodyEngine(object):
 
 
     def get_camera_image_size(self, camera_name):
-        return self.cameras[camera_name].ray_dir.shape + (3,)
-
+        return (3,
+                self.cameras[camera_name]["ray_direction"].shape[1],
+                self.cameras[camera_name]["ray_direction"].shape[0])
 
     def get_camera_image(self, state, camera_name):
 
@@ -538,6 +544,9 @@ class Rigid3DBodyEngine(object):
             background = background_color[None,None,:] * (1-np.max(relevant[:,:,:],axis=2))[:,:,None]
             image += background
 
+        # do a dimshuffle to closer match the deep learning conventions
+        image = image.transpose(2,1,0)
+
         return image
 
     def get_object_index(self, reference):
@@ -560,7 +569,7 @@ class Rigid3DBodyEngine(object):
     def add_ball_and_socket_constraint(self, jointname, object1, object2, point, **parameters):
         idx1 = self.get_object_index(object1)
         idx2 = self.get_object_index(object2)
-
+        point = np.array(point, dtype=DTYPE)
         parameters['joint_in_model1_coordinates'] = convert_world_to_model_coordinate(point, self.initial_rotations[idx1,:,:], self.initial_positions[idx1,:])
         parameters['joint_in_model2_coordinates'] = convert_world_to_model_coordinate(point, self.initial_rotations[idx2,:,:], self.initial_positions[idx2,:])
 
@@ -571,17 +580,18 @@ class Rigid3DBodyEngine(object):
         idx1 = self.get_object_index(object1)
         idx2 = self.get_object_index(object2)
 
+        point = np.array(point, dtype=DTYPE)
         parameters['joint_in_model1_coordinates'] = convert_world_to_model_coordinate(point, self.initial_rotations[idx1,:,:], self.initial_positions[idx1,:])
         parameters['joint_in_model2_coordinates'] = convert_world_to_model_coordinate(point, self.initial_rotations[idx2,:,:], self.initial_positions[idx2,:])
 
         # create two forbidden axis:
-        axis = np.array(axis)
+        axis = np.array(axis, dtype=DTYPE)
         axis = axis / np.linalg.norm(axis)
         if (axis == np.array([1,0,0])).all():
             forbidden_axis_1 = np.array([0,1,0], dtype=DTYPE)
             forbidden_axis_2 = np.array([0,0,1], dtype=DTYPE)
         else:
-            forbidden_axis_1 = np.array([0,-axis[2],axis[1]])
+            forbidden_axis_1 = np.array([0,-axis[2],axis[1]], dtype=DTYPE)
             forbidden_axis_2 = np.cross(axis, forbidden_axis_1)
 
         parameters['axis'] = axis
@@ -601,7 +611,7 @@ class Rigid3DBodyEngine(object):
         if idx2 is None:
             idx1, idx2 = None, idx1
 
-        axis = np.array(axis)
+        axis = np.array(axis, dtype=DTYPE)
         axis = axis / np.linalg.norm(axis)
 
         if (axis == np.array([1,0,0])).all():
@@ -623,7 +633,7 @@ class Rigid3DBodyEngine(object):
         else:
             parameters['axis1_in_model1_coordinates'] = forbidden_axis_1
             parameters['axis2_in_model1_coordinates'] = forbidden_axis_2
-            parameters['trans_init'] = np.array(self.initial_positions[idx2,:])
+            parameters['trans_init'] = np.array(self.initial_positions[idx2,:], dtype=DTYPE)
             parameters['rot_init'] = self.initial_rotations[idx2,:,:]
 
         self.add_constraint("slider", [object1, object2], parameters)
@@ -634,7 +644,7 @@ class Rigid3DBodyEngine(object):
         idx1 = self.get_object_index(object1)
         idx2 = self.get_object_index(object2)
 
-        normal = np.array(normal)
+        normal = np.array(normal, dtype=DTYPE)
         parameters['normal'] = normal
         parameters['axis1_in_model2_coordinates'] = convert_world_to_model_coordinate_no_bias(normal, self.initial_rotations[idx2,:,:])
 
@@ -657,6 +667,7 @@ class Rigid3DBodyEngine(object):
         idx1 = self.get_object_index(object1)
         idx2 = self.get_object_index(object2)
 
+        point = np.array(point, dtype=DTYPE)
         parameters['joint_in_model1_coordinates'] = convert_world_to_model_coordinate(point, self.initial_rotations[idx1,:,:], self.initial_positions[idx1,:])
         parameters['joint_in_model2_coordinates'] = convert_world_to_model_coordinate(point, self.initial_rotations[idx2,:,:], self.initial_positions[idx2,:])
         parameters['rot_init'] = np.dot(self.initial_rotations[idx2,:,:], self.initial_rotations[idx1,:,:].T)
@@ -668,9 +679,9 @@ class Rigid3DBodyEngine(object):
         idx1 = self.get_object_index(object1)
         idx2 = self.get_object_index(object2)
 
-        axis = np.array(axis)
+        axis = np.array(axis, dtype=DTYPE)
         axis = axis / np.linalg.norm(axis)
-        parameters['axis'] = axis
+        parameters['axis'] = np.array(axis, dtype=DTYPE)
         parameters['axis_in_model2_coordinates'] = convert_world_to_model_coordinate_no_bias(axis, self.initial_rotations[idx2,:,:])
 
         parameters['rot_init'] = np.dot(self.initial_rotations[idx2,:,:], self.initial_rotations[idx1,:,:].T)
@@ -684,7 +695,7 @@ class Rigid3DBodyEngine(object):
 
         if idx2 is None:
             idx1, idx2 = None, idx1
-
+        axis = np.array(axis, dtype=DTYPE)
         parameters['axis'] = axis
         parameters['axis_in_model2_coordinates'] = convert_world_to_model_coordinate_no_bias(axis, self.initial_rotations[idx2,:,:])
 
@@ -693,6 +704,7 @@ class Rigid3DBodyEngine(object):
         else:
             parameters['pos_init'] = np.array(self.initial_positions[idx2,:])
 
+        self.motors.add(parameters["motor_id"])
         self.add_constraint("linear motor", [object1, object2], parameters)
 
 
@@ -700,12 +712,13 @@ class Rigid3DBodyEngine(object):
         idx1 = self.objects[object1]
         idx2 = self.objects[object2]
 
-        axis = np.array(axis)
+        axis = np.array(axis, dtype=DTYPE)
         axis = axis / np.linalg.norm(axis)
         parameters['axis'] = axis
         parameters['axis_in_model2_coordinates'] = convert_world_to_model_coordinate_no_bias(axis, self.initial_rotations[idx2,:,:])
         parameters['rot_init'] = np.dot(self.initial_rotations[idx2,:,:], self.initial_rotations[idx1,:,:].T)
 
+        self.motors.add(parameters["motor_id"])
         self.add_constraint("angular limit", [object1, object2], parameters)
 
 
@@ -725,7 +738,7 @@ class Rigid3DBodyEngine(object):
         if idx1 is not None:
             parameters['pos_init'] = self.initial_positions[idx2,:] - self.initial_positions[idx1,:]
         else:
-            parameters['pos_init'] = np.array(self.initial_positions[idx2,:])
+            parameters['pos_init'] = np.array(self.initial_positions[idx2,:], dtype=DTYPE)
 
         self.add_constraint("linear limit", [object1, object2], parameters)
 
@@ -815,45 +828,62 @@ class Rigid3DBodyEngine(object):
         for sensor in robot_dict["sensors"]:
             self.add_sensor(**sensor)
 
+    @property
+    def num_sensors(self):
+        return len(self.sensors)
+
+    @property
+    def num_motors(self):
+        return len(self.motors)
+
+    @property
+    def num_cameras(self):
+        return len(self.cameras)
+
+    @property
+    def num_moving_bodies(self):
+        return len(self.objects)-1
+
+    @property
+    def num_constraints(self):
+        res = 0
+        for (constraint,references,parameters) in self.constraints:
+            if constraint == "ball-and-socket" or constraint == "hinge" or constraint == "fixed":
+                res += 3
+            if constraint == "slider" or constraint == "fixed" or constraint == "parallel" or constraint == "plane":
+                res += 3
+            if constraint == "slider" or constraint == "plane":
+                res += 1
+            if constraint == "slider":
+                res += 1
+            if constraint == "hinge":
+                res += 2
+            if constraint == "ground":
+                res += 1
+            if constraint == "ground" and parameters["mu"]!=0:
+                res += 2
+            if constraint == "ground" and parameters["torsional_friction"] and parameters["mu"]!=0:
+                res += 1
+            if constraint == "angular limit":
+                res += 1
+            if constraint == "angular motor":
+                res += 1
+            if constraint == "linear limit":
+                res += 1
+            if constraint == "linear motor":
+                res += 1
+        return res
 
     def compile(self, *args, **kwargs):
         if args or kwargs:
             print "Got unexpected keywords in compile:", args, kwargs
-        self.num_bodies = len(self.objects)
         self.inertia_inv = np.linalg.inv(self.massMatrices)
-        self.num_constraints = 0
-        for (constraint,references,parameters) in self.constraints:
-            if constraint == "ball-and-socket" or constraint == "hinge" or constraint == "fixed":
-                self.num_constraints += 3
-            if constraint == "slider" or constraint == "fixed" or constraint == "parallel" or constraint == "plane":
-                self.num_constraints += 3
-            if constraint == "slider" or constraint == "plane":
-                self.num_constraints += 1
-            if constraint == "slider":
-                self.num_constraints += 1
-            if constraint == "hinge":
-                self.num_constraints += 2
-            if constraint == "ground":
-                self.num_constraints += 1
-            if constraint == "ground" and parameters["mu"]!=0:
-                self.num_constraints += 2
-            if constraint == "ground" and parameters["torsional_friction"] and parameters["mu"]!=0:
-                self.num_constraints += 1
-            if constraint == "angular limit":
-                self.num_constraints += 1
-            if constraint == "angular motor":
-                self.num_constraints += 1
-            if constraint == "linear limit":
-                self.num_constraints += 1
-            if constraint == "linear motor":
-                self.num_constraints += 1
-
-        self.P = np.zeros((self.num_constraints,), dtype=DTYPE)# constant
+        self.impulses_P = np.zeros(shape=(self.num_constraints,), dtype=DTYPE)
         self.w = np.zeros((self.num_constraints,), dtype=DTYPE)  # 0 constraints
         self.zeta = np.zeros((self.num_constraints,), dtype=DTYPE)  # 0 constraints
 
         self.only_when_positive = np.zeros((self.num_constraints,), dtype=DTYPE)  # 0 constraints
-        self.map_object_to_constraint = [[] for _ in xrange(len(self.objects)-1)]
+        self.map_object_to_constraint = [[] for _ in xrange(self.num_moving_bodies)]
         self.clipping_a   = np.ones((self.num_constraints,), dtype=DTYPE)
         self.clipping_idx = range(self.num_constraints)
         self.clipping_b   = np.zeros((self.num_constraints,), dtype=DTYPE)
@@ -864,10 +894,7 @@ class Rigid3DBodyEngine(object):
         for constraint,references,parameters in self.constraints:
             idx1 = references[0]
             idx2 = references[1]
-            """
-            if idx1 is None:
-                idx1, idx2 = idx2, idx2
-            """
+
             if idx2 is None:
                 idx1, idx2 = None, idx1
 
@@ -940,6 +967,8 @@ class Rigid3DBodyEngine(object):
                 self.one_index.append(idx2)
 
                 self.only_when_positive[c_idx] = 1.0
+                self.has_conditional_constraints = True
+
                 self.w[c_idx] = parameters["f"] * 2*np.pi
                 self.zeta[c_idx] = parameters["zeta"]
                 c_idx += 1
@@ -953,6 +982,8 @@ class Rigid3DBodyEngine(object):
                 if "motor_torque" in parameters:
                     self.clipping_a[c_idx] = 0
                     self.clipping_b[c_idx] = parameters["motor_torque"]
+                    self.do_impulse_clipping = True
+
                 self.w[c_idx] = parameters["f"] * 2*np.pi
                 self.zeta[c_idx] = parameters["zeta"]
                 c_idx += 1
@@ -967,6 +998,7 @@ class Rigid3DBodyEngine(object):
                 self.one_index.append(idx2)
 
                 self.only_when_positive[c_idx] = 1.0
+                self.has_conditional_constraints = True
                 self.w[c_idx] = parameters["f"] * 2*np.pi
                 self.zeta[c_idx] = parameters["zeta"]
                 c_idx += 1
@@ -983,6 +1015,8 @@ class Rigid3DBodyEngine(object):
                 if "motor_force" in parameters:
                     self.clipping_a[c_idx] = 0
                     self.clipping_b[c_idx] = parameters["motor_force"]
+                    self.do_impulse_clipping = True
+
                 self.w[c_idx] = parameters["f"] * 2*np.pi
                 self.zeta[c_idx] = parameters["zeta"]
                 c_idx += 1
@@ -994,7 +1028,11 @@ class Rigid3DBodyEngine(object):
                 self.w[c_idx] = parameters["f"] * 2*np.pi
                 self.zeta[c_idx] = parameters["zeta"]
                 self.only_when_positive[c_idx] = 1.0
+                self.has_conditional_constraints = True
+
+                # to use as clipping limits in the next constraints
                 ground_contact_idx = c_idx
+
                 c_idx += 1
 
             if constraint == "ground" and parameters["mu"]!=0:
@@ -1002,6 +1040,8 @@ class Rigid3DBodyEngine(object):
                     self.clipping_a[c_idx+i] = parameters["mu"]
                     self.clipping_idx[c_idx+i] = ground_contact_idx
                     self.clipping_b[c_idx+i] = 0
+                    self.do_impulse_clipping = True
+                    self.do_friction_clipping = True
                     self.map_object_to_constraint[idx1].append(2*(c_idx+i) + 0)
                     self.w[c_idx+i] = parameters["f"] * 2*np.pi
                     self.zeta[c_idx+i] = parameters["zeta"]
@@ -1015,6 +1055,8 @@ class Rigid3DBodyEngine(object):
                 self.clipping_a[c_idx] = 3.*np.pi/16. * np.sqrt(r*d) * parameters["mu"]
                 self.clipping_idx[c_idx] = ground_contact_idx
                 self.clipping_b[c_idx] = 0
+                self.do_impulse_clipping = True
+                self.do_friction_clipping = True
                 self.map_object_to_constraint[idx1].append(2*c_idx + 0)
                 self.w[c_idx] = parameters["f"] * 2*np.pi
                 self.zeta[c_idx] = parameters["zeta"]
@@ -1022,8 +1064,9 @@ class Rigid3DBodyEngine(object):
                 self.one_index.append(idx2)
                 c_idx += 1
 
+        assert c_idx==self.num_constraints
 
-    def evaluate(self, dt, state, motor_signals=[]):
+    def evaluate(self, state, dt, motor_signals):
 
         positions, velocities, rotations = state.positions, state.velocities, state.rotations
         # ALL CONSTRAINTS CAN BE TRANSFORMED TO VELOCITY CONSTRAINTS!
@@ -1334,34 +1377,44 @@ class Rigid3DBodyEngine(object):
         #v = np.zeros((self.num_constraints,2,6))  # 0 constraints x 2 objects x 6 states
         #self.P = np.zeros((self.num_constraints,))# constant
         # warm start
-        self.P = self.warm_start * self.P
+        self.impulses_P = self.warm_start * self.impulses_P
 
+        m_eff = 1./np.sum(np.sum(J[:,:,None,:]*mass_matrix, axis=-1)*J, axis=(-1,-2))
+
+        k = m_eff * (self.w**2)
+        c = m_eff * 2*self.zeta*self.w
+
+        CFM = 1./(c+dt*k)
+
+        ERP = dt*k/(c+dt*k)
+        m_c = 1./(1./m_eff + CFM)
+        b = ERP/dt * b_error + b_res
 
         # http://myselph.de/gamePhysics/equalityConstraints.html
         for iteration in xrange(self.projected_gauss_seidel_iterations):
             v = np.concatenate((newv[self.zero_index,None,:],newv[self.one_index,None,:]),axis=1)
 
-            m_eff = 1./np.sum(np.sum(J[:,:,None,:]*mass_matrix, axis=-1)*J, axis=(-1,-2))
+            lamb = - m_c[:] * (np.sum(J[:,:,:]*v[:,:,:], axis=(1,2)) + CFM * self.impulses_P[:] + b)
+            self.impulses_P += lamb
 
-            k = m_eff * (self.w**2)
-            c = m_eff * 2*self.zeta*self.w
+            if self.do_impulse_clipping:
+                if self.do_friction_clipping:
+                    clipping_limit = np.abs(self.clipping_a * self.impulses_P[self.clipping_idx] + self.clipping_b * dt)
+                    # print self.clipping_a
+                    # print self.clipping_b
+                    # print self.clipping_idx
+                else:
+                    # print self.clipping_b
+                    clipping_limit = self.clipping_b * dt
+                self.impulses_P = np.clip(self.impulses_P,-clipping_limit, clipping_limit)
 
-            CFM = 1./(c+dt*k)
+            if self.has_conditional_constraints:
+                # print self.only_when_positive
+                # print self.C
+                applicable = (1-(self.only_when_positive*( 1-(self.impulses_P>=0)) )) * self.C
+                self.impulses_P = self.impulses_P * applicable
 
-            ERP = dt*k/(c+dt*k)
-            m_c = 1./(1./m_eff + CFM)
-            b = ERP/dt * b_error + b_res
-
-            lamb = - m_c[:] * (np.sum(J[:,:,:]*v[:,:,:], axis=(1,2)) + CFM * self.P[:] + b)
-
-            self.P += lamb
-
-            clipping_limit = np.abs(self.clipping_a * self.P[self.clipping_idx] + self.clipping_b * dt)
-            self.P = np.clip(self.P,-clipping_limit, clipping_limit)
-            applicable = (1-(self.only_when_positive*( 1-(self.P>=0)) )) * self.C
-
-
-            result = np.sum(mass_matrix*J[:,:,None,:], axis=(-1)) * self.P[:,None,None] * applicable[:,None,None]
+            result = np.sum(mass_matrix*J[:,:,None,:], axis=(-1)) * self.impulses_P[:,None,None]
             result = result.reshape(result.shape[:-3] + (2*self.num_constraints,6))
 
             for i in xrange(newv.shape[0]):
@@ -1384,7 +1437,7 @@ class Rigid3DBodyEngine(object):
         # v2 computed in the second step with : x2 = x1 + dt * v2.
 
         # semi-implicit Euler integration
-        velocities = self.evaluate(dt, state, motor_signals=motor_signals)
+        velocities = self.evaluate(state, dt, motor_signals=motor_signals)
         positions = positions + velocities[:,:3] * dt
 
         rotations = self.normalize_matrix(rotations[:,:,:] + np.sum(rotations[:,:,:,None] * skew_symmetric(dt * velocities[:,3:])[:,None,:,:],axis=2) )

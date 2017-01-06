@@ -15,7 +15,8 @@
       "mu": 1.0,
       "torsional_friction": false,
       "delta": 0.0,
-      "alpha": 0.5
+      "alpha": 0.5,
+      "zeta": 0
     }
   },
   "default_model_parameters": {

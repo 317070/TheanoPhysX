@@ -1,17 +1,8 @@
-import math
-from lasagne.updates import get_or_compute_grads
-import theano
-import theano.tensor as T
-from BatchTheanoPhysicsSystem import BatchedTheanoRigid3DBodyEngine
-import lasagne
 import sys
 import numpy as np
 from time import strftime, localtime
-import datetime
-import cPickle as pickle
 import argparse
 from PhysicsSystem import Rigid3DBodyEngine
-from custom_ops import mulgrad
 import time
 
 
@@ -29,7 +20,7 @@ np.random.seed(0)
 
 # step 1: load the physics model
 engine = Rigid3DBodyEngine()
-jsonfile = "robotmodel/abstract_art.json"
+jsonfile = "robotmodel/pendulum.json"
 engine.load_robot_model(jsonfile)
 BATCH_SIZE = 1
 engine.compile()
@@ -40,16 +31,17 @@ image = engine.get_camera_image(state,"front_camera")
 print "time taken =", time.time() - t
 
 import matplotlib.pyplot as plt
-frame = plt.imshow(image, interpolation='nearest')
+frame = plt.imshow(image.transpose(2,1,0), interpolation='nearest')
 plt.gca().invert_yaxis()
 plt.pause(engine.DT)
 t = 0
 while plt.get_fignums():
     t+=engine.DT
     print t
-    state = engine.do_time_step(state,dt=engine.DT, motor_signals=[2*np.sin(t)])
+    state = engine.do_time_step(state,dt=engine.DT, motor_signals=[10*np.sin(3*t)])
+    print state.positions[0,2]
     image = engine.get_camera_image(state,"front_camera")
-    frame.set_data(image)
+    frame.set_data(image.transpose(2,1,0))
     plt.draw()
     plt.pause(engine.DT)
 

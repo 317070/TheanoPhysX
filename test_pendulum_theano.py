@@ -31,21 +31,22 @@ np.random.seed(0)
 
 # step 1: load the physics model
 engine = TheanoRigid3DBodyEngine()
-jsonfile = "robotmodel/abstract_art.json"
+jsonfile = "robotmodel/pendulum.json"
 engine.load_robot_model(jsonfile)
-BATCH_SIZE = 1
-engine.compile(batch_size=3)
+BATCH_SIZE = 1024
+engine.compile(batch_size=BATCH_SIZE)
 
 t = time.time()
 state = engine.get_state_variables()
-result_state = engine.do_time_step(state)
-image = engine.get_camera_image(state,"front_camera")
 
+result_state = engine.do_time_step(state, motor_signals=np.zeros(shape=(BATCH_SIZE,1), dtype='float32'))
+image = engine.get_camera_image(result_state,"front_camera")
+print engine.get_camera_image_size("front_camera")
 f = theano.function(list(state),list(result_state)+[image])
 
 print "time taken =", time.time() - t
 frame = None
-t = 0
+t = time.time()
 
 state = [i.get_value() for i in engine.get_initial_state()]
 
@@ -55,12 +56,7 @@ while frame is None or plt.get_fignums():
     state = EngineState(*res[:3])
     images = res[3]
     image = images[0]
-    if frame is None:
-        frame = plt.imshow(image, interpolation='nearest')
-        plt.gca().invert_yaxis()
-    else:
-        frame.set_data(image)
-        plt.draw()
-    plt.pause(engine.DT)
+    print "time taken =", time.time() - t
+    t = time.time()
 
 print "done"

@@ -4,16 +4,17 @@
     "time_step": 0.01,
     "projected_gauss_seidel_iterations": 20,
     "rotation_reorthogonalization_iterations": 1,
-    "warm_start": 0.85
+    "warm_start": 0.0
   },
   "default_constraint_parameters": {
     "default": {
-      "f": 1,
-      "zeta": 0.8
+      "f": 2,
+      "zeta": 0.2
     },
     "motor": {
       "servo": "position",
-      "motor_gain": 100,
+      "motor_gain": 50,
+      "f": 1,
       "zeta": 0
     }
   },
@@ -98,7 +99,7 @@
     "bar": [
       {
         "shape": "cube",
-        "position": [0,0,0.6],
+        "position": [0,0,0.0],
         "dimensions": [0.07, 0.1, 0.6],
         "default_faces": {
           "visible": false
@@ -114,8 +115,7 @@
     "top": [
       {
         "shape": "cube",
-        "position": [0,0,0.9],
-        "velocity": [1.0,0,0,0,0,0],
+        "position": [0,0,-0.3],
         "dimensions": [0.15, 0.15, 0.15],
         "default_faces": {
           "visible": false
@@ -166,7 +166,7 @@
       "type": "fixed",
       "object1": "bar",
       "object2": "top",
-      "point": [0,0,0.9]
+      "point": [0,0,-0.3]
     }
 
   },

@@ -66,7 +66,7 @@ class TheanoRigid3DBodyEngine(Rigid3DBodyEngine):
 
 
 
-    def get_all_shared_variables(self):
+    def get_shared_variables(self):
         return [
             self.initial_positions,
             self.initial_velocities,
@@ -176,7 +176,7 @@ class TheanoRigid3DBodyEngine(Rigid3DBodyEngine):
         return result
 
     def get_camera_image_size(self, camera_name):
-        return (self.batch_size,) + self.cameras[camera_name].ray_dir.shape + (3,)
+        return (self.batch_size,) + super(TheanoRigid3DBodyEngine, self).get_camera_image_size(camera_name)
 
     def get_camera_image(self, state, camera_name):
 
@@ -327,9 +327,6 @@ class TheanoRigid3DBodyEngine(Rigid3DBodyEngine):
         # if the following are -2,147,483,648 or -9,223,372,036,854,775,808, you have NaN's
         x_idx, y_idx = T.cast(x_idx,'int64'), T.cast(y_idx,'int64')
 
-        #print np.min(tex_x), np.max(tex_x)
-        #print np.min(x_idx), np.max(x_idx)
-
         textures = T.TensorConstant(type=T.ftensor4, data=self.textures.astype('float32'), name='textures')
 
         sample= (   x_wgh  *    y_wgh )[:,:,:,:,None] * textures[tex_t[None,None,None,:],x_idx+1,y_idx+1,:] + \
@@ -338,7 +335,6 @@ class TheanoRigid3DBodyEngine(Rigid3DBodyEngine):
                 ((1-x_wgh) * (1-y_wgh))[:,:,:,:,None] * textures[tex_t[None,None,None,:],x_idx  ,y_idx  ,:]
 
 
-        #print sample.shape
         # multiply with color of object
         colors = np.concatenate([self.sphere_colors, face_colors],axis=0)
         if np.min(colors)!=1.:  # if the colors are actually used
@@ -354,13 +350,14 @@ class TheanoRigid3DBodyEngine(Rigid3DBodyEngine):
             background = background_color[None,None,None,:] * (1-T.max(relevant[:,:,:,:],axis=3))[:,:,:,None]
             image += background
 
+        # do a dimshuffle to closer match the deep learning conventions
+        image = image.dimshuffle(0,3,2,1)
+
         return image
 
 
 
-    def evaluate(self, state, dt=None, motor_signals=list()):
-        if dt is None:
-            dt = self.DT
+    def evaluate(self, state, dt, motor_signals):
 
         positions, velocities, rotations = state.positions, state.velocities, state.rotations
         # ALL CONSTRAINTS CAN BE TRANSFORMED TO VELOCITY CONSTRAINTS!
@@ -384,9 +381,8 @@ class TheanoRigid3DBodyEngine(Rigid3DBodyEngine):
         
         # convert mass matrices to world coordinates
         # changes every timestep
-        M = T.zeros(shape=(self.batch_size,self.num_bodies,6,6))
         M00 = self.lower_inertia_inv
-        M01 = T.zeros(shape=(self.batch_size,self.num_bodies,3,3))
+        M01 = T.zeros(shape=(self.batch_size,self.num_moving_bodies,3,3))
         M10 = M01
         M11 = T.sum(rotations[:,:,:,None,:,None] * self.upper_inertia_inv[:,:,:,:,None,None] * rotations[:,:,None,:,None,:], axis=(2,3))
         M0 = T.concatenate([M00,M01],axis=3)
@@ -412,8 +408,11 @@ class TheanoRigid3DBodyEngine(Rigid3DBodyEngine):
                 idx1,idx2 = idx2,idx2
 
             if constraint == "ball-and-socket" or constraint == "hinge" or constraint == "fixed":
-                r1x = theano_convert_model_to_world_coordinate_no_bias(parameters["joint_in_model1_coordinates"][None,:], rotations[:,idx1,:,:])
-                r2x = theano_convert_model_to_world_coordinate_no_bias(parameters["joint_in_model2_coordinates"][None,:], rotations[:,idx2,:,:])
+                r1 = parameters["joint_in_model1_coordinates"][None,:].astype('float32')
+                r2 = parameters["joint_in_model2_coordinates"][None,:]
+
+                r1x = theano_convert_model_to_world_coordinate_no_bias(r1, rotations[:,idx1,:,:])
+                r2x = theano_convert_model_to_world_coordinate_no_bias(r2, rotations[:,idx2,:,:])
                 ss_r1x = single_skew_symmetric(r1x)
                 ss_r2x = single_skew_symmetric(r2x)
                 batched_eye = numpy_repeat_new_axis(np.eye(3, dtype='float32'), self.batch_size)
@@ -573,14 +572,14 @@ class TheanoRigid3DBodyEngine(Rigid3DBodyEngine):
 
             if constraint == "linear motor":
 
-                ac = parameters['axis_in_model2_coordinates']
+                ac = parameters['axis_in_model2_coordinates'][None,:]
                 a = theano_convert_model_to_world_coordinate_no_bias(ac, rotations[:,idx2,:,:])
 
                 batched_zeros = numpy_repeat_new_axis(np.zeros((3,), dtype='float32'), self.batch_size)
                 
                 if follows_Newtons_third_law:
-                    J[2*c_idx+0] = T.concatenate([-a, batched_zeros])
-                J[2*c_idx+1] = T.concatenate([ a, batched_zeros])
+                    J[2*c_idx+0] = T.concatenate([-a, batched_zeros],axis=1)
+                J[2*c_idx+1] = T.concatenate([ a, batched_zeros],axis=1)
 
                 if follows_Newtons_third_law:
                     position = positions[:,idx2,:] - positions[:,idx1,:] - parameters['pos_init']
@@ -610,7 +609,7 @@ class TheanoRigid3DBodyEngine(Rigid3DBodyEngine):
             if constraint == "angular limit":
                 angle = parameters["angle"]/180. * np.pi
 
-                ac = parameters['axis_in_model2_coordinates']
+                ac = parameters['axis_in_model2_coordinates'][None,:]
                 a = theano_convert_model_to_world_coordinate_no_bias(parameters['axis_in_model2_coordinates'], rotations[:,idx2,:,:])
 
                 rot_current = theano_dot_last_dimension_matrices(rotations[:,idx2,:,:], rotations[:,idx1,:,:].dimshuffle(0,2,1))
@@ -652,10 +651,10 @@ class TheanoRigid3DBodyEngine(Rigid3DBodyEngine):
 
                 offset = parameters["offset"]
                 if follows_Newtons_third_law:
-                    ac = parameters['axis_in_model1_coordinates']
+                    ac = parameters['axis_in_model1_coordinates'][None,:]
                     a = theano_convert_model_to_world_coordinate_no_bias(ac, rotations[:,idx1,:,:])
                 else:
-                    a = parameters['axis_in_model1_coordinates']
+                    a = parameters['axis_in_model1_coordinates'][None,:]
 
                 if offset < 0:
                     if follows_Newtons_third_law:
@@ -687,6 +686,7 @@ class TheanoRigid3DBodyEngine(Rigid3DBodyEngine):
                 J[2*c_idx+0] = numpy_repeat_new_axis(np.array([0,0,1,0,0,0], dtype='float32'), self.batch_size)
                 J[2*c_idx+1] = numpy_repeat_new_axis(np.array([0,0,0,0,0,0], dtype='float32'), self.batch_size)
 
+                # TODO: use T.maximum
                 b_error[c_idx] = T.clip(positions[:,idx1,Z] - r + parameters["delta"], np.finfo('float32').min, 0)
                 b_res[c_idx] = parameters["alpha"] * newv[:,idx1,Z]
                 C[c_idx] = positions[:,idx1,Z] - r
@@ -723,32 +723,38 @@ class TheanoRigid3DBodyEngine(Rigid3DBodyEngine):
 
         self.impulses_P = self.warm_start * self.impulses_P
 
+        # TODO: batch-dot-product
+        m_eff = 1./T.sum(T.sum(J[:,:,:,None,:]*mass_matrix, axis=4)*J, axis=(2,3))
+
+        k = m_eff * (self.w**2)
+        c = m_eff * 2*self.zeta*self.w
+
+        CFM = 1./(c+dt*k)
+        ERP = dt*k/(c+dt*k)
+        m_c = 1./(1./m_eff + CFM)
+        b = ERP/dt * b_error + b_res
+
         for iteration in xrange(self.projected_gauss_seidel_iterations):
             # this changes every iteration
             v = newv[:,zipped_indices,:].reshape(shape=(self.batch_size, self.num_constraints, 2, 6))
 
-            # TODO: batch-dot-product
-            m_eff = 1./T.sum(T.sum(J[:,:,:,None,:]*mass_matrix, axis=4)*J, axis=(2,3))
-
-            k = m_eff * (self.w**2)
-            c = m_eff * 2*self.zeta*self.w
-
-            CFM = 1./(c+dt*k)
-            ERP = dt*k/(c+dt*k)
-            m_c = 1./(1./m_eff + CFM)
-            b = ERP/dt * b_error + b_res
             lamb = - m_c * (T.sum(J*v, axis=(2,3)) + CFM * self.impulses_P + b)
-
             self.impulses_P += lamb
-            clipping_force = self.impulses_P[:,self.clipping_idx]
 
-            clipping_limit = abs(self.clipping_a * clipping_force + self.clipping_b * dt)
-            self.impulses_P = T.clip(self.impulses_P,-clipping_limit, clipping_limit)
-            applicable = (1.0*(C<=0)) * (1-(self.only_when_positive*(self.P<=0)))
+            if self.do_impulse_clipping:
+                if self.do_friction_clipping:
+                    clipping_force = self.impulses_P[:,self.clipping_idx]
+                    clipping_limit = abs(self.clipping_a * clipping_force + self.clipping_b * dt)
+                else:
+                    clipping_limit = self.clipping_b * dt
+                self.impulses_P = T.clip(self.impulses_P,-clipping_limit, clipping_limit)
+
+            if self.has_conditional_constraints:
+                applicable = (1.0*(C<=0)) * (1-(self.only_when_positive*(self.impulses_P<=0)))
+                self.impulses_P = self.impulses_P * applicable
 
             # TODO: batch-dot-product
-            result = T.sum(mass_matrix*J[:,:,:,None,:], axis=4) * (self.P * applicable)[:,:,None,None]
-
+            result = T.sum(mass_matrix*J[:,:,:,None,:], axis=4) * self.impulses_P[:,:,None,None]
             result = result.reshape((self.batch_size, 2*self.num_constraints, 6))
 
             r = []
@@ -758,5 +764,6 @@ class TheanoRigid3DBodyEngine(Rigid3DBodyEngine):
                 r.append(delta_v)
             newv = newv + T.stack(r, axis=1)
         #print
+        #print theano.printing.debugprint(newv)
         return newv
 
