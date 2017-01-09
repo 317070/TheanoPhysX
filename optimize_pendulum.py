@@ -36,7 +36,7 @@ engine.load_robot_model(jsonfile)
 top_id = engine.get_object_index("top")
 total_time = 10
 BATCH_SIZE = 1
-MEMORY_SIZE = 256
+MEMORY_SIZE = 128
 
 CAMERA = "front_camera"
 engine.compile(batch_size=BATCH_SIZE)
@@ -52,12 +52,12 @@ print "#cameras:", engine.num_cameras
 
 def build_objectives(states_list):
     positions, velocities, rotations = states_list[:3]
-    return T.mean(positions[:,:,top_id,Z],axis=0)
+    return T.mean(positions[:,:,top_id,Z],axis=0)-0.3
 
 
 def build_objectives_test(states_list):
     positions, velocities, rotations = states_list[:3]
-    return T.mean(positions[700:,:,top_id,Z],axis=0)
+    return T.mean(positions[700:,:,top_id,Z],axis=0)-0.3
 
 
 def build_controller():
@@ -138,9 +138,9 @@ def build_controller():
                                          )
 
     l_d = lasagne.layers.DenseLayer(l_d1, engine.num_motors,
-                                         nonlinearity=lasagne.nonlinearities.identity,
+                                         nonlinearity=lasagne.nonlinearities.tanh,
                                          W=lasagne.init.Orthogonal("relu"),
-                                         b=lasagne.init.Constant(0.5),
+                                         b=lasagne.init.Constant(0.0),
                                          )
     l_result = l_d
     result = {
@@ -151,8 +151,8 @@ def build_controller():
     if MEMORY_SIZE>0:
         l_recurrent = lasagne.layers.DenseLayer(l_d1, MEMORY_SIZE,
                                              nonlinearity=lasagne.nonlinearities.tanh,
-                                             W=lasagne.init.Orthogonal("relu"),
-                                             b=lasagne.init.Constant(-0.5),
+                                             W=lasagne.init.Orthogonal(),
+                                             b=lasagne.init.Constant(0.0),
                                              )
         result["recurrent"] = l_recurrent
         result["memory"] = l_memory
@@ -169,8 +169,9 @@ def build_model(engine, controller, controller_parameters, deterministic = False
         positions, velocities, rot_matrices = state
         #sensor_values = engine.get_sensor_values(state=(positions, velocities, rot_matrices))
         ALPHA = 1.0
+        image = engine.get_camera_image(EngineState(*state),CAMERA)
+        controller["input"].input_var = image
         if "recurrent" in controller:
-            controller["input"].input_var = engine.get_camera_image(EngineState(*state),CAMERA)
             controller["memory"].input_var = memory
             memory = lasagne.layers.helper.get_output(controller["recurrent"], deterministic = deterministic)
             memory = mulgrad(memory,ALPHA)
@@ -281,7 +282,7 @@ grads = theano.grad(loss, controller_parameters,
                              return_disconnected="zero")
 grads = lasagne.updates.total_norm_constraint(grads, 1.0)
 
-#grads = [T.switch(T.isnan(g) + T.isinf(g), np.float32(0.001), g) for g in grads]
+#grads = [T.switch(T.isnan(g) + T.isinf(g), np.float32(0.0), g) for g in grads]
 
 
 lr = theano.shared(np.float32(0.001))
@@ -318,7 +319,7 @@ while True:
                 "states": r[1:],
                 "json": open(jsonfile,"rb").read()
             }, f, pickle.HIGHEST_PROTOCOL)
-        if np.mean(r[0])>0.8:
+        if np.mean(r[0])>0.55:
             break
 
 

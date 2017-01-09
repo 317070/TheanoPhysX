@@ -39,10 +39,9 @@ engine.compile(batch_size=BATCH_SIZE)
 t = time.time()
 state = engine.get_state_variables()
 
-result_state = engine.do_time_step(state, motor_signals=np.zeros(shape=(BATCH_SIZE,1), dtype='float32'))
+result_state = engine.do_time_step(state, motor_signals=np.ones(shape=(BATCH_SIZE,1), dtype='float32'))
 image = engine.get_camera_image(result_state,"front_camera")
-print engine.get_camera_image_size("front_camera")
-f = theano.function(list(state),list(result_state)+[image])
+f = theano.function(list(state),list(result_state))
 
 print "time taken =", time.time() - t
 frame = None
@@ -54,8 +53,7 @@ while frame is None or plt.get_fignums():
     t+=engine.DT
     res = f(*state)
     state = EngineState(*res[:3])
-    images = res[3]
-    image = images[0]
+    print state.positions[0,engine.get_object_index("top"),:], state.positions[0,engine.get_object_index("sled"),:]
     print "time taken =", time.time() - t
     t = time.time()
 

@@ -588,8 +588,8 @@ class TheanoRigid3DBodyEngine(Rigid3DBodyEngine):
 
                 motor_signal = motor_signals[:,parameters["motor_id"]]
                 if "min" in parameters and "max" in parameters:
-                    motor_min = (parameters["min"]/180. * np.pi)
-                    motor_max = (parameters["max"]/180. * np.pi)
+                    motor_min = parameters["min"]
+                    motor_max = parameters["max"]
                     motor_signal = T.clip(motor_signal, motor_min, motor_max)
 
                 error_signal = theano_dot_last_dimension_vectors(position - motor_signal, a)
@@ -599,7 +599,7 @@ class TheanoRigid3DBodyEngine(Rigid3DBodyEngine):
                 elif parameters["servo"] == "position":
                     if "delta" in parameters and "motor_velocity" in parameters:
                         velocity = parameters["motor_velocity"]
-                        b_error[c_idx] = dt * np.clip((abs(error_signal) > parameters["delta"]) * error_signal * parameters["motor_gain"], -velocity, velocity)
+                        b_error[c_idx] = dt * T.clip((abs(error_signal) > parameters["delta"]) * error_signal * parameters["motor_gain"], -velocity, velocity)
                     else:
                         b_error[c_idx] = dt * error_signal * parameters["motor_gain"]
 

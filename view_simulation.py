@@ -68,7 +68,7 @@ class MyApp(ShowBase):
         # Load the environment model.
         self.objects = dict()
         self.names = []
-        data = pickle.load(open("../PhysXVids/state-dump-exp12-arm-mem.pkl","rb"))
+        data = pickle.load(open("../PhysXVids/state-dump-exp13-pendulum.pkl","rb"))
 
         self.json = json.loads(data["json"]) # json.loads(data["json"])
         self.states = data["states"]
@@ -77,7 +77,7 @@ class MyApp(ShowBase):
         self.setupKeys()
         self.robot_id = 0
         #self.movie(duration = 8.0)
-        self.target = data["targets"]
+        #self.target = data["targets"]
 
     def setupKeys(self):
         self.parentnode = self.render.attachNewNode('camparent')
@@ -90,7 +90,7 @@ class MyApp(ShowBase):
         rotnode.setP(0)
         rotnode.setR(0)
         rotnode.setPos(0,-3.5,0)
-        self.camera.lookAt(self.objects[self.camera_focus])
+        #self.camera.lookAt(self.objects[self.camera_focus])
         self.camera.wrtReparentTo(rotnode)
         self.camLens.setNear(0.1)
 
@@ -204,7 +204,7 @@ class MyApp(ShowBase):
 
     def load_robot_model(self):
         robot_dict = self.json
-        self.camera_focus = robot_dict["camera_focus"]
+        #self.camera_focus = robot_dict["camera_focus"]
 
         if "universe" in robot_dict["integration_parameters"] and robot_dict["integration_parameters"]["universe"]:
             self.names.append("universe")
@@ -249,20 +249,20 @@ class MyApp(ShowBase):
                     obj.setScale(sc)
 
         #print np.sqrt(np.sum((positions[step,robot_id,self.names.index("sphere2"),:]-np.array([0.5,0.5,0.5]))**2))
-        if np.isfinite(positions[step,robot_id,self.names.index(self.camera_focus),:]).all():
-            self.parentnode.setX(positions[step,robot_id,self.names.index(self.camera_focus),0])
-            self.parentnode.setY(positions[step,robot_id,self.names.index(self.camera_focus),1])
+        #if np.isfinite(positions[step,robot_id,self.names.index(self.camera_focus),:]).all():
+        #    self.parentnode.setX(positions[step,robot_id,self.names.index(self.camera_focus),0])
+        #    self.parentnode.setY(positions[step,robot_id,self.names.index(self.camera_focus),1])
 
         #print self.names
         # change camera movement
         #self.camera.setPos(1.5,3.5,1.5)
         #if np.isfinite(positions[step,robot_id,self.names.index(self.camera_focus)]).all():
         #    self.camera.lookAt(*positions[step,robot_id,self.names.index(self.camera_focus)])
-        self.objects["target"].setPos(*self.target[robot_id,:])
+        #self.objects["target"].setPos(*self.target[robot_id,:])
         #print self.t, self.physics.getPosition("ball")
         #real_time = time.time() - self.starttime
 
-        self.textObject.setText('Time: %3.3f s\nVx: %3.3f\nrobot #%d' % ( self.t, velocities[step,robot_id,self.names.index(self.camera_focus),0], robot_id))
+        #self.textObject.setText('Time: %3.3f s\nVx: %3.3f\nrobot #%d' % ( self.t, velocities[step,robot_id,self.names.index(self.camera_focus),0], robot_id))
         time.sleep(frame_step)
         return Task.cont
 

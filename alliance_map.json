@@ -1,0 +1,454 @@
+{
+  "North Atlantic Ocean":{
+    "recruit":0,
+    "invest":0,
+    "borders":[
+      "South Atlantic Ocean",
+      "Ireland",
+      "England",
+      "Schotland",
+      "North Sea"
+    ]
+  },
+  "North Sea":{
+    "recruit":0,
+    "invest":0,
+    "borders":[
+      "North Atlantic Ocean",
+      "Schotland",
+      "England",
+      "South Atlantic Ocean",
+      "North France",
+      "Benelux",
+      "West Germany",
+      "Denmark",
+      "Baltic Sea",
+      "Sweden",
+      "Norway"
+    ]
+  },
+  "Baltic Sea":{
+    "recruit":0,
+    "invest":0,
+    "borders":[
+      "Sweden",
+      "North Sea",
+      "Denmark",
+      "East Germany",
+      "Poland",
+      "Baltic States",
+      "Russia",
+      "Finland"
+    ]
+  },
+  "South Atlantic Ocean":{
+    "recruit":0,
+    "invest":0,
+    "borders":[
+      "Morocco",
+      "Mediterranean Sea",
+      "Spain",
+      "Portugal",
+      "South France",
+      "North France",
+      "North Sea",
+      "England",
+      "North Atlantic Ocean",
+      "Ireland"
+    ]
+  },
+  "Mediterranean Sea":{
+    "recruit":0,
+    "invest":0,
+    "borders":[
+      "Morocco",
+      "North Africa",
+      "Egypt",
+      "Middle East",
+      "Turkey",
+      "Black Sea",
+      "Greece",
+      "Serbia",
+      "Italy",
+      "South France",
+      "Spain",
+      "South Atlantic Ocean"
+    ]
+  },
+  "Black Sea":{
+    "recruit":0,
+    "invest":0,
+    "borders":[
+      "Mediterranean Sea",
+      "Turkey",
+      "Caucasus",
+      "Ukraine",
+      "Romania",
+      "Bulgaria"
+    ]
+  },
+  "Ireland":{
+    "recruit":1,
+    "invest":2,
+    "borders":[
+      "North Atlantic Ocean",
+      "South Atlantic Ocean",
+      "Schotland"
+    ]
+  },
+  "Schotland":{
+    "recruit":1,
+    "invest":2,
+    "borders":[
+      "North Atlantic Ocean",
+      "North Sea",
+      "Ireland",
+      "England"
+    ]
+  },
+  "England":{
+    "recruit":2,
+    "invest":4,
+    "borders":[
+      "Schotland",
+      "North Sea",
+      "North France",
+      "South Atlantic Ocean",
+      "North Atlantic Ocean"
+    ]
+  },
+  "North France":{
+    "recruit":2,
+    "invest":4,
+    "borders":[
+      "South France",
+      "Switzerland",
+      "West Germany",
+      "Benelux",
+      "North Sea",
+      "England",
+      "South Atlantic Ocean"
+    ]
+  },
+  "South France":{
+    "recruit":1,
+    "invest":3,
+    "borders":[
+      "North France",
+      "Switzerland",
+      "Italy",
+      "Mediterranean Sea",
+      "Spain",
+      "South Atlantic Ocean"
+    ]
+  },
+  "Spain":{
+    "recruit":1,
+    "invest":3,
+    "borders":[
+      "South France",
+      "Mediterranean Sea",
+      "Morocco",
+      "South Atlantic Ocean",
+      "Portugal"
+    ]
+  },
+  "Portugal":{
+    "recruit":1,
+    "invest":4,
+    "borders":[
+      "Spain",
+      "South Atlantic Ocean"
+    ]
+  },
+  "Morocco":{
+    "recruit":1,
+    "invest":2,
+    "borders":[
+      "South Atlantic Ocean",
+      "Spain",
+      "Mediterranean Sea",
+      "North Africa"
+    ]
+  },
+  "North Africa":{
+    "recruit":2,
+    "invest":5,
+    "borders":[
+      "Morocco",
+      "Mediterranean Sea",
+      "Egypt"
+    ]
+  },
+  "Egypt":{
+    "recruit":1,
+    "invest":2,
+    "borders":[
+      "North Africa",
+      "Mediterranean Sea",
+      "Middle East"
+    ]
+  },
+  "Middle East":{
+    "recruit":1,
+    "invest":3,
+    "borders":[
+      "Egypt",
+      "Mediterranean Sea",
+      "Turkey",
+      "Caucasus"
+    ]
+  },
+  "Caucasus":{
+    "recruit":1,
+    "invest":2,
+    "borders":[
+      "Middle East",
+      "Turkey",
+      "Black Sea",
+      "Ukraine",
+      "Russia"
+    ]
+  },
+  "Ukraine":{
+    "recruit":1,
+    "invest":4,
+    "borders":[
+      "Caucasus",
+      "Black Sea",
+      "Romania",
+      "Poland",
+      "Russia"
+    ]
+  },
+  "Russia":{
+    "recruit":2,
+    "invest":4,
+    "borders":[
+      "Caucasus",
+      "Ukraine",
+      "Poland",
+      "Baltic States",
+      "Baltic Sea",
+      "Finland"
+    ]
+  },
+  "Finland":{
+    "recruit":1,
+    "invest":2,
+    "borders":[
+      "Russia",
+      "Baltic Sea",
+      "Sweden"
+    ]
+  },
+  "Sweden":{
+    "recruit":2,
+    "invest":3,
+    "borders":[
+      "Finland",
+      "Baltic Sea",
+      "Denmark",
+      "North Sea",
+      "Norway"
+    ]
+  },
+  "Norway":{
+    "recruit":1,
+    "invest":2,
+    "borders":[
+      "Sweden",
+      "North Sea"
+    ]
+  },
+  "Norway":{
+    "recruit":1,
+    "invest":2,
+    "borders":[
+      "Sweden",
+      "North Sea"
+    ]
+  },
+  "Denmark":{
+    "recruit":1,
+    "invest":5,
+    "borders":[
+      "Sweden",
+      "Baltic Sea",
+      "East Germany",
+      "West Germany",
+      "North Sea"
+    ]
+  },
+  "Benelux":{
+    "recruit":2,
+    "invest":5,
+    "borders":[
+      "North Sea",
+      "West Germany",
+      "North France"
+    ]
+  },
+  "West Germany":{
+    "recruit":1,
+    "invest":4,
+    "borders":[
+      "North Sea",
+      "Denmark",
+      "East Germany",
+      "Czechoslovakia",
+      "Austria",
+      "Switzerland",
+      "North France",
+      "Benelux"
+    ]
+  },
+  "Switzerland":{
+    "recruit":1,
+    "invest":3,
+    "borders":[
+      "West Germany",
+      "Austria",
+      "Italy",
+      "South France",
+      "North France"
+    ]
+  },
+  "Italy":{
+    "recruit":2,
+    "invest":6,
+    "borders":[
+      "Switzerland",
+      "Austria",
+      "Serbia",
+      "Mediterranean Sea",
+      "South France"
+    ]
+  },
+  "Austria":{
+    "recruit":2,
+    "invest":3,
+    "borders":[
+      "Italy",
+      "Switzerland",
+      "West Germany",
+      "Czechoslovakia",
+      "Hungary",
+      "Serbia"
+    ]
+  },
+  "Serbia":{
+    "recruit":1,
+    "invest":2,
+    "borders":[
+      "Italy",
+      "Austria",
+      "Hungary",
+      "Romania",
+      "Bulgaria",
+      "Greece",
+      "Mediterranean Sea"
+    ]
+  },
+  "Greece":{
+    "recruit":1,
+    "invest":2,
+    "borders":[
+      "Serbia",
+      "Bulgaria",
+      "Turkey",
+      "Mediterranean Sea"
+    ]
+  },
+  "Turkey":{
+    "recruit":2,
+    "invest":4,
+    "borders":[
+      "Greece",
+      "Bulgaria",
+      "Black Sea",
+      "Caucasus",
+      "Middle East",
+      "Mediterranean Sea"
+    ]
+  },
+  "Bulgaria":{
+    "recruit":1,
+    "invest":3,
+    "borders":[
+      "Turkey",
+      "Greece",
+      "Serbia",
+      "Romania",
+      "Black Sea"
+    ]
+  },
+  "Romania":{
+    "recruit":1,
+    "invest":3,
+    "borders":[
+      "Bulgaria",
+      "Serbia",
+      "Hungary",
+      "Czechoslovakia",
+      "Poland",
+      "Ukraine",
+      "Black Sea"
+    ]
+  },
+  "Poland":{
+    "recruit":2,
+    "invest":5,
+    "borders":[
+      "Romania",
+      "Czechoslovakia",
+      "East Germany",
+      "Baltic Sea",
+      "Baltic States",
+      "Russia",
+      "Ukraine"
+    ]
+  },
+  "Baltic States":{
+    "recruit":1,
+    "invest":3,
+    "borders":[
+      "Poland",
+      "Baltic Sea",
+      "Russia"
+    ]
+  },
+  "East Germany":{
+    "recruit":2,
+    "invest":3,
+    "borders":[
+      "Poland",
+      "Czechoslovakia",
+      "West Germany",
+      "Denmark",
+      "Baltic Sea"
+    ]
+  },
+  "Czechoslovakia":{
+    "recruit":1,
+    "invest":2,
+    "borders":[
+      "East Germany",
+      "Poland",
+      "Romania",
+      "Hungary",
+      "Austria",
+      "West Germany"
+    ]
+  },
+  "Hungary":{
+    "recruit":1,
+    "invest":3,
+    "borders":[
+      "Czechoslovakia",
+      "Romania",
+      "Serbia",
+      "Austria"
+    ]
+  }
+}

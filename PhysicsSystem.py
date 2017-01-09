@@ -799,10 +799,11 @@ class Rigid3DBodyEngine(object):
             if "limits" in parameters:
                 for limit in parameters["limits"]:
                     limitparameters = dict(robot_dict["default_constraint_parameters"]["default"])
+                    limitparameters.update(parameters)
                     if "limit" in robot_dict["default_constraint_parameters"]:
                         limitparameters.update(robot_dict["default_constraint_parameters"]["limit"])
-                    limitparameters.update(parameters)
                     limitparameters.update(limit)
+                    print limitparameters
                     if limitparameters["type"] in ["angular","hinge","ball"]:
                         self.add_angular_limit_constraint(**limitparameters)
                     if limitparameters["type"] in ["linear","slider","plane","parallel"]:
@@ -1336,8 +1337,7 @@ class Rigid3DBodyEngine(object):
                 else:
                     b_error[c_idx] = offset - current_offset
                     self.C[c_idx] = (current_offset < offset)
-
-                print current_offset, offset
+                print "w:",self.w[c_idx]
                 c_idx += 1
 
 

@@ -14,8 +14,12 @@
     "motor": {
       "servo": "position",
       "motor_gain": 50,
-      "f": 1,
+      "f": 0.1,
       "zeta": 0
+    },
+    "limit": {
+      "f": 4,
+      "zeta": 0.1
     }
   },
   "default_model_parameters": {
@@ -141,9 +145,17 @@
       ],
       "motors": [
         {
-          "motor_id": 0,
-          "min": -1.1,
-          "max": 1.1
+          "motor_id": 0
+        }
+      ],
+      "limits":[
+        {
+          "type": "linear",
+          "offset": 1.0
+        },
+        {
+          "type": "linear",
+          "offset": -1.0
         }
       ]
     },
