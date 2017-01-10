@@ -37,9 +37,7 @@ plt.pause(engine.DT)
 t = 0
 while plt.get_fignums():
     t+=engine.DT
-    print t
     state = engine.do_time_step(state,dt=engine.DT, motor_signals=[10*np.sin(3*t)])
-    print state.positions[0,2]
     image = engine.get_camera_image(state,"front_camera")
     frame.set_data(image.transpose(2,1,0))
     plt.draw()

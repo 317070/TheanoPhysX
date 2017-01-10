@@ -1260,7 +1260,7 @@ class Rigid3DBodyEngine(object):
                 if "min" in parameters and "max" in parameters:
                     motor_signal = np.clip(motor_signal, parameters["min"], parameters["max"])
 
-                error_signal = np.dot(position - motor_signal, a)
+                error_signal = np.dot(position, a) - motor_signal
 
                 if parameters["servo"] == "velocity":
                     b_error[c_idx] = motor_signal

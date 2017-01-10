@@ -14,7 +14,7 @@ from TheanoPhysicsSystem import TheanoRigid3DBodyEngine
 from custom_ops import mulgrad
 from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
 
-EXP_NAME = "exp13-pendulum"
+EXP_NAME = "exp13-cpu"
 PARAMETERS_FILE = "optimized-parameters-%s.pkl" % EXP_NAME
 
 parser = argparse.ArgumentParser(description='Process some integers.')
@@ -34,9 +34,9 @@ engine = TheanoRigid3DBodyEngine()
 jsonfile = "robotmodel/pendulum.json"
 engine.load_robot_model(jsonfile)
 top_id = engine.get_object_index("top")
-total_time = 10
+total_time = 10  # seconds
 BATCH_SIZE = 1
-MEMORY_SIZE = 128
+MEMORY_SIZE = 32
 
 CAMERA = "front_camera"
 engine.compile(batch_size=BATCH_SIZE)
@@ -49,21 +49,24 @@ print "#cameras:", engine.num_cameras
 
 # step 2: build the model, controller and engine for simulation
 
+target = T.TensorConstant(T.fvector,data=np.array([0,0,0.9],dtype='float32'))
 
 def build_objectives(states_list):
     positions, velocities, rotations = states_list[:3]
-    return T.mean(positions[:,:,top_id,Z],axis=0)-0.3
+    return T.mean((positions[:,:,top_id,:]-target[None,None,:]).norm(2,axis=2),axis=0)
 
 
 def build_objectives_test(states_list):
     positions, velocities, rotations = states_list[:3]
-    return T.mean(positions[700:,:,top_id,Z],axis=0)-0.3
+    return T.mean((positions[700:,:,top_id,:]-target[None,None,:]).norm(2,axis=2),axis=0)
 
 
 def build_controller():
     l_input = lasagne.layers.InputLayer(engine.get_camera_image_size(CAMERA), name="image_inputs")
 
-    l_memory = lasagne.layers.InputLayer((BATCH_SIZE,MEMORY_SIZE), name="memory_values")
+    #l_input = lasagne.layers.batch_norm(l_input)
+    if MEMORY_SIZE>0:
+        l_memory = lasagne.layers.InputLayer((BATCH_SIZE,MEMORY_SIZE), name="memory_values")
 
     l_1a = lasagne.layers.Conv2DLayer(l_input, 32, filter_size=(3,3),
                                          nonlinearity=lasagne.nonlinearities.rectify,
@@ -115,15 +118,17 @@ def build_controller():
                                          )
     l_4 = lasagne.layers.MaxPool2DLayer(l_4b, pool_size=(2,2))
 
-    l_5 = lasagne.layers.DenseLayer(l_4, MEMORY_SIZE,
+    l_5 = lasagne.layers.DenseLayer(l_4, MEMORY_SIZE+32,
                                          nonlinearity=lasagne.nonlinearities.rectify,
                                          W=lasagne.init.Orthogonal("relu"),
                                          b=lasagne.init.Constant(0.0),
                                          )
 
-
-    l_flat = lasagne.layers.ConcatLayer([lasagne.layers.flatten(l_5),
-                                     lasagne.layers.flatten(l_memory)])
+    if MEMORY_SIZE>0:
+        l_flat = lasagne.layers.ConcatLayer([lasagne.layers.flatten(l_5),
+                                         lasagne.layers.flatten(l_memory)])
+    else:
+        l_flat = lasagne.layers.batch_norm(lasagne.layers.flatten(l_5))
 
     l_d1 = lasagne.layers.DenseLayer(l_flat, 128,
                                          nonlinearity=lasagne.nonlinearities.rectify,
@@ -137,10 +142,11 @@ def build_controller():
                                          b=lasagne.init.Constant(0.0),
                                          )
 
+
     l_d = lasagne.layers.DenseLayer(l_d1, engine.num_motors,
                                          nonlinearity=lasagne.nonlinearities.tanh,
-                                         W=lasagne.init.Orthogonal("relu"),
-                                         b=lasagne.init.Constant(0.0),
+                                         W=lasagne.init.Orthogonal(),
+                                         b=None,
                                          )
     l_result = l_d
     result = {
@@ -149,8 +155,8 @@ def build_controller():
     }
 
     if MEMORY_SIZE>0:
-        l_recurrent = lasagne.layers.DenseLayer(l_d1, MEMORY_SIZE,
-                                             nonlinearity=lasagne.nonlinearities.tanh,
+        l_recurrent = lasagne.layers.DenseLayer(l_flat, MEMORY_SIZE,
+                                             nonlinearity=lasagne.nonlinearities.identity,
                                              W=lasagne.init.Orthogonal(),
                                              b=lasagne.init.Constant(0.0),
                                              )
@@ -160,17 +166,22 @@ def build_controller():
     return result
 
 
-def build_model(engine, controller, controller_parameters, deterministic = False):
+def get_shared_variables():
+    """
+    Collect the shared variables, such that Theano can speed up its compilation time
+    :return:
+    """
+    return controller_parameters + engine.get_shared_variables()
 
-    def get_shared_variables():
-        return controller_parameters + engine.get_shared_variables()
+
+def build_model(deterministic = False):
 
     def control_loop(state, memory):
         positions, velocities, rot_matrices = state
         #sensor_values = engine.get_sensor_values(state=(positions, velocities, rot_matrices))
         ALPHA = 1.0
         image = engine.get_camera_image(EngineState(*state),CAMERA)
-        controller["input"].input_var = image
+        controller["input"].input_var = image - 0.5  #for normalization
         if "recurrent" in controller:
             controller["memory"].input_var = memory
             memory = lasagne.layers.helper.get_output(controller["recurrent"], deterministic = deterministic)
@@ -180,18 +191,24 @@ def build_model(engine, controller, controller_parameters, deterministic = False
 
         positions, velocities, rot_matrices = mulgrad(positions, ALPHA), mulgrad(velocities, ALPHA), mulgrad(rot_matrices, ALPHA)
         newstate = engine.do_time_step(state=EngineState(positions, velocities, rot_matrices), motor_signals=motor_signals)
+        newstate += (image,)
         if "recurrent" in controller:
             newstate += (memory,)
         return newstate
 
+
+    # T.TensorConstant. Actively avoid Theano introducing broadcastable dimensions which might mask bugs.
+    empty_image = (T.TensorConstant(T.ftensor4,data=np.zeros(shape=engine.get_camera_image_size(CAMERA),dtype='float32')),)
+
     if "recurrent" in controller:
-        empty_memory = (np.array([0]*(MEMORY_SIZE*BATCH_SIZE), dtype='float32').reshape((BATCH_SIZE, MEMORY_SIZE)),)
+        empty_memory = (T.TensorConstant(T.fmatrix,data=np.zeros(shape=(BATCH_SIZE, MEMORY_SIZE),dtype='float32')),)
     else:
         empty_memory = ()
 
+    # The scan which iterates over all time steps
     outputs, updates = theano.scan(
-        fn=lambda a,b,c,m,*ns: control_loop(state=(a,b,c), memory=m),
-        outputs_info=engine.get_initial_state() + empty_memory,
+        fn=lambda a,b,c,imgs,m,*ns: control_loop(state=(a,b,c), memory=m),
+        outputs_info=engine.get_initial_state() + empty_image + empty_memory,
         n_steps=int(math.ceil(total_time/engine.DT)),
         strict=True,
         non_sequences=get_shared_variables()
@@ -244,30 +261,30 @@ if not args.restart:
     print "Loading parameters... ", load_parameters()
 
 print "Compiling since %s..." % strftime("%H:%M:%S", localtime())
-test_engine = TheanoRigid3DBodyEngine()
-test_engine.load_robot_model(jsonfile)
-test_engine.compile(batch_size=BATCH_SIZE)
 
-deterministic_states, det_updates = build_model(test_engine, controller, controller_parameters, deterministic=True)
-deterministic_fitness = build_objectives(deterministic_states)
+states, updates = build_model(deterministic=True)
+test_fitness = build_objectives_test(states)
 
-iter_test = theano.function([],[deterministic_fitness] + deterministic_states[:3])
+iter_test = theano.function([],[test_fitness]
+                               + states[:3] #states
+                               + [states[3]]  #images
+)
 
 if not args.restart:
     load_parameters()
 
 r = iter_test()
 
-st = r[1:]
 print "initial fitness:", r[0], np.mean(r[0])
+
 with open("state-dump-%s.pkl"%EXP_NAME, 'wb') as f:
     pickle.dump({
-        "states": st,
+        "states": r[1:4],
+        "images": r[4],
         "json": open(jsonfile,"rb").read()
     }, f, pickle.HIGHEST_PROTOCOL)
 print "Ran test %s..." % strftime("%H:%M:%S", localtime())
 
-states, updates = build_model(engine, controller, controller_parameters, deterministic=True)
 fitness = build_objectives(states)
 #fitness = T.switch(T.isnan(fitness) + T.isinf(fitness), np.float32(0.001), fitness)
 
@@ -275,7 +292,7 @@ fitness = build_objectives(states)
 #theano.printing.debugprint(T.mean(fitness), print_type=True)
 print "Finding gradient since %s..." % strftime("%H:%M:%S", localtime())
 # we want to maximize fitness
-loss = -T.mean(fitness)
+loss = T.mean(fitness)
 
 grads = theano.grad(loss, controller_parameters,
                     disconnected_inputs="warn",
@@ -285,7 +302,7 @@ grads = lasagne.updates.total_norm_constraint(grads, 1.0)
 #grads = [T.switch(T.isnan(g) + T.isinf(g), np.float32(0.0), g) for g in grads]
 
 
-lr = theano.shared(np.float32(0.001))
+lr = theano.shared(np.float32(0.00001))
 #lr.set_value(np.float32(np.mean(r[0]) / 1000.))
 updates.update(lasagne.updates.adam(grads, controller_parameters, lr))  # we maximize fitness
 
@@ -312,14 +329,15 @@ while True:
     if i%10==0:
         st = time.time()
         r = iter_test()
-        print "test fitness:", r[0], np.mean(r[0])
         #lr.set_value(np.float32(np.mean(r[0]) / 1000.))
         with open("state-dump-%s.pkl"%EXP_NAME, 'wb') as f:
             pickle.dump({
-                "states": r[1:],
+                "states": r[1:4],
+                "images": r[4],
                 "json": open(jsonfile,"rb").read()
             }, f, pickle.HIGHEST_PROTOCOL)
-        if np.mean(r[0])>0.55:
+        print "test fitness:", r[0], np.mean(r[0])
+        if np.mean(r[0])<0.05:
             break
 
 

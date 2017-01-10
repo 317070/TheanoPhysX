@@ -28,6 +28,10 @@ class TheanoRigid3DBodyEngine(Rigid3DBodyEngine):
         self.face_texture_x_theano = None
         self.face_texture_y_theano = None
 
+        self.initial_positions_theano = None
+        self.initial_velocities_theano = None
+        self.initial_rotations_theano = None
+
     def get_state_variables(self):
         variables = self.get_initial_state()
         res = []
@@ -48,9 +52,9 @@ class TheanoRigid3DBodyEngine(Rigid3DBodyEngine):
         super(TheanoRigid3DBodyEngine, self).compile(*args,**kwargs)
 
         self.batch_size = batch_size
-        self.initial_positions = theano.shared(numpy_repeat_new_axis(self.initial_positions, self.batch_size).astype('float32'), name="initial_positions")
-        self.initial_velocities = theano.shared(numpy_repeat_new_axis(self.initial_velocities, self.batch_size).astype('float32'), name="initial_velocities")
-        self.initial_rotations = theano.shared(numpy_repeat_new_axis(self.initial_rotations, self.batch_size).astype('float32'), name="initial_rotations", )
+        self.initial_positions = numpy_repeat_new_axis(self.initial_positions, self.batch_size).astype('float32')
+        self.initial_velocities = numpy_repeat_new_axis(self.initial_velocities, self.batch_size).astype('float32')
+        self.initial_rotations = numpy_repeat_new_axis(self.initial_rotations, self.batch_size).astype('float32')
         # For the warm start, keep the impuls of the previous timestep
         self.impulses_P = theano.shared(np.zeros(shape=(self.batch_size, self.num_constraints,), dtype='float32'), name="impulses_P")
 
@@ -68,9 +72,6 @@ class TheanoRigid3DBodyEngine(Rigid3DBodyEngine):
 
     def get_shared_variables(self):
         return [
-            self.initial_positions,
-            self.initial_velocities,
-            self.initial_rotations,
             self.lower_inertia_inv,
             self.upper_inertia_inv,
             self.impulses_P,
@@ -107,9 +108,12 @@ class TheanoRigid3DBodyEngine(Rigid3DBodyEngine):
         return A
 
     def get_initial_state(self):
-        return EngineState(positions=self.initial_positions,
-                           velocities=self.initial_velocities,
-                           rotations=self.initial_rotations)
+
+        # T.TensorConstant. Actively avoid Theano introducing broadcastable dimensions which might mask bugs.
+
+        return EngineState(positions=T.TensorConstant(type=T.ftensor3, data=self.initial_positions, name='initial positions'),
+                           velocities=T.TensorConstant(type=T.ftensor3, data=self.initial_velocities, name='initial velocities'),
+                           rotations=T.TensorConstant(type=T.ftensor4, data=self.initial_rotations, name='initial rotations'))
 
     def get_initial_position(self, reference):
         idx = self.get_object_index(reference)
@@ -351,8 +355,7 @@ class TheanoRigid3DBodyEngine(Rigid3DBodyEngine):
             image += background
 
         # do a dimshuffle to closer match the deep learning conventions
-        image = image.dimshuffle(0,3,2,1)
-
+        image = T.unbroadcast(image,0,1,2,3).dimshuffle(0,3,2,1)
         return image
 
 
@@ -592,7 +595,7 @@ class TheanoRigid3DBodyEngine(Rigid3DBodyEngine):
                     motor_max = parameters["max"]
                     motor_signal = T.clip(motor_signal, motor_min, motor_max)
 
-                error_signal = theano_dot_last_dimension_vectors(position - motor_signal, a)
+                error_signal = theano_dot_last_dimension_vectors(position, a) - motor_signal
 
                 if parameters["servo"] == "velocity":
                     b_error[c_idx] = motor_signal
