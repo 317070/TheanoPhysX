@@ -9,12 +9,12 @@ from time import strftime, localtime
 import datetime
 import cPickle as pickle
 import argparse
-from PhysicsSystem import Z, EngineState
+from PhysicsSystem import Z, EngineState, X
 from TheanoPhysicsSystem import TheanoRigid3DBodyEngine
 from custom_ops import mulgrad
 from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
 
-EXP_NAME = "exp13-cpu"
+EXP_NAME = "exp13-pendulum"
 PARAMETERS_FILE = "optimized-parameters-%s.pkl" % EXP_NAME
 
 parser = argparse.ArgumentParser(description='Process some integers.')
@@ -34,8 +34,8 @@ engine = TheanoRigid3DBodyEngine()
 jsonfile = "robotmodel/pendulum.json"
 engine.load_robot_model(jsonfile)
 top_id = engine.get_object_index("top")
-total_time = 10  # seconds
-BATCH_SIZE = 1
+total_time = 8  # seconds
+BATCH_SIZE = 8
 MEMORY_SIZE = 32
 
 CAMERA = "front_camera"
@@ -59,6 +59,14 @@ def build_objectives(states_list):
 def build_objectives_test(states_list):
     positions, velocities, rotations = states_list[:3]
     return T.mean((positions[700:,:,top_id,:]-target[None,None,:]).norm(2,axis=2),axis=0)
+
+srng = RandomStreams(seed=317070)
+def get_randomized_initial_state():
+    state = engine.get_initial_state()
+    positions, velocities, rotations = state
+    velocities = theano.tensor.inc_subtensor(velocities[:,top_id,X], 3*srng.normal(size=(BATCH_SIZE,)))
+    return EngineState(positions, velocities, rotations)
+
 
 
 def build_controller():
@@ -179,7 +187,7 @@ def build_model(deterministic = False):
     def control_loop(state, memory):
         positions, velocities, rot_matrices = state
         #sensor_values = engine.get_sensor_values(state=(positions, velocities, rot_matrices))
-        ALPHA = 1.0
+        ALPHA = 0.99
         image = engine.get_camera_image(EngineState(*state),CAMERA)
         controller["input"].input_var = image - 0.5  #for normalization
         if "recurrent" in controller:
@@ -208,7 +216,7 @@ def build_model(deterministic = False):
     # The scan which iterates over all time steps
     outputs, updates = theano.scan(
         fn=lambda a,b,c,imgs,m,*ns: control_loop(state=(a,b,c), memory=m),
-        outputs_info=engine.get_initial_state() + empty_image + empty_memory,
+        outputs_info=get_randomized_initial_state() + empty_image + empty_memory,
         n_steps=int(math.ceil(total_time/engine.DT)),
         strict=True,
         non_sequences=get_shared_variables()
@@ -302,9 +310,9 @@ grads = lasagne.updates.total_norm_constraint(grads, 1.0)
 #grads = [T.switch(T.isnan(g) + T.isinf(g), np.float32(0.0), g) for g in grads]
 
 
-lr = theano.shared(np.float32(0.00001))
+lr = theano.shared(np.float32(0.001))
 #lr.set_value(np.float32(np.mean(r[0]) / 1000.))
-updates.update(lasagne.updates.adam(grads, controller_parameters, lr))  # we maximize fitness
+updates.update(lasagne.updates.sgd(grads, controller_parameters, lr))  # we maximize fitness
 
 print "Compiling since %s..." % strftime("%H:%M:%S", localtime())
 iter_train = theano.function([],

@@ -117,6 +117,14 @@
         "shape": "cube",
         "position": [0,0,-0.3],
         "dimensions": [0.15, 0.15, 0.15],
+        "velocity": [
+          7.61,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
         "default_faces": {
           "visible": false
         },

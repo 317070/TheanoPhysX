@@ -2,7 +2,7 @@ import cPickle as pickle
 import json
 import numpy as np
 
-data = pickle.load(open("../PhysXVids/state-dump-exp13-pendulum.pkl","rb"))
+data = pickle.load(open("../PhysXVids/state-dump-exp13-cpu.pkl","rb"))
 data_json = json.loads(data["json"])
 dt = data_json["integration_parameters"]["time_step"]
 
