@@ -53,7 +53,7 @@ target = T.TensorConstant(T.fvector,data=np.array([0,0,0.9],dtype='float32'))
 
 def build_objectives(states_list):
     positions, velocities, rotations = states_list[:3]
-    return T.mean((positions[:,:,top_id,:]-target[None,None,:]).norm(2,axis=2),axis=0)
+    return T.mean((positions[:,:,top_id,:]-target[None,None,:]).norm(2,axis=2)**2,axis=0)
 
 
 def build_objectives_test(states_list):
@@ -127,17 +127,16 @@ def build_controller():
                                          )
     l_4 = lasagne.layers.MaxPool2DLayer(l_4b, pool_size=(2,2))
 
-    l_5 = lasagne.layers.DenseLayer(l_4, MEMORY_SIZE+1,
+    if MEMORY_SIZE>0:
+        l_5 = lasagne.layers.DenseLayer(l_4, MEMORY_SIZE,
                                          nonlinearity=lasagne.nonlinearities.rectify,
                                          W=lasagne.init.Orthogonal("relu"),
                                          b=lasagne.init.Constant(0.0),
                                          )
-
-    if MEMORY_SIZE>0:
         l_flat = lasagne.layers.ConcatLayer([lasagne.layers.flatten(l_5),
                                          lasagne.layers.flatten(l_memory)])
     else:
-        l_flat = lasagne.layers.batch_norm(lasagne.layers.flatten(l_5))
+        l_flat = lasagne.layers.batch_norm(lasagne.layers.flatten(l_4))
 
     l_d1 = lasagne.layers.DenseLayer(l_flat, 128,
                                          nonlinearity=lasagne.nonlinearities.rectify,
@@ -188,13 +187,13 @@ def build_model(deterministic = False):
     def control_loop(state, memory):
         positions, velocities, rot_matrices = state
         #sensor_values = engine.get_sensor_values(state=(positions, velocities, rot_matrices))
-        ALPHA = 0.99
+        ALPHA = 0.0
         image = engine.get_camera_image(EngineState(*state),CAMERA)
         controller["input"].input_var = image - 0.5  #for normalization
         if "recurrent" in controller:
             controller["memory"].input_var = memory
             memory = lasagne.layers.helper.get_output(controller["recurrent"], deterministic = deterministic)
-            memory = mulgrad(memory,ALPHA)
+            #memory = mulgrad(memory,ALPHA)
 
         motor_signals = lasagne.layers.helper.get_output(controller["output"], deterministic = deterministic)
 
@@ -311,7 +310,7 @@ grads = lasagne.updates.total_norm_constraint(grads, 1.0)
 #grads = [T.switch(T.isnan(g) + T.isinf(g), np.float32(0.0), g) for g in grads]
 
 
-lr = theano.shared(np.float32(0.0001))
+lr = theano.shared(np.float32(0.001))
 #lr.set_value(np.float32(np.mean(r[0]) / 1000.))
 updates.update(lasagne.updates.sgd(grads, controller_parameters, lr))  # we maximize fitness
 

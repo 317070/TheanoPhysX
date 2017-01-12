@@ -13,7 +13,7 @@
     },
     "motor": {
       "servo": "position",
-      "motor_gain": 50,
+      "motor_gain": 5,
       "f": 1,
       "zeta": 0
     }
@@ -117,14 +117,6 @@
         "shape": "cube",
         "position": [0,0,-0.3],
         "dimensions": [0.15, 0.15, 0.15],
-        "velocity": [
-          7.61,
-          0,
-          0,
-          0,
-          0,
-          0
-        ],
         "default_faces": {
           "visible": false
         },

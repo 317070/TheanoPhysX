@@ -14,7 +14,7 @@ from TheanoPhysicsSystem import TheanoRigid3DBodyEngine
 from custom_ops import mulgrad
 from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
 
-EXP_NAME = "exp13-pendulum"
+EXP_NAME = "exp14-pendulum-memory"
 PARAMETERS_FILE = "optimized-parameters-%s.pkl" % EXP_NAME
 
 parser = argparse.ArgumentParser(description='Process some integers.')
@@ -36,7 +36,9 @@ engine.load_robot_model(jsonfile)
 top_id = engine.get_object_index("top")
 total_time = 8  # seconds
 BATCH_SIZE = 1
-MEMORY_SIZE = 128
+MEMORY_SIZE = 0
+
+IMAGE_MEMORY_INDICES = [-10,-1]
 
 CAMERA = "front_camera"
 engine.compile(batch_size=BATCH_SIZE)
@@ -71,7 +73,11 @@ def get_randomized_initial_state():
 
 
 def build_controller():
-    l_input = lasagne.layers.InputLayer(engine.get_camera_image_size(CAMERA), name="image_inputs")
+
+    input_size = list(engine.get_camera_image_size(CAMERA))
+    input_size[1] = (1+len(IMAGE_MEMORY_INDICES)) * input_size[1]
+
+    l_input = lasagne.layers.InputLayer(input_size, name="image_inputs")
 
     #l_input = lasagne.layers.batch_norm(l_input)
     if MEMORY_SIZE>0:
@@ -127,17 +133,16 @@ def build_controller():
                                          )
     l_4 = lasagne.layers.MaxPool2DLayer(l_4b, pool_size=(2,2))
 
-    l_5 = lasagne.layers.DenseLayer(l_4, MEMORY_SIZE+1,
+    if MEMORY_SIZE>0:
+        l_5 = lasagne.layers.DenseLayer(l_4, MEMORY_SIZE,
                                          nonlinearity=lasagne.nonlinearities.rectify,
                                          W=lasagne.init.Orthogonal("relu"),
                                          b=lasagne.init.Constant(0.0),
                                          )
-
-    if MEMORY_SIZE>0:
         l_flat = lasagne.layers.ConcatLayer([lasagne.layers.flatten(l_5),
                                          lasagne.layers.flatten(l_memory)])
     else:
-        l_flat = lasagne.layers.batch_norm(lasagne.layers.flatten(l_5))
+        l_flat = lasagne.layers.batch_norm(lasagne.layers.flatten(l_4))
 
     l_d1 = lasagne.layers.DenseLayer(l_flat, 128,
                                          nonlinearity=lasagne.nonlinearities.rectify,
@@ -185,12 +190,14 @@ def get_shared_variables():
 
 def build_model(deterministic = False):
 
-    def control_loop(state, memory):
+    def control_loop(state, memory, img1, img2):
         positions, velocities, rot_matrices = state
         #sensor_values = engine.get_sensor_values(state=(positions, velocities, rot_matrices))
-        ALPHA = 0.99
+        ALPHA = 0.95
         image = engine.get_camera_image(EngineState(*state),CAMERA)
-        controller["input"].input_var = image - 0.5  #for normalization
+        image_stack = [image,img1,img2]
+        images = T.concatenate(image_stack, axis=1)  # restore old images from memory
+        controller["input"].input_var = images - 0.5  #for normalization
         if "recurrent" in controller:
             controller["memory"].input_var = memory
             memory = lasagne.layers.helper.get_output(controller["recurrent"], deterministic = deterministic)
@@ -207,7 +214,13 @@ def build_model(deterministic = False):
 
 
     # T.TensorConstant. Actively avoid Theano introducing broadcastable dimensions which might mask bugs.
-    empty_image = (T.TensorConstant(T.ftensor4,data=np.zeros(shape=engine.get_camera_image_size(CAMERA),dtype='float32')),)
+    empty_image = (
+        dict(
+            initial=T.TensorConstant(T.TensorType('float32', (False,)*5),data=np.zeros(shape=(-min(IMAGE_MEMORY_INDICES),)+engine.get_camera_image_size(CAMERA),dtype='float32')),
+            taps=IMAGE_MEMORY_INDICES
+        ),
+    )
+
 
     if "recurrent" in controller:
         empty_memory = (T.TensorConstant(T.fmatrix,data=np.zeros(shape=(BATCH_SIZE, MEMORY_SIZE),dtype='float32')),)
@@ -216,7 +229,7 @@ def build_model(deterministic = False):
 
     # The scan which iterates over all time steps
     outputs, updates = theano.scan(
-        fn=lambda a,b,c,imgs,m,*ns: control_loop(state=(a,b,c), memory=m),
+        fn=lambda a,b,c,img1,img2,m,*ns: control_loop(state=(a,b,c), memory=m, img1=img1, img2=img2),
         outputs_info=get_randomized_initial_state() + empty_image + empty_memory,
         n_steps=int(math.ceil(total_time/engine.DT)),
         strict=True,
@@ -311,9 +324,9 @@ grads = lasagne.updates.total_norm_constraint(grads, 1.0)
 #grads = [T.switch(T.isnan(g) + T.isinf(g), np.float32(0.0), g) for g in grads]
 
 
-lr = theano.shared(np.float32(0.0001))
+lr = theano.shared(np.float32(0.00001))
 #lr.set_value(np.float32(np.mean(r[0]) / 1000.))
-updates.update(lasagne.updates.sgd(grads, controller_parameters, lr))  # we maximize fitness
+updates.update(lasagne.updates.adam(grads, controller_parameters, lr))  # we maximize fitness
 
 print "Compiling since %s..." % strftime("%H:%M:%S", localtime())
 iter_train = theano.function([],
