@@ -15,6 +15,7 @@ sys.setrecursionlimit(10**6)
 
 print "Started on %s..." % strftime("%H:%M:%S", localtime())
 import random
+import math
 random.seed(0)
 np.random.seed(0)
 
@@ -39,7 +40,7 @@ i=0
 while plt.get_fignums():
     i+=1
     t+=engine.DT
-    state = engine.do_time_step(state,dt=engine.DT, motor_signals=[(i%5)/5.])
+    state = engine.do_time_step(state,dt=engine.DT, motor_signals=[math.sin(t*5)])
     image = engine.get_camera_image(state,"front_camera")
     frame.set_data(image.transpose(2,1,0))
     plt.draw()
