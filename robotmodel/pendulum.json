@@ -13,7 +13,7 @@
     },
     "motor": {
       "servo": "position",
-      "motor_gain": 5,
+      "motor_gain": 15,
       "f": 1,
       "zeta": 0
     }

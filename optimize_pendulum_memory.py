@@ -14,7 +14,7 @@ from TheanoPhysicsSystem import TheanoRigid3DBodyEngine
 from custom_ops import mulgrad
 from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
 
-EXP_NAME = "exp14-pendulum-memory"
+EXP_NAME = "exp16b"
 PARAMETERS_FILE = "optimized-parameters-%s.pkl" % EXP_NAME
 
 parser = argparse.ArgumentParser(description='Process some integers.')
@@ -34,7 +34,7 @@ engine = TheanoRigid3DBodyEngine()
 jsonfile = "robotmodel/pendulum.json"
 engine.load_robot_model(jsonfile)
 top_id = engine.get_object_index("top")
-total_time = 8  # seconds
+total_time = 5  # seconds
 BATCH_SIZE = 1
 MEMORY_SIZE = 0
 
@@ -55,12 +55,12 @@ target = T.TensorConstant(T.fvector,data=np.array([0,0,0.9],dtype='float32'))
 
 def build_objectives(states_list):
     positions, velocities, rotations = states_list[:3]
-    return T.mean((positions[:,:,top_id,:]-target[None,None,:]).norm(2,axis=2),axis=0)
+    return T.mean((positions[:,:,top_id,:]-target[None,None,:]).norm(2,axis=2),axis=0) + T.mean(T.maximum(velocities[:,:,top_id,:3].norm(2,axis=2)-7.5,0),axis=0)
 
 
 def build_objectives_test(states_list):
     positions, velocities, rotations = states_list[:3]
-    return T.mean((positions[700:,:,top_id,:]-target[None,None,:]).norm(2,axis=2),axis=0)
+    return T.mean((positions[int(total_time-1)*100:,:,top_id,:]-target[None,None,:]).norm(2,axis=2),axis=0)
 
 srng = RandomStreams(seed=317070)
 def get_randomized_initial_state():
@@ -79,6 +79,7 @@ def build_controller():
 
     l_input = lasagne.layers.InputLayer(input_size, name="image_inputs")
 
+    l_blue = lasagne.layers.SliceLayer(l_input,indices=slice(2,3),axis=1)
     #l_input = lasagne.layers.batch_norm(l_input)
     if MEMORY_SIZE>0:
         l_memory = lasagne.layers.InputLayer((BATCH_SIZE,MEMORY_SIZE), name="memory_values")
@@ -133,6 +134,12 @@ def build_controller():
                                          )
     l_4 = lasagne.layers.MaxPool2DLayer(l_4b, pool_size=(2,2))
 
+    l_loc = lasagne.layers.DenseLayer(l_blue, 32,
+                                         nonlinearity=lasagne.nonlinearities.rectify,
+                                         W=lasagne.init.Orthogonal("relu"),
+                                         b=lasagne.init.Constant(0.0),
+                                         )
+
     if MEMORY_SIZE>0:
         l_5 = lasagne.layers.DenseLayer(l_4, MEMORY_SIZE,
                                          nonlinearity=lasagne.nonlinearities.rectify,
@@ -140,9 +147,13 @@ def build_controller():
                                          b=lasagne.init.Constant(0.0),
                                          )
         l_flat = lasagne.layers.ConcatLayer([lasagne.layers.flatten(l_5),
-                                         lasagne.layers.flatten(l_memory)])
+                                         lasagne.layers.flatten(l_memory),
+                                         lasagne.layers.flatten(l_loc)])
     else:
-        l_flat = lasagne.layers.batch_norm(lasagne.layers.flatten(l_4))
+        l_flat = lasagne.layers.ConcatLayer([lasagne.layers.flatten(l_4),
+                                         lasagne.layers.flatten(l_loc)])
+
+    l_flat = lasagne.layers.batch_norm(l_flat)
 
     l_d1 = lasagne.layers.DenseLayer(l_flat, 128,
                                          nonlinearity=lasagne.nonlinearities.rectify,

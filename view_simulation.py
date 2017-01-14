@@ -68,7 +68,7 @@ class MyApp(ShowBase):
         # Load the environment model.
         self.objects = dict()
         self.names = []
-        data = pickle.load(open("../PhysXVids/state-dump-exp13-pendulum.pkl","rb"))
+        data = pickle.load(open("../PhysXVids/state-dump-exp15.pkl","rb"))
 
         self.json = json.loads(data["json"]) # json.loads(data["json"])
         self.states = data["states"]
@@ -236,7 +236,7 @@ class MyApp(ShowBase):
         step = step % positions.shape[0]
         self.t = self.t % (self.dt*positions.shape[0])
         robot_id = self.robot_id % positions.shape[1]
-
+        print np.linalg.norm(velocities[step,robot_id,0,:3])
         for idx, name in enumerate(self.names):
             if name in self.objects:
                 obj = self.objects[name]
