@@ -14,7 +14,7 @@ from TheanoPhysicsSystem import TheanoRigid3DBodyEngine
 from custom_ops import mulgrad
 from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
 
-EXP_NAME = "exp16b"
+EXP_NAME = "exp18"
 PARAMETERS_FILE = "optimized-parameters-%s.pkl" % EXP_NAME
 
 parser = argparse.ArgumentParser(description='Process some integers.')
@@ -34,7 +34,7 @@ engine = TheanoRigid3DBodyEngine()
 jsonfile = "robotmodel/pendulum.json"
 engine.load_robot_model(jsonfile)
 top_id = engine.get_object_index("top")
-total_time = 5  # seconds
+total_time = 10  # seconds
 BATCH_SIZE = 1
 MEMORY_SIZE = 0
 
@@ -306,17 +306,18 @@ iter_test = theano.function([],[test_fitness]
 if not args.restart:
     load_parameters()
 
+print "Running since %s..." % strftime("%H:%M:%S", localtime())
 r = iter_test()
-
+print "Ran test %s..." % strftime("%H:%M:%S", localtime())
 print "initial fitness:", r[0], np.mean(r[0])
-
+crash
 with open("state-dump-%s.pkl"%EXP_NAME, 'wb') as f:
     pickle.dump({
         "states": r[1:4],
         "images": r[4],
         "json": open(jsonfile,"rb").read()
     }, f, pickle.HIGHEST_PROTOCOL)
-print "Ran test %s..." % strftime("%H:%M:%S", localtime())
+
 
 fitness = build_objectives(states)
 #fitness = T.switch(T.isnan(fitness) + T.isinf(fitness), np.float32(0.001), fitness)
@@ -335,7 +336,7 @@ grads = lasagne.updates.total_norm_constraint(grads, 1.0)
 #grads = [T.switch(T.isnan(g) + T.isinf(g), np.float32(0.0), g) for g in grads]
 
 
-lr = theano.shared(np.float32(0.00001))
+lr = theano.shared(np.float32(0.000001))
 #lr.set_value(np.float32(np.mean(r[0]) / 1000.))
 updates.update(lasagne.updates.adam(grads, controller_parameters, lr))  # we maximize fitness
 
@@ -356,7 +357,7 @@ while True:
     st = time.time()
     fitnesses = iter_train()
     print fitnesses, np.mean(fitnesses), datetime.datetime.now().strftime("%H:%M:%S.%f")
-    print "train:", time.time()-st, i
+    print EXP_NAME, "train:", time.time()-st, i
     if np.isfinite(fitnesses).all():
         dump_parameters()
     if i%10==0:

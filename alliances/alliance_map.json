@@ -261,14 +261,6 @@
       "North Sea"
     ]
   },
-  "Norway":{
-    "recruit":1,
-    "invest":2,
-    "borders":[
-      "Sweden",
-      "North Sea"
-    ]
-  },
   "Denmark":{
     "recruit":1,
     "invest":5,

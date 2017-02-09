@@ -34,7 +34,7 @@ engine = TheanoRigid3DBodyEngine()
 jsonfile = "robotmodel/pendulum.json"
 engine.load_robot_model(jsonfile)
 top_id = engine.get_object_index("top")
-total_time = 8  # seconds
+total_time = 4  # seconds
 BATCH_SIZE = 1
 MEMORY_SIZE = 128
 
