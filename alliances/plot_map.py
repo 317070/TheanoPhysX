@@ -1,6 +1,7 @@
 
 import numpy as np
 import matplotlib.pyplot as plt
+from numpy.random.mtrand import RandomState
 from scipy.spatial import Voronoi, voronoi_plot_2d
 
 import cma
@@ -9,13 +10,15 @@ from scipy.spatial import Delaunay
 import networkx as nx
 
 N = len(borders)
-points = np.array([np.random.randn(2) for node in borders])  # start with a random initialization
+
+rng = RandomState(317071)
+points = np.array([rng.randn(2) for node in borders])  # start with a random initialization
 edge_list = [(i,b)  for i,neighbor in enumerate(borders) for b in neighbor]
 if True:  # springy optimization
     G = nx.Graph()
     G.add_nodes_from(range(len(borders)))
     G.add_edges_from(edge_list)
-    springy_result = nx.spring_layout(G, dim=2,iterations=5000)
+    springy_result = nx.spring_layout(G, dim=2,iterations=10000)
 
     points = np.array([springy_result[i] for i in range(len(borders))])
 
@@ -39,11 +42,11 @@ if True:  # cmaes optimization
             for target_neighbour in target_neighbours:
                 if target_neighbour not in neighbours:
                     error += 1
-        return error
+        return error/2
 
     options = {'ftarget':0, 'seed':1}
 
-    result = cma.fmin(iter_test_safe, points.flatten(), sigma0=0.1, restarts=0, options=options)[0]
+    result = cma.fmin(iter_test_safe, points.flatten(), sigma0=0.2, restarts=0, options=options)[0]
     print result
     points = result.reshape(-1,2)
 
@@ -67,12 +70,12 @@ for A,B in vor.ridge_points:
         plt.plot([points[A][0], points[B][0]], [points[A][1], points[B][1]], 'r-', lw=2)
 
 for edge in edge_list:
-    if edge not in vor.ridge_points:
+    if edge not in vor.ridge_points and edge[::-1] not in vor.ridge_points:
         A,B = edge
         plt.plot([points[A][0], points[B][0]], [points[A][1], points[B][1]], 'b-', lw=2)
 
 for i,name in enumerate(names):
     plt.text(points[i][0], points[i][1], name, verticalalignment='center', horizontalalignment='center',size=8,
-        bbox={'facecolor':'white', 'alpha':1.0, 'pad':0})
+        bbox={'facecolor':'white', 'alpha':0.7, 'pad':0})
 
 plt.show(block=True)
