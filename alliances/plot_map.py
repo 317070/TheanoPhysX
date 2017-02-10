@@ -19,7 +19,7 @@ if True:  # springy optimization
 
     points = np.array([springy_result[i] for i in range(len(borders))])
 
-if True:  # cmaes optimization
+if False:  # cmaes optimization
     def iter_test_safe(params):
         """
         Test if a certain set of coordinates is OK.
