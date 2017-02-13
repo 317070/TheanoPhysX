@@ -2,14 +2,14 @@
   "name": "car",
   "integration_parameters": {
     "time_step": 0.01,
-    "projected_gauss_seidel_iterations": 20,
+    "projected_gauss_seidel_iterations": 100,
     "rotation_reorthogonalization_iterations": 1,
-    "warm_start": 0.0
+    "warm_start": 1.0
   },
   "default_constraint_parameters": {
     "default": {
       "f": 2,
-      "zeta": 0.2
+      "zeta": 0.5
     },
     "motor": {
       "servo": "velocity",
@@ -18,10 +18,16 @@
       "zeta": 0
     },
     "ground": {
-      "mu": 1.0,
+      "mu": 10.0,
       "torsional_friction": false,
       "delta": 0.01,
-      "alpha": 0.01
+      "alpha": 0.0,
+      "f": 10,
+      "zeta": 0.1
+    },
+    "hinge":{
+      "f": 4,
+      "zeta": 1.0
     }
   },
   "default_model_parameters": {
@@ -61,6 +67,16 @@
   "default_camera_parameters": {
   },
   "cameras": {
+    "front_camera": {
+      "position": [0,0,0.85],
+      "orientation": [1,0,0,0],
+      "parent": "car",
+      "vertical_pixels": 96,
+      "horizontal_pixels": 288,
+      "width": 0.036,
+      "height": 0.012,
+      "focal_length": 0.018
+    }
   },
   "model": {
     "ground": [
@@ -75,17 +91,39 @@
     "car": [
       {
         "shape": "cube",
-        "position": [0,0,1.05],
+        "position": [0,0,0.85],
         "mass": 2390,
         "dimensions": [5.037, 2.070, 1.326]
+      }
+    ],
+    "wheel-axis1": [
+      {
+        "shape": "sphere",
+        "position": [1.743,0.865,0.304],
+        "radius": 0.1,
+        "mass": 8.615,
+        "default_faces": {
+          "visible": false
+        }
       }
     ],
     "wheel1": [
       {
         "shape": "sphere",
-        "position": [1.743,0.865,0.508],
-        "radius": 0.508,
-        "mass": 17.23,
+        "position": [1.743,0.865,0.304],
+        "radius": 0.304,
+        "mass": 8.615,
+        "default_faces": {
+          "visible": false
+        }
+      }
+    ],
+    "wheel-axis2": [
+      {
+        "shape": "sphere",
+        "position": [1.743,-0.865,0.304],
+        "radius": 0.1,
+        "mass": 8.615,
         "default_faces": {
           "visible": false
         }
@@ -94,9 +132,9 @@
     "wheel2": [
       {
         "shape": "sphere",
-        "position": [1.743,-0.865,0.508],
-        "radius": 0.508,
-        "mass": 17.23,
+        "position": [1.743,-0.865,0.304],
+        "radius": 0.304,
+        "mass": 8.615,
         "default_faces": {
           "visible": false
         }
@@ -105,8 +143,8 @@
     "wheel3": [
       {
         "shape": "sphere",
-        "position": [-1.5,0.865,0.508],
-        "radius": 0.508,
+        "position": [-1.5,0.865,0.304],
+        "radius": 0.304,
         "mass": 17.23,
         "default_faces": {
           "visible": false
@@ -116,8 +154,8 @@
     "wheel4": [
       {
         "shape": "sphere",
-        "position": [-1.5,-0.865,0.508],
-        "radius": 0.508,
+        "position": [-1.5,-0.865,0.304],
+        "radius": 0.304,
         "mass": 17.23,
         "default_faces": {
           "visible": false
@@ -126,43 +164,67 @@
     ]
   },
   "joints":{
-    "axis1":{
+    "steer1":{
       "type": "hinge",
       "object1": "car",
-      "object2": "wheel1",
-      "point": [1.743,0.865,0.508],
+      "object2": "wheel-axis1",
+      "point": [1.743,0.865,0.304],
       "axis": [
         0,
-        1,
-        0
+        0,
+        1
       ],
       "motors": [
         {
+          "servo": "position",
           "motor_id": 0
         }
       ]
     },
-    "axis2":{
+    "steer2":{
       "type": "hinge",
       "object1": "car",
-      "object2": "wheel2",
-      "point": [1.743,-0.865,0.508],
+      "object2": "wheel-axis2",
+      "point": [1.743,-0.865,0.304],
+      "axis": [
+        0,
+        0,
+        1
+      ],
+      "motors": [
+        {
+          "servo": "position",
+          "motor_id": 1
+        }
+      ]
+    },
+    "axis1":{
+      "type": "hinge",
+      "object1": "wheel-axis1",
+      "object2": "wheel1",
+      "point": [1.743,0.865,0.304],
       "axis": [
         0,
         1,
         0
-      ],
-      "motors": [
-        {
-          "motor_id": 1
-        }
+      ]
+    },
+    "axis2":{
+      "type": "hinge",
+      "object1": "wheel-axis2",
+      "object2": "wheel2",
+      "point": [1.743,-0.865,0.304],
+      "axis": [
+        0,
+        1,
+        0
       ]
     },
     "axis3":{
       "type": "hinge",
       "object1": "car",
       "object2": "wheel3",
-      "point": [-1.5,0.865,0.508],
+      "point": [-1.5,0.865,0.304],
       "axis": [
         0,
         1,
@@ -178,7 +240,7 @@
       "type": "hinge",
       "object1": "car",
       "object2": "wheel4",
-      "point": [-1.5,-0.865,0.508],
+      "point": [-1.5,-0.865,0.304],
       "axis": [
         0,
         1,

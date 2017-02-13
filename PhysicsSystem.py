@@ -1379,7 +1379,7 @@ class Rigid3DBodyEngine(object):
                     # project ar and ac on normal
                     ac = ac - np.sum(ground_normal * ac) * ground_normal
                     ac = ac / np.linalg.norm(ac)
-                    ar = -np.cross(r*ground_normal, ac)
+                    ar = np.cross(r*ground_normal, ac)
                     print ar
                     J[c_idx+i, 0, :] = np.concatenate([ac, ar])
                     J[c_idx+i, 1, :] = np.array([0,0,0,0,0,0], dtype=DTYPE)
@@ -1443,8 +1443,8 @@ class Rigid3DBodyEngine(object):
             result = result.reshape(result.shape[:-3] + (2*self.num_constraints,6))
 
             for i in xrange(newv.shape[0]):
-                newv[i,:] = newv[i,:] + np.sum(result[self.map_object_to_constraint[i],:], axis=0)
-                #newv[i,:] = originalv[i,:] + np.sum(result[self.map_object_to_constraint[i],:], axis=0)
+                #newv[i,:] = newv[i,:] + np.sum(result[self.map_object_to_constraint[i],:], axis=0)
+                newv[i,:] = originalv[i,:] + np.sum(result[self.map_object_to_constraint[i],:], axis=0)
 
         #print
         return newv
