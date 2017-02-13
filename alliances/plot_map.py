@@ -1,4 +1,3 @@
-
 import numpy as np
 import matplotlib.pyplot as plt
 from numpy.random.mtrand import RandomState
@@ -8,6 +7,7 @@ import cma
 from alliances_map import borders, names
 from scipy.spatial import Delaunay
 import networkx as nx
+import math
 
 # names = ['A','B','C']
 # borders =[[1,2],[0,2],[0,1]]

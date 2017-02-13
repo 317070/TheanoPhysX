@@ -118,16 +118,16 @@ class MyApp(ShowBase):
 
     def add_cube(self, name, dimensions, position, rotation, **parameters):
         #smiley = self.loader.loadModel("zup-axis")
-        cube = self.loader.loadModel("textures/box.egg")
+        cube = self.loader.loadModel("textures/car.egg")
         cube.setScale(*dimensions)
-        cube.setTexture(self.loader.loadTexture('maps/noise.rgb'), 1)
+        # cube.setTexture(self.loader.loadTexture('maps/noise.rgb'), 1)
 
-        tex = self.loader.loadTexture('textures/tesla_128.png')
-        tex.setWrapU(Texture.WMClamp)
-        tex.setWrapV(Texture.WMClamp)
-        cube.setTexture(tex,1)
-        if "color" in parameters:
-            cube.setColor(*parameters["color"])
+        # tex = self.loader.loadTexture('textures/tesla_128.png')
+        # tex.setWrapU(Texture.WMClamp)
+        # tex.setWrapV(Texture.WMClamp)
+        # cube.setTexture(tex,1)
+        # if "color" in parameters:
+        #     cube.setColor(*parameters["color"])
 
         # Reparent the model to render.
         cube.reparentTo(self.render)
@@ -165,10 +165,11 @@ class MyApp(ShowBase):
     # Define a procedure to move the camera.
     def spinCameraTask(self, task):
         self.t += self.physics.DT
-        ph = self.t*np.float32(2*np.pi*1.5)
+        ph = self.t*np.float32(2*np.pi/2.5)
         #sensors = self.physics.get_sensor_values("spine").flatten()
         #print sensors.shape
-        self.state = self.physics.do_time_step(self.state, motor_signals=[1,-1,1,-1])
+        import math
+        self.state = self.physics.do_time_step(self.state, motor_signals=[math.sin(ph),math.sin(ph),2,2])
 
         positions, velocity, rotations = self.state
         for obj_name, obj in self.objects.iteritems():
@@ -183,7 +184,7 @@ class MyApp(ShowBase):
             obj.setScale(sc)
 
         # change camera movement
-        self.camera.setPos(0,10,1.5)
+        self.camera.setPos(-10,0,1.5)
         self.camera.lookAt(0,0,0)
         # self.camera.lookAt(*self.physics.getPosition(self.physics.camera_focus)[:3])
         #print self.t, self.physics.getPosition(self.physics.camera_focus)

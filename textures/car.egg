@@ -1,0 +1,96 @@
+<CoordinateSystem> { Z-Up }
+
+<Texture> tesla_left {
+  "tesla_left_128.png"
+}
+
+<Texture> tesla_right {
+  "tesla_right_128.png"
+}
+
+<Texture> tesla_front {
+  "tesla_front_128.png"
+}
+
+<Texture> tesla_back {
+  "tesla_back_128.png"
+}
+
+<Texture> grass {
+  "grass_128.png"
+}
+
+
+<VertexPool> box {
+  <Vertex> 1 {
+    -0.5 0.5 0.5
+    <UV> { 1 1 }
+  }
+  <Vertex> 2 {
+    0.5 0.5 0.5
+    <UV> { 0 1 }
+  }
+  <Vertex> 3 {
+    -0.5 -0.5 0.5
+    <UV> { 0 1 }
+  }
+  <Vertex> 4 {
+    0.5 -0.5 0.5
+    <UV> { 1 1 }
+  }
+  <Vertex> 5 {
+    -0.5 0.5 -0.5
+    <UV> { 1 0 }
+  }
+  <Vertex> 6 {
+    0.5 0.5 -0.5
+    <UV> { 0 0 }
+  }
+  <Vertex> 7 {
+    -0.5 -0.5 -0.5
+    <UV> { 0 0 }
+  }
+  <Vertex> 8 {
+    0.5 -0.5 -0.5
+    <UV> { 1 0 }
+  }
+  <Vertex> 9 {
+    -0.5 0.5 0.5
+    <UV> { 0 0 }
+  }
+  <Vertex> 10 {
+    0.5 0.5 0.5
+    <UV> { 1 0 }
+  }
+  <Vertex> 11 {
+    -0.5 0.5 -0.5
+    <UV> { 0 1 }
+  }
+  <Vertex> 12 {
+    0.5 0.5 -0.5
+    <UV> { 1 1 }
+  }
+}
+<Group> box {
+  <Polygon> {
+    <TRef> { tesla_left }
+    <Normal> { 0 -1 0 }
+    <VertexRef> { 3 7 8 4 <Ref> { box } }
+  }
+  <Polygon> {
+    <TRef> { tesla_right }
+    <Normal> { 0 1 0 }
+    <VertexRef> { 2 6 5 1 <Ref> { box } }
+  }
+  <Polygon> {
+    <TRef> { tesla_back }
+    <Normal> { -1 0 0 }
+    <VertexRef> { 1 5 7 3 <Ref> { box } }
+  }
+  <Polygon> {
+    <TRef> { tesla_front }
+    <Normal> { 1 0 0 }
+    <VertexRef> { 4 8 6 2 <Ref> { box } }
+  }
+}
+
