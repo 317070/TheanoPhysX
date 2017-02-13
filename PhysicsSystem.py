@@ -202,7 +202,11 @@ class Rigid3DBodyEngine(object):
         self.initial_rotations = np.append(self.initial_rotations, np.array([quat_to_rot_matrix(rotation)], dtype='float32'), axis=0)
         self.initial_velocities = np.append(self.initial_velocities, np.array([velocity], dtype=DTYPE), axis=0)
 
-        mass = mass_density*np.prod(dimensions)
+        if "mass" in kwargs:
+            mass = kwargs.pop("mass")
+        else:
+            mass = mass_density*np.prod(dimensions)
+
         I1 = 1./12. * (dimensions[1]**2 + dimensions[2]**2)
         I2 = 1./12. * (dimensions[0]**2 + dimensions[2]**2)
         I3 = 1./12. * (dimensions[0]**2 + dimensions[1]**2)
@@ -272,7 +276,11 @@ class Rigid3DBodyEngine(object):
         self.initial_positions = np.append(self.initial_positions, np.array([position], dtype=DTYPE), axis=0)
         self.initial_rotations = np.append(self.initial_rotations, np.array([quat_to_rot_matrix(rotation)], dtype='float32'), axis=0)
         self.initial_velocities = np.append(self.initial_velocities, np.array([velocity], dtype=DTYPE), axis=0)
-        mass = mass_density*4./3.*np.pi*radius**3
+
+        if "mass" in kwargs:
+            mass = kwargs.pop("mass")
+        else:
+            mass = mass_density*4./3.*np.pi*radius**3
         self.massMatrices = np.append(self.massMatrices, mass*np.diag([1,1,1,0.4,0.4,0.4])[None,:,:], axis=0)
 
         if visible:
@@ -560,7 +568,12 @@ class Rigid3DBodyEngine(object):
 
         self.constraints.append([constraint, references, parameters])
 
-    def add_ground_constraint(self, jointname, object1, **parameters):
+    def add_ground_constraint(self, jointname, object1, object2, **parameters):
+        if object2 in self.objects:
+            object1, object2 = object2, object1
+
+        parameters["ground"] = object2
+
         self.add_constraint("ground", [object1, object1], parameters)
 
     def add_touch_constraint(self, jointname, object1, object2, **parameters):
@@ -1080,6 +1093,7 @@ class Rigid3DBodyEngine(object):
         totalforce = np.array([0,0,0,0,0,0], dtype=DTYPE)  # total force acting on body outside of constraints
         acceleration = np.array([0,0,-9.81,0,0,0], dtype=DTYPE)  # acceleration of the default frame
         newv = velocities + dt * (np.dot(self.massMatrices, totalforce) + acceleration[None,:])
+
         originalv = newv.copy()
 
         ##################
@@ -1340,7 +1354,7 @@ class Rigid3DBodyEngine(object):
                 print "w:",self.w[c_idx]
                 c_idx += 1
 
-
+            # TODO: update the ground equations
             if constraint == "ground":
                 r = self.radii[idx1]
                 J[c_idx,0,:] = np.array([0,0,1,0,0,0], dtype=DTYPE)
@@ -1352,14 +1366,25 @@ class Rigid3DBodyEngine(object):
                 c_idx += 1
 
             if constraint == "ground" and parameters["mu"]!=0:
+                ground_normal = np.array([0, 0, 1], dtype=DTYPE)
                 r = self.radii[idx1]
                 for i in xrange(2):
                     if i==0:
-                        J[c_idx+i,0,:] = np.array([0,1,0,-r,0,0], dtype=DTYPE)
+                        ac = np.array([0, 1, 0], dtype=DTYPE)
+                        ar1 = np.array([r,0, 0], dtype=DTYPE)
                     else:
-                        J[c_idx+i,0,:] = np.array([1,0,0,0,r,0], dtype=DTYPE)
-                    J[c_idx+i,1,:] = np.array([0,0,0,0,0,0], dtype=DTYPE)
+                        ac = np.array([1, 0, 0], dtype=DTYPE)
+                        ar1 = np.array([0, -r, 0], dtype=DTYPE)
+                    #ac = convert_model_to_world_coordinate_no_bias(ac, rotations[idx1, :, :])
+                    # project ar and ac on normal
+                    ac = ac - np.sum(ground_normal * ac) * ground_normal
+                    ac = ac / np.linalg.norm(ac)
+                    ar = -np.cross(r*ground_normal, ac)
+                    print ar
+                    J[c_idx+i, 0, :] = np.concatenate([ac, ar])
+                    J[c_idx+i, 1, :] = np.array([0,0,0,0,0,0], dtype=DTYPE)
                     self.C[c_idx+i] = (positions[idx1,Z] - r < 0.0)
+                print
                 c_idx += 2
 
             if constraint == "ground" and parameters["torsional_friction"] and parameters["mu"]!=0:

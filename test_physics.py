@@ -8,6 +8,8 @@ from PhysicsSystem import Rigid3DBodyEngine
 import time
 import json
 import numpy as np
+
+
 def fixQuat(quat):
 
     quat = (-quat[0],quat[1],quat[2],quat[3])
@@ -73,12 +75,14 @@ class MyApp(ShowBase):
         #self.load_robot_model("robotmodel/predator.json")
         #self.load_robot_model("robotmodel/full_predator.json")
         #self.load_robot_model("robotmodel/demi_predator.json")
-        self.load_robot_model("robotmodel/demi_predator_ground.json")
+        # self.load_robot_model("robotmodel/demi_predator_ground.json")
+        self.load_robot_model("robotmodel/car.json")
         #self.load_robot_model("robotmodel/ball.json")
         #self.load_robot_model("robotmodel/robot_arm.json")
         #self.load_robot_model("robotmodel/robot_arm_mini.json")
         self.physics.compile()
         self.step = np.zeros(shape=(16,))
+        self.state = self.physics.get_initial_state()
 
     def run_no_gui(self):
         while True:
@@ -96,7 +100,7 @@ class MyApp(ShowBase):
         self.userExit()
 
 
-    def addSphere(self, name, radius, mass_density, position, rotation, velocity, **parameters):
+    def add_sphere(self, name, radius, position, rotation, **parameters):
         #smiley = self.loader.loadModel("zup-axis")
         smiley = self.loader.loadModel("smiley")
         smiley.setScale(radius,radius,radius)
@@ -110,16 +114,15 @@ class MyApp(ShowBase):
         smiley.setQuat(self.render, fixQuat(rotation))
 
         self.objects[name] = smiley
-        self.physics.add_sphere(name, radius, mass_density, position+rotation, velocity)
 
 
-    def addCube(self, name, dimensions, mass_density, position, rotation, velocity, **parameters):
+    def add_cube(self, name, dimensions, position, rotation, **parameters):
         #smiley = self.loader.loadModel("zup-axis")
         cube = self.loader.loadModel("textures/box.egg")
         cube.setScale(*dimensions)
         cube.setTexture(self.loader.loadTexture('maps/noise.rgb'), 1)
 
-        tex = self.loader.loadTexture('textures/square.png')
+        tex = self.loader.loadTexture('textures/tesla_128.png')
         tex.setWrapU(Texture.WMClamp)
         tex.setWrapV(Texture.WMClamp)
         cube.setTexture(tex,1)
@@ -133,14 +136,12 @@ class MyApp(ShowBase):
         cube.setQuat(self.render, fixQuat(rotation))
 
         self.objects[name] = cube
-        self.physics.add_cube(name, dimensions, mass_density, position + rotation, velocity)
 
 
 
     def load_robot_model(self, filename):
-        robot_dict = json.load(open(filename,"rb"))
-        self.physics.camera_focus = robot_dict["camera_focus"]
-        self.physics.set_integration_parameters(**robot_dict["integration_parameters"])
+        self.physics.load_robot_model(filename)
+        robot_dict = json.load(open(filename, "rb"))
 
         for elementname, element in robot_dict["model"].iteritems():
             primitive = element[0]
@@ -149,44 +150,15 @@ class MyApp(ShowBase):
                 parameters.update(robot_dict["default_model_parameters"][primitive["shape"]])
             parameters.update(primitive)
             if primitive["shape"] == "cube":
-                self.addCube(elementname, **parameters)
+                self.add_cube(elementname, **parameters)
             elif primitive["shape"] == "sphere":
-                self.addSphere(elementname, **parameters)
+                self.add_sphere(elementname, **parameters)
+            # TODO
+            # elif primitive["shape"] == "plane":
+            #     self.add_plane(elementname, **parameters)
+            # elif primitive["shape"] == "face":
+            #     self.add_face(**parameters)
 
-        for jointname, joint in robot_dict["joints"].iteritems():
-            parameters = dict(robot_dict["default_constraint_parameters"]["default"])  # copy
-            if joint["type"] in robot_dict["default_constraint_parameters"]:
-                parameters.update(robot_dict["default_constraint_parameters"][joint["type"]])
-            parameters.update(joint)
-            if joint["type"] == "hinge":
-                self.physics.add_hinge_constraint(jointname, **parameters)
-
-            elif joint["type"] == "ground":
-                self.physics.add_ground_constraint(jointname, **parameters)
-
-            elif joint["type"] == "fixed":
-                self.physics.add_fixed_constraint(jointname, **parameters)
-
-            elif joint["type"] == "ball":
-                self.physics.add_ball_and_socket_constraint(jointname, **parameters)
-
-            if "limits" in parameters:
-                for limit in parameters["limits"]:
-                    limitparameters = dict(robot_dict["default_constraint_parameters"]["default"])
-                    if "limit" in robot_dict["default_constraint_parameters"]:
-                        limitparameters.update(robot_dict["default_constraint_parameters"]["limit"])
-                    limitparameters.update(limit)
-                    self.physics.addLimitConstraint(joint["object1"], joint["object2"], **limitparameters)
-
-            #"""
-            if "motors" in parameters:
-                for motor in parameters["motors"]:
-                    motorparameters = dict(robot_dict["default_constraint_parameters"]["default"])
-                    if "motor" in robot_dict["default_constraint_parameters"]:
-                        motorparameters.update(robot_dict["default_constraint_parameters"]["motor"])
-                    motorparameters.update(motor)
-                    self.physics.addMotorConstraint(joint["object1"], joint["object2"], **motorparameters)
-            #"""
 
 
 
@@ -196,34 +168,24 @@ class MyApp(ShowBase):
         ph = self.t*np.float32(2*np.pi*1.5)
         #sensors = self.physics.get_sensor_values("spine").flatten()
         #print sensors.shape
-        #self.physics.do_time_step(motor_signals=[-sin(ph),sin(ph),-1,1,0,0,0,0,0,0,0,0,0,0,0,0])
-        ALPHA = 1.00
-        self.step = (1-ALPHA) * self.step + ALPHA*np.random.randn(16)*30
-        A1, A2, A3, A4, B1, B2, B3, B4 = 0.8, 0.8, 0.5, 0.5, 0.5, 0.5, 0, 0
-        self.physics.do_time_step(motor_signals=[-A1*sin(ph)+B1,-A1*sin(ph)+B1,-A2*sin(ph)-B2,-A2*sin(-ph)-B2,-A3*cos(ph)+B3,A3*cos(ph)+B3,A4*cos(ph)+B4,-A4*cos(ph)+B4])
-        #self.physics.do_time_step(motor_signals=[A1*sin(ph)+B1,-A1*sin(ph)+B1,-A2*sin(ph)+B2,A2*sin(ph)+B2,A3*cos(ph)+B3,-A3*cos(ph)+B3,-A4*cos(ph)+B4,A4*cos(ph)+B4])
-        p4 = np.pi/4
-        p3 = 3.*np.pi/4.
-        p2 = np.pi/2
-        p1 = np.pi
-        #self.physics.do_time_step(motor_signals=5*np.array([A1*sin(ph)+B1,A1*sin(ph)+B1,-A2*sin(ph)-B2,-A2*sin(-ph)-B2], dtype='float32'))
-        #self.physics.do_time_step(motor_signals=[-p2,-p4,0,0])
+        self.state = self.physics.do_time_step(self.state, motor_signals=[1,-1,1,-1])
 
-
+        positions, velocity, rotations = self.state
         for obj_name, obj in self.objects.iteritems():
-            if (abs(self.physics.getPosition(obj_name)) > 10**5).any():
+            obj_id = self.physics.get_object_index(obj_name)
+            if (abs(positions[obj_id,:]) > 10**5).any():
                 print "problem with", obj_name
             sc = obj.getScale()
 
             #print obj_name, self.physics.getRotationMatrix(obj_name).flatten()
-            obj.setMat(self.render, LMatrix4f(LMatrix3f(*self.physics.getRotationMatrix(obj_name).flatten())))
-            obj.setPos(*self.physics.getPosition(obj_name)[:3])
+            obj.setMat(self.render, LMatrix4f(LMatrix3f(*rotations[obj_id,:,:].flatten())))
+            obj.setPos(*positions[obj_id,:])
             obj.setScale(sc)
 
         # change camera movement
-        self.camera.setPos(1.5,5.5,1.5)
-        #self.camera.lookAt(0,0,3)
-        self.camera.lookAt(*self.physics.getPosition(self.physics.camera_focus)[:3])
+        self.camera.setPos(0,10,1.5)
+        self.camera.lookAt(0,0,0)
+        # self.camera.lookAt(*self.physics.getPosition(self.physics.camera_focus)[:3])
         #print self.t, self.physics.getPosition(self.physics.camera_focus)
         real_time = time.time() - self.starttime
 

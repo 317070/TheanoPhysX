@@ -1,0 +1,215 @@
+{
+  "name": "car",
+  "integration_parameters": {
+    "time_step": 0.01,
+    "projected_gauss_seidel_iterations": 20,
+    "rotation_reorthogonalization_iterations": 1,
+    "warm_start": 0.0
+  },
+  "default_constraint_parameters": {
+    "default": {
+      "f": 2,
+      "zeta": 0.2
+    },
+    "motor": {
+      "servo": "velocity",
+      "motor_gain": 15,
+      "f": 1,
+      "zeta": 0
+    },
+    "ground": {
+      "mu": 1.0,
+      "torsional_friction": false,
+      "delta": 0.01,
+      "alpha": 0.01
+    }
+  },
+  "default_model_parameters": {
+    "default": {
+      "velocity": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "rotation": [
+        1,
+        0,
+        0,
+        0
+      ],
+      "mass_density": 1000.0
+    },
+    "sphere": {
+      "radius": 0.5,
+      "texture": "textures/soccer_128.png"
+    },
+    "cube": {
+      "dimensions": [
+        1,
+        1,
+        1
+      ],
+      "default_textures":{
+        "texture":"textures/tesla_128.png",
+        "color": [0,1,0]
+      }
+    }
+  },
+  "default_camera_parameters": {
+  },
+  "cameras": {
+  },
+  "model": {
+    "ground": [
+      {
+        "shape": "face",
+        "position": [0,0,0],
+        "normal": [0,0,1],
+        "texture": "textures/grass_128.png",
+        "limited": false
+      }
+    ],
+    "car": [
+      {
+        "shape": "cube",
+        "position": [0,0,1.05],
+        "mass": 2390,
+        "dimensions": [5.037, 2.070, 1.326]
+      }
+    ],
+    "wheel1": [
+      {
+        "shape": "sphere",
+        "position": [1.743,0.865,0.508],
+        "radius": 0.508,
+        "mass": 17.23,
+        "default_faces": {
+          "visible": false
+        }
+      }
+    ],
+    "wheel2": [
+      {
+        "shape": "sphere",
+        "position": [1.743,-0.865,0.508],
+        "radius": 0.508,
+        "mass": 17.23,
+        "default_faces": {
+          "visible": false
+        }
+      }
+    ],
+    "wheel3": [
+      {
+        "shape": "sphere",
+        "position": [-1.5,0.865,0.508],
+        "radius": 0.508,
+        "mass": 17.23,
+        "default_faces": {
+          "visible": false
+        }
+      }
+    ],
+    "wheel4": [
+      {
+        "shape": "sphere",
+        "position": [-1.5,-0.865,0.508],
+        "radius": 0.508,
+        "mass": 17.23,
+        "default_faces": {
+          "visible": false
+        }
+      }
+    ]
+  },
+  "joints":{
+    "axis1":{
+      "type": "hinge",
+      "object1": "car",
+      "object2": "wheel1",
+      "point": [1.743,0.865,0.508],
+      "axis": [
+        0,
+        1,
+        0
+      ],
+      "motors": [
+        {
+          "motor_id": 0
+        }
+      ]
+    },
+    "axis2":{
+      "type": "hinge",
+      "object1": "car",
+      "object2": "wheel2",
+      "point": [1.743,-0.865,0.508],
+      "axis": [
+        0,
+        1,
+        0
+      ],
+      "motors": [
+        {
+          "motor_id": 1
+        }
+      ]
+    },
+    "axis3":{
+      "type": "hinge",
+      "object1": "car",
+      "object2": "wheel3",
+      "point": [-1.5,0.865,0.508],
+      "axis": [
+        0,
+        1,
+        0
+      ],
+      "motors": [
+        {
+          "motor_id": 2
+        }
+      ]
+    },
+    "axis4":{
+      "type": "hinge",
+      "object1": "car",
+      "object2": "wheel4",
+      "point": [-1.5,-0.865,0.508],
+      "axis": [
+        0,
+        1,
+        0
+      ],
+      "motors": [
+        {
+          "motor_id": 3
+        }
+      ]
+    },
+    "floor1": {
+      "type": "ground",
+      "object1": "ground",
+      "object2": "wheel1"
+    },
+    "floor2": {
+      "type": "ground",
+      "object1": "ground",
+      "object2": "wheel2"
+    },
+    "floor3": {
+      "type": "ground",
+      "object1": "ground",
+      "object2": "wheel3"
+    },
+    "floor4": {
+      "type": "ground",
+      "object1": "ground",
+      "object2": "wheel4"
+    }
+  },
+  "sensors": []
+}
